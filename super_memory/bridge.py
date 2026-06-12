@@ -72,6 +72,8 @@ def promote(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
 
 def status(config_path: str | None = None) -> dict[str, Any]:
     cfg = load_config(config_path)
+    # Ensure schema exists/upgrades before direct status reads.
+    SuperMemoryService(cfg)
     store = SuperMemoryStore(cfg)
     with store.connect() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]

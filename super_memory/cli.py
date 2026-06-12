@@ -123,6 +123,8 @@ def promote(
 @app.command("status")
 def status_cmd(config: Optional[str] = None, json_out: bool = False):
     cfg = load_config(config)
+    # Ensure schema exists/upgrades before direct status reads.
+    SuperMemoryService(cfg)
     store = SuperMemoryStore(cfg)
     with store.connect() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
