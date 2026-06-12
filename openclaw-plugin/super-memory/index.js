@@ -18,6 +18,62 @@ module.exports = async function superMemoryPlugin(api) {
     return res.json();
   }
 
+  if (typeof api.registerMemoryCorpusSupplement === 'function') {
+    api.registerMemoryCorpusSupplement({
+      async search(params) {
+        const payload = await post('/memory-search', {
+          query: params.query,
+          max_results: params.maxResults || 5,
+          corpus: 'all'
+        });
+        return (payload.results || []).map((hit) => ({
+          corpus: hit.corpus || 'super-memory',
+          path: hit.path,
+          title: hit.memory_id || hit.id,
+          kind: 'memory',
+          score: hit.score || 0,
+          snippet: hit.snippet || '',
+          id: hit.id,
+          startLine: hit.startLine || 1,
+          endLine: hit.endLine || 1,
+          citation: `${hit.path}#${hit.startLine || 1}`,
+          source: 'super-memory',
+          provenanceLabel: `super-memory:${hit.layer || 'unknown'}`,
+          sourceType: 'super-memory',
+          sourcePath: hit.path
+        }));
+      },
+      async get(params) {
+        const payload = await post('/memory-get', {
+          path: params.lookup,
+          from_line: params.fromLine || 1,
+          lines: params.lineCount || 20,
+          corpus: 'all'
+        });
+        if (!payload || payload.error) return null;
+        return {
+          corpus: payload.source === 'workspace' ? 'memory' : 'super-memory',
+          path: payload.path,
+          title: payload.metadata?.id || payload.path,
+          kind: 'memory',
+          content: payload.content || '',
+          fromLine: payload.from || payload.fromLine || 1,
+          lineCount: payload.lines || payload.lineCount || 1,
+          id: payload.metadata?.id,
+          provenanceLabel: payload.source || 'super-memory',
+          sourceType: payload.source || 'super-memory',
+          sourcePath: payload.path
+        };
+      }
+    });
+  }
+
+  if (typeof api.registerMemoryPromptSupplement === 'function') {
+    api.registerMemoryPromptSupplement(async () => [
+      'Super Memory is available as an additional local memory corpus. Use super_memory_search_compatible / super_memory_get_compatible for replacement-path testing.'
+    ]);
+  }
+
   api.registerTool({
     name: 'super_memory_remember',
     description: 'Save a memory through Super Memory canonical layer order.',
