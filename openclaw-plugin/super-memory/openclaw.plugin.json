@@ -1,0 +1,25 @@
+{
+  "id": "super-memory",
+  "name": "Super Memory",
+  "version": "0.1.0",
+  "description": "Local multi-layer main memory for OpenClaw multi-agents",
+  "main": "index.js",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiBaseUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8765"
+      },
+      "autoSyncTurns": {
+        "type": "boolean",
+        "default": false
+      },
+      "prefetchTimeoutMs": {
+        "type": "number",
+        "default": 1500
+      }
+    },
+    "additionalProperties": false
+  }
+}

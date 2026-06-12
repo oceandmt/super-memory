@@ -1,0 +1,29 @@
+[project]
+name = "super-memory"
+version = "0.1.0"
+description = "Local multi-layer memory app for OpenClaw multi-agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7",
+  "typer>=0.12",
+  "rich>=13.7",
+  "pyyaml>=6.0",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx2>=0.28"]
+
+[project.scripts]
+super-memory = "super_memory.cli:app"
+super-memory-api = "super_memory.api:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
