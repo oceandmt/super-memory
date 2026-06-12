@@ -25,7 +25,21 @@ pip install -e '.[dev]'
 super-memory save-order
 super-memory remember "Boss prefers canonical markdown first" --type preference --scope shared --agent-id lucas --project super-memory --tag doctrine
 super-memory recall canonical
+super-memory memory-search canonical --json-out
+super-memory memory-get memory/2026-06-13.md --from-line 1 --lines 20
 ```
+
+## MCP server
+
+Super Memory now includes a local stdio MCP server for MCP-compatible agents:
+
+```bash
+super-memory-mcp --stdio
+```
+
+Exposed tools include remember, recall, prefetch, sync-turn, memory-search, memory-get, promote, and status.
+
+Guardrail: this project can be developed as an OpenClaw memory-slot replacement candidate, but do not apply/register it into this machine's active OpenClaw config unless Boss explicitly instructs that later.
 
 ## Save order
 
@@ -41,18 +55,20 @@ Downstream layers are treated as derived. By default, if canonical Workspace Mar
 Implemented now:
 
 - Python package skeleton
-- CLI: `remember`, `recall`, `save-order`
+- CLI: `remember`, `recall`, `save-order`, `memory-search`, `memory-get`
 - Layered save order
 - Workspace Markdown append-only daily note backend
 - SQLite deterministic adapters for MemPalace/Honcho/NeuralMemory layers
 - Multi-agent provenance tags
-- Tests for save order and recall
+- OpenClaw-compatible search/get shape layer
+- OpenClaw plugin wrapper with guarded/non-applied capability skeleton
+- MCP stdio server
+- Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
 Planned next:
 
 - Direct upstream adapters after deeper source-level mapping
-- OpenClaw plugin/MCP wrapper
-- Promotion workflow into `MEMORY.md` / `memory/registers/`
+- Harden the non-applied memory capability runtime contract in project tests
 - Self-improvement proposal generator via Skill Workshop
 - Better recall ranking and source citations
 

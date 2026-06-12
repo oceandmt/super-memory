@@ -19,6 +19,7 @@ dev = ["pytest>=8.0", "httpx2>=0.28"]
 [project.scripts]
 super-memory = "super_memory.cli:app"
 super-memory-api = "super_memory.api:main"
+super-memory-mcp = "super_memory.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
