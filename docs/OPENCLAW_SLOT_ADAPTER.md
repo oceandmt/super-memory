@@ -39,6 +39,23 @@ The plugin wrapper also contains a gated `registerMemoryCapability(...)` skeleto
 
 Default is **false**. This exists only for project development and contract testing. Boss explicitly instructed: develop Super Memory only; do **not** apply it to this machine's OpenClaw runtime/config.
 
+### Legacy memory tool shims
+
+Following upstream NeuralMemory's OpenClaw plugin pattern, the wrapper includes compatibility shims for existing OpenClaw profiles that may still reference memory-core tool names after a memory-slot replacement:
+
+- `memory_search`
+- `memory_get`
+
+They are disabled by default:
+
+```json
+{
+  "registerLegacyMemoryShims": false
+}
+```
+
+They should be enabled only in a separate slot-replacement test environment, or implicitly through `registerExclusiveMemoryCapability=true`. Do not enable them in the current live OpenClaw config because they can conflict with active `memory-core` tools.
+
 When enabled in a separate test environment, the skeleton provides:
 
 - `promptBuilder`

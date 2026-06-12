@@ -154,6 +154,52 @@ module.exports = async function superMemoryPlugin(api) {
     ]);
   }
 
+  if ((cfg.registerLegacyMemoryShims === true || cfg.registerExclusiveMemoryCapability === true) && typeof api.registerTool === 'function') {
+    api.registerTool({
+      name: 'memory_search',
+      description: 'Legacy OpenClaw memory_search shim backed by Super Memory. Enable only when Super Memory owns the exclusive memory slot.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          maxResults: { type: 'number', default: 5 },
+          minScore: { type: 'number', default: 0 },
+          corpus: { type: 'string', default: 'all' }
+        },
+        required: ['query'],
+        additionalProperties: false
+      },
+      handler: async (input) => post('/memory-search', {
+        query: input.query,
+        max_results: input.maxResults || input.max_results || 5,
+        min_score: input.minScore || input.min_score || 0,
+        corpus: input.corpus || 'all'
+      })
+    });
+
+    api.registerTool({
+      name: 'memory_get',
+      description: 'Legacy OpenClaw memory_get shim backed by Super Memory. Enable only when Super Memory owns the exclusive memory slot.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          from: { type: 'number', default: 1 },
+          lines: { type: 'number', default: 20 },
+          corpus: { type: 'string', default: 'all' }
+        },
+        required: ['path'],
+        additionalProperties: false
+      },
+      handler: async (input) => post('/memory-get', {
+        path: input.path,
+        from_line: input.from || input.from_line || 1,
+        lines: input.lines || 20,
+        corpus: input.corpus || 'all'
+      })
+    });
+  }
+
   api.registerTool({
     name: 'super_memory_remember',
     description: 'Save a memory through Super Memory canonical layer order.',

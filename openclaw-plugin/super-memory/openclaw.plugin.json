@@ -23,6 +23,11 @@
         "type": "boolean",
         "default": false,
         "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
+      },
+      "registerLegacyMemoryShims": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
       }
     },
     "additionalProperties": false

@@ -2,6 +2,14 @@
 
 Boss asked to reference NeuralMemory's OpenClaw memory-slot direction and update Super Memory accordingly.
 
+Source referenced: upstream GitHub repo `nhadaututtheky/neural-memory`, especially:
+
+- `integrations/neuralmemory/src/index.ts`
+- `integrations/neuralmemory/src/mcp-client.ts`
+- `integrations/neuralmemory/src/tools.ts`
+- `integrations/neuralmemory/openclaw.plugin.json`
+- `docs/guides/openclaw-plugin.md`
+
 ## Lessons pulled forward
 
 ### 1. MCP-first capability surface
@@ -77,6 +85,43 @@ Super Memory update:
 - default remains disabled
 - this machine's active OpenClaw config is not modified
 
+### 6. Legacy `memory_search` / `memory_get` shims prevent allow-list breakage
+
+Upstream NeuralMemory added backward-compatible shim tools named `memory_search` and `memory_get` because replacing `memory-core` removes the built-in tools while existing OpenClaw tool profiles may still allow-list those names.
+
+Super Memory update:
+
+- plugin wrapper now includes gated shims:
+  - `memory_search` → `POST /memory-search`
+  - `memory_get` → `POST /memory-get`
+- shims are disabled by default via:
+
+```json
+{
+  "registerLegacyMemoryShims": false
+}
+```
+
+- shims also turn on automatically if the development-only exclusive slot flag is explicitly enabled:
+
+```json
+{
+  "registerExclusiveMemoryCapability": true
+}
+```
+
+This mirrors NeuralMemory's slot-replacement compatibility idea while avoiding conflicts with live `memory-core` on this machine.
+
+### 7. Synchronous fallback registration + async MCP lifecycle
+
+Upstream NeuralMemory registers fallback tools synchronously because OpenClaw freezes tool registration during plugin setup, then starts the MCP subprocess through a service lifecycle.
+
+Super Memory status:
+
+- current plugin uses direct local HTTP API calls, not a managed MCP subprocess yet
+- MCP server exists project-locally (`super-memory-mcp --stdio`)
+- future project-only hardening can add a TS MCP client/subprocess lifecycle similar to NeuralMemory
+
 ## Current Super Memory position
 
 Super Memory now has three project-local integration surfaces:
@@ -94,3 +139,4 @@ This supports development toward memory-slot replacement without applying it to 
 - Add contract tests for OpenClaw `MemorySearchManager` shape without running against this machine's live OpenClaw config.
 - Add parity fixtures comparing CLI/API/MCP outputs.
 - Add security/privacy filter before broad derived-layer writes.
+- Add optional TypeScript MCP subprocess client in the OpenClaw plugin wrapper, modeled after upstream NeuralMemory's `mcp-client.ts`, but keep it disabled/not applied on this machine.
