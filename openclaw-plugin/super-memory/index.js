@@ -18,6 +18,86 @@ module.exports = async function superMemoryPlugin(api) {
     return res.json();
   }
 
+  function createSearchManager() {
+    return {
+      async search(query, opts = {}) {
+        const payload = await post('/memory-search', {
+          query,
+          max_results: opts.maxResults || 5,
+          min_score: opts.minScore || 0,
+          corpus: 'all'
+        });
+        if (typeof opts.onDebug === 'function') {
+          opts.onDebug({ backend: 'builtin', configuredMode: 'super-memory', effectiveMode: 'super-memory' });
+        }
+        return (payload.results || []).map((hit) => ({
+          path: hit.path,
+          startLine: hit.startLine || 1,
+          endLine: hit.endLine || 1,
+          score: hit.score || 0,
+          textScore: hit.textScore || hit.score || 0,
+          snippet: hit.snippet || '',
+          source: hit.corpus === 'sessions' ? 'sessions' : 'memory',
+          citation: `${hit.path}#${hit.startLine || 1}`
+        }));
+      },
+      async readFile(params) {
+        const payload = await post('/memory-get', {
+          path: params.relPath,
+          from_line: params.from || 1,
+          lines: params.lines || 20,
+          corpus: 'all'
+        });
+        if (!payload || payload.error) {
+          return { text: '', path: params.relPath, truncated: false, from: params.from || 1, lines: 0 };
+        }
+        return {
+          text: payload.content || '',
+          path: payload.path,
+          truncated: Boolean(payload.truncated),
+          from: payload.from || 1,
+          lines: payload.lines || 0
+        };
+      },
+      status() {
+        return {
+          backend: 'builtin',
+          provider: 'super-memory',
+          dirty: false,
+          sources: ['memory'],
+          custom: { mode: 'development-slot-adapter', apiBaseUrl: baseUrl }
+        };
+      },
+      async sync() {},
+      getCachedEmbeddingAvailability() { return { ok: true, checked: true, cached: true }; },
+      async probeEmbeddingAvailability() { return { ok: true, checked: true }; },
+      async probeVectorStoreAvailability() { return true; },
+      async close() {}
+    };
+  }
+
+  if (cfg.registerExclusiveMemoryCapability === true && typeof api.registerMemoryCapability === 'function') {
+    api.registerMemoryCapability({
+      promptBuilder: () => [
+        'Super Memory is the active development memory slot. Preserve Workspace Markdown as canonical truth and use Super Memory search/get for recall.'
+      ],
+      flushPlanResolver: () => null,
+      runtime: {
+        async getMemorySearchManager() {
+          return { manager: createSearchManager() };
+        },
+        resolveMemoryBackendConfig() {
+          return { backend: 'builtin' };
+        },
+        async closeMemorySearchManager() {},
+        async closeAllMemorySearchManagers() {}
+      },
+      publicArtifacts: {
+        async listArtifacts() { return []; }
+      }
+    });
+  }
+
   if (typeof api.registerMemoryCorpusSupplement === 'function') {
     api.registerMemoryCorpusSupplement({
       async search(params) {

@@ -18,6 +18,11 @@
       "prefetchTimeoutMs": {
         "type": "number",
         "default": 1500
+      },
+      "registerExclusiveMemoryCapability": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
       }
     },
     "additionalProperties": false
