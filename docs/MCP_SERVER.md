@@ -14,6 +14,24 @@ From the project virtualenv:
 super-memory-mcp --stdio
 ```
 
+Safe default profile:
+
+```bash
+super-memory-mcp --stdio --profile normal
+```
+
+Admin/development profile:
+
+```bash
+super-memory-mcp --stdio --profile admin
+```
+
+Environment equivalent:
+
+```bash
+SUPER_MEMORY_MCP_PROFILE=admin super-memory-mcp --stdio
+```
+
 Equivalent module form:
 
 ```bash
@@ -35,6 +53,14 @@ Supported protocol methods:
 - `resources/read`
 
 ## Tools
+
+Super Memory follows the NeuralMemory MCP lesson: expose a narrow daily-core tool surface by default and keep structural/admin actions behind an explicit profile.
+
+Profiles:
+
+- `normal` default: remember, recall, prefetch, sync-turn, memory-search, memory-get, status
+- `admin`: normal tools plus promotion
+- `all`: every implemented tool
 
 ### `super_memory_remember`
 
@@ -115,6 +141,8 @@ Args:
 ### `super_memory_promote`
 
 Promote an item into `MEMORY.md` and matching register.
+
+Profile: `admin` / `all` only.
 
 Args:
 

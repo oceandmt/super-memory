@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import traceback
 from typing import Any, Callable
@@ -12,6 +13,18 @@ JSON = dict[str, Any]
 
 SERVER_INFO = {"name": "super-memory", "version": "0.1.0"}
 PROTOCOL_VERSION = "2024-11-05"
+MCP_PROFILE = "normal"
+
+NORMAL_TOOLS = {
+    "super_memory_remember",
+    "super_memory_recall",
+    "super_memory_prefetch",
+    "super_memory_sync_turn",
+    "super_memory_memory_search",
+    "super_memory_memory_get",
+    "super_memory_status",
+}
+ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 
 
 def _text(content: Any) -> list[JSON]:
@@ -117,11 +130,23 @@ TOOLS: dict[str, JSON] = {
 }
 
 
-def _tool_descriptors() -> list[JSON]:
-    return [{"name": name, **meta} for name, meta in TOOLS.items()]
+def _allowed_tools(profile: str | None = None) -> set[str]:
+    effective = (profile or MCP_PROFILE or "normal").lower()
+    if effective == "admin":
+        return ADMIN_TOOLS
+    if effective == "all":
+        return set(TOOLS)
+    return NORMAL_TOOLS
+
+
+def _tool_descriptors(profile: str | None = None) -> list[JSON]:
+    allowed = _allowed_tools(profile)
+    return [{"name": name, **meta} for name, meta in TOOLS.items() if name in allowed]
 
 
 def _call_tool(name: str, args: JSON) -> Any:
+    if name not in _allowed_tools():
+        raise PermissionError(f"tool not exposed in {MCP_PROFILE!r} MCP profile: {name}")
     if name == "super_memory_remember":
         config_path = args.pop("config_path", None)
         return bridge.remember(args, config_path=config_path)
@@ -178,6 +203,11 @@ def handle(request: JSON) -> JSON | None:
                 "protocolVersion": params.get("protocolVersion", PROTOCOL_VERSION),
                 "capabilities": {"tools": {}, "resources": {}},
                 "serverInfo": SERVER_INFO,
+                "instructions": (
+                    "Super Memory MCP is a project-local memory server. Workspace Markdown remains canonical; "
+                    "MCP tools are derived/programmatic access. Do not apply/register into this machine's OpenClaw config unless explicitly instructed. "
+                    f"Active MCP profile: {MCP_PROFILE}."
+                ),
             },
         )
     if method == "notifications/initialized":
@@ -189,7 +219,10 @@ def handle(request: JSON) -> JSON | None:
     if method == "tools/call":
         name = params.get("name")
         args = dict(params.get("arguments") or {})
-        result = _call_tool(name, args)
+        try:
+            result = _call_tool(name, args)
+        except PermissionError as exc:
+            return _error(request_id, -32000, str(exc))
         return _response(request_id, {"content": _text(result), "isError": False})
     if method == "resources/list":
         return _response(request_id, {"resources": [{"uri": "super-memory://status", "name": "Super Memory status", "mimeType": "application/json"}]})
@@ -217,9 +250,17 @@ def serve() -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    global MCP_PROFILE
     parser = argparse.ArgumentParser(description="Super Memory MCP stdio server")
     parser.add_argument("--stdio", action="store_true", help="Run stdio MCP server (default)")
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--profile",
+        choices=["normal", "admin", "all"],
+        default=os.environ.get("SUPER_MEMORY_MCP_PROFILE", "normal"),
+        help="Tool exposure profile. normal is safe default; admin exposes promotion; all exposes every tool.",
+    )
+    args = parser.parse_args(argv)
+    MCP_PROFILE = args.profile
     serve()
 
 

@@ -5,6 +5,7 @@ from super_memory import mcp_server
 
 
 def test_mcp_initialize_and_tools_list():
+    mcp_server.MCP_PROFILE = "normal"
     init = mcp_server.handle({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
     assert init["result"]["serverInfo"]["name"] == "super-memory"
     assert "tools" in init["result"]["capabilities"]
@@ -15,6 +16,35 @@ def test_mcp_initialize_and_tools_list():
     assert "super_memory_memory_search" in names
     assert "super_memory_memory_get" in names
     assert "super_memory_status" in names
+    assert "super_memory_promote" not in names
+
+
+def test_mcp_admin_profile_exposes_promote():
+    old = mcp_server.MCP_PROFILE
+    try:
+        mcp_server.MCP_PROFILE = "admin"
+        tools = mcp_server.handle({"jsonrpc": "2.0", "id": 20, "method": "tools/list"})
+        names = {tool["name"] for tool in tools["result"]["tools"]}
+        assert "super_memory_promote" in names
+    finally:
+        mcp_server.MCP_PROFILE = old
+
+
+def test_mcp_normal_profile_blocks_admin_tool_call():
+    old = mcp_server.MCP_PROFILE
+    try:
+        mcp_server.MCP_PROFILE = "normal"
+        response = mcp_server.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 21,
+                "method": "tools/call",
+                "params": {"name": "super_memory_promote", "arguments": {"memory_id": "x"}},
+            }
+        )
+        assert response["error"]["code"] == -32000
+    finally:
+        mcp_server.MCP_PROFILE = old
 
 
 def test_mcp_tool_call_remember_and_search(tmp_path: Path):

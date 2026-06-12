@@ -34,10 +34,10 @@ super-memory memory-get memory/2026-06-13.md --from-line 1 --lines 20
 Super Memory now includes a local stdio MCP server for MCP-compatible agents:
 
 ```bash
-super-memory-mcp --stdio
+super-memory-mcp --stdio --profile normal
 ```
 
-Exposed tools include remember, recall, prefetch, sync-turn, memory-search, memory-get, promote, and status.
+Default exposed tools include remember, recall, prefetch, sync-turn, memory-search, memory-get, and status. Admin profile additionally exposes promotion.
 
 Guardrail: this project can be developed as an OpenClaw memory-slot replacement candidate, but do not apply/register it into this machine's active OpenClaw config unless Boss explicitly instructs that later.
 
