@@ -5,6 +5,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .config import load_config
+from .compat import memory_get_compatible, memory_search_compatible
 from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
@@ -88,3 +89,13 @@ def status(config_path: str | None = None) -> dict[str, Any]:
         "palace_drawers": drawers,
         "honcho_events": events,
     }
+
+
+def memory_search(query: str, max_results: int = 5, min_score: float = 0.0, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    return memory_search_compatible(query, max_results=max_results, min_score=min_score, corpus=corpus, config=cfg)
+
+
+def memory_get(path: str, from_line: int = 1, lines: int = 20, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    return memory_get_compatible(path, from_line=from_line, lines=lines, corpus=corpus, config=cfg)

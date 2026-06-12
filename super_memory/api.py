@@ -31,6 +31,22 @@ class RecallRequest(BaseModel):
     config_path: str | None = None
 
 
+class MemorySearchRequest(BaseModel):
+    query: str
+    max_results: int = 5
+    min_score: float = 0.0
+    corpus: str = "all"
+    config_path: str | None = None
+
+
+class MemoryGetRequest(BaseModel):
+    path: str
+    from_line: int = 1
+    lines: int = 20
+    corpus: str = "all"
+    config_path: str | None = None
+
+
 class SyncTurnRequest(BaseModel):
     agent_id: str = "lucas"
     session_id: str | None = None
@@ -65,6 +81,28 @@ def remember(req: RememberRequest) -> dict[str, Any]:
 @app.post("/recall")
 def recall(req: RecallRequest) -> dict[str, Any]:
     return bridge.recall(req.query, limit=req.limit, config_path=req.config_path)
+
+
+@app.post("/memory-search")
+def memory_search(req: MemorySearchRequest) -> dict[str, Any]:
+    return bridge.memory_search(
+        req.query,
+        max_results=req.max_results,
+        min_score=req.min_score,
+        corpus=req.corpus,
+        config_path=req.config_path,
+    )
+
+
+@app.post("/memory-get")
+def memory_get(req: MemoryGetRequest) -> dict[str, Any]:
+    return bridge.memory_get(
+        req.path,
+        from_line=req.from_line,
+        lines=req.lines,
+        corpus=req.corpus,
+        config_path=req.config_path,
+    )
 
 
 @app.post("/prefetch")

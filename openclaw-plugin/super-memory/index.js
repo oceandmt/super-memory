@@ -54,6 +54,38 @@ module.exports = async function superMemoryPlugin(api) {
   });
 
   api.registerTool({
+    name: 'super_memory_search_compatible',
+    description: 'OpenClaw memory_search-compatible recall payload from Super Memory.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string' },
+        max_results: { type: 'number', default: 5 },
+        min_score: { type: 'number', default: 0 },
+        corpus: { type: 'string', default: 'all' }
+      },
+      required: ['query']
+    },
+    handler: async (input) => post('/memory-search', input)
+  });
+
+  api.registerTool({
+    name: 'super_memory_get_compatible',
+    description: 'OpenClaw memory_get-compatible read payload from Super Memory virtual paths or workspace files.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        from_line: { type: 'number', default: 1 },
+        lines: { type: 'number', default: 20 },
+        corpus: { type: 'string', default: 'all' }
+      },
+      required: ['path']
+    },
+    handler: async (input) => post('/memory-get', input)
+  });
+
+  api.registerTool({
     name: 'super_memory_prefetch',
     description: 'Merged/deduped Super Memory recall for prompt prefetch.',
     inputSchema: {

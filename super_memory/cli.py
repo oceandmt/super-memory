@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from .config import load_config
+from .compat import memory_get_compatible, memory_search_compatible
 from .models import MemoryRecord, MemoryScope, MemoryType, SuperMemoryConfig
 from .promote import PROMOTABLE_TYPES, promote_both
 from .service import SuperMemoryService
@@ -67,6 +68,49 @@ def recall(query: str, limit: int = 5, config: Optional[str] = None, json_out: b
             console.print("(no hits)")
         for rec in records:
             console.print(f"- [{rec.type.value}/{rec.scope.value}] {rec.content}")
+
+
+@app.command("memory-search")
+def memory_search_cmd(
+    query: str,
+    max_results: int = 5,
+    min_score: float = 0.0,
+    corpus: str = "all",
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    payload = memory_search_compatible(
+        query,
+        max_results=max_results,
+        min_score=min_score,
+        corpus=corpus,
+        config=load_config(config),
+    )
+    if json_out:
+        console.print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    for hit in payload["results"]:
+        console.print(f"- {hit['path']}#{hit['startLine']}-{hit['endLine']} score={hit['score']:.2f}")
+        console.print(f"  {hit['snippet']}")
+
+
+@app.command("memory-get")
+def memory_get_cmd(
+    path: str,
+    from_line: int = 1,
+    lines: int = 20,
+    corpus: str = "all",
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    payload = memory_get_compatible(path, from_line=from_line, lines=lines, corpus=corpus, config=load_config(config))
+    if json_out:
+        console.print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    if "error" in payload:
+        console.print(f"[red]{payload['error']}[/red]")
+        raise typer.Exit(1)
+    console.print(payload.get("content", ""))
 
 
 @app.command("recall-graph")
