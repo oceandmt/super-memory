@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-from dataclasses import asdict
 from typing import Any
 
 from .config import load_config
@@ -10,7 +8,7 @@ from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
 from .service import SuperMemoryService
-from .storage import SuperMemoryStore
+from .storage import SuperMemoryStore, row_to_memory
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -31,6 +29,102 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
     results = svc.save(record)
     return {"record": record.model_dump(mode="json"), "results": [r.model_dump(mode="json") for r in results]}
 
+
+
+def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    svc = SuperMemoryService(cfg)
+    items = []
+    for payload in payloads:
+        record = MemoryRecord(
+            content=payload["content"],
+            type=payload.get("type", MemoryType.CONTEXT),
+            scope=payload.get("scope", MemoryScope.SESSION),
+            agent_id=payload.get("agent_id", "lucas"),
+            session_id=payload.get("session_id"),
+            project=payload.get("project"),
+            tags=payload.get("tags", []),
+            source=payload.get("source"),
+            trust_score=payload.get("trust_score"),
+            metadata=payload.get("metadata", {}),
+        )
+        results = svc.save(record)
+        canonical = next((r for r in results if r.layer.value == "workspace_markdown"), None)
+        items.append({
+            "ok": bool(canonical and canonical.ok),
+            "record": record.model_dump(mode="json"),
+            "results": [r.model_dump(mode="json") for r in results],
+        })
+    return {"ok": all(item["ok"] for item in items), "items": items}
+
+def show(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    layers = {}
+    for layer in ["mempalace", "honcho", "neural_memory"]:
+        record = store.get_memory(memory_id, layer=layer)
+        if record:
+            layers[layer] = record.model_dump(mode="json")
+    if not layers:
+        return {"ok": False, "error": f"memory not found: {memory_id}"}
+    return {"ok": True, "memory_id": memory_id, "layers": layers}
+
+def context(query: str = "", limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    svc = SuperMemoryService(cfg)
+    if query:
+        records = svc.prefetch(query, limit=limit)
+    else:
+        rows = svc.store.list_memory_rows(limit=limit)
+        records = [row_to_memory(row) for row in rows]
+    return {"records": [r.model_dump(mode="json") for r in records]}
+
+def todo(task: str, priority: int = 5, config_path: str | None = None) -> dict[str, Any]:
+    return remember({
+        "content": task,
+        "type": MemoryType.TODO,
+        "scope": MemoryScope.SESSION,
+        "tags": ["todo", f"priority:{priority}"],
+        "metadata": {"priority": priority},
+        "source": "super-memory.todo",
+    }, config_path=config_path)
+
+def auto(text: str, save: bool = False, config_path: str | None = None) -> dict[str, Any]:
+    candidates = []
+    for raw in text.splitlines():
+        line = raw.strip(" -\t")
+        if not line or len(line) < 12:
+            continue
+        lowered = line.lower()
+        mem_type = MemoryType.CONTEXT
+        if any(word in lowered for word in ["decided", "decision", "quyết định"]):
+            mem_type = MemoryType.DECISION
+        elif any(word in lowered for word in ["todo", "next", "cần làm"]):
+            mem_type = MemoryType.TODO
+        elif any(word in lowered for word in ["blocker", "blocked", "lỗi", "error"]):
+            mem_type = MemoryType.BLOCKER
+        elif any(word in lowered for word in ["workflow", "process", "quy trình"]):
+            mem_type = MemoryType.WORKFLOW
+        candidates.append({"content": line, "type": mem_type.value, "scope": MemoryScope.SESSION.value, "source": "super-memory.auto"})
+    result = {"candidates": candidates, "saved": None}
+    if save and candidates:
+        result["saved"] = remember_batch(candidates, config_path=config_path)
+    return result
+
+def stats(config_path: str | None = None) -> dict[str, Any]:
+    return status(config_path=config_path)
+
+def health(config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    st = status(config_path=config_path)
+    canonical_enabled = "workspace_markdown" in [layer.value for layer in cfg.enabled_layers]
+    return {
+        "ok": canonical_enabled and cfg.require_canonical_first,
+        "canonical_first": cfg.require_canonical_first,
+        "workspace_markdown_enabled": canonical_enabled,
+        "enabled_layers": [layer.value for layer in cfg.enabled_layers],
+        "status": st,
+    }
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
     cfg = load_config(config_path)

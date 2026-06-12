@@ -58,7 +58,7 @@ Super Memory follows the NeuralMemory MCP lesson: expose a narrow daily-core too
 
 Profiles:
 
-- `normal` default: remember, recall, prefetch, sync-turn, memory-search, memory-get, status
+- `normal` default: remember, remember-batch, show, context, todo, auto, stats, health, recall, prefetch, sync-turn, memory-search, memory-get, status
 - `admin`: normal tools plus promotion
 - `all`: every implemented tool
 
@@ -88,6 +88,70 @@ Args:
 
 - `query` required
 - `limit`
+- `config_path`
+
+### `super_memory_remember_batch`
+
+Save up to 20 memories through the same canonical-first layer order. Each item returns its own per-layer result so partial failure does not hide which layer failed.
+
+Args:
+
+- `memories` required array of memory objects using the same fields as `super_memory_remember`
+- `config_path`
+
+### `super_memory_show`
+
+Show a memory by id across derived Super Memory layers. This is read-only and does not promote or mutate canonical markdown.
+
+Args:
+
+- `memory_id` required
+- `config_path`
+
+### `super_memory_context`
+
+Return query-relevant or recent context from the merged Super Memory view.
+
+Args:
+
+- `query` optional; empty means recent records
+- `limit`
+- `config_path`
+
+### `super_memory_todo`
+
+Save a TODO memory through canonical-first layer order.
+
+Args:
+
+- `task` required
+- `priority`
+- `config_path`
+
+### `super_memory_auto`
+
+Extract simple memory candidates from text and optionally save them through canonical-first order. This baseline is deterministic and intentionally conservative; it does not require an embedded LLM.
+
+Args:
+
+- `text` required
+- `save` default false
+- `config_path`
+
+### `super_memory_stats`
+
+NeuralMemory-style stats alias for status.
+
+Args:
+
+- `config_path`
+
+### `super_memory_health`
+
+Check Super Memory consistency guardrails: canonical-first enabled and workspace markdown enabled.
+
+Args:
+
 - `config_path`
 
 ### `super_memory_prefetch`

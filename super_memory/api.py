@@ -24,6 +24,29 @@ class RememberRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     config_path: str | None = None
 
+class RememberBatchRequest(BaseModel):
+    memories: list[RememberRequest] = Field(max_length=20)
+    config_path: str | None = None
+
+class ShowRequest(BaseModel):
+    memory_id: str
+    config_path: str | None = None
+
+class ContextRequest(BaseModel):
+    query: str = ""
+    limit: int = 10
+    config_path: str | None = None
+
+class TodoRequest(BaseModel):
+    task: str
+    priority: int = 5
+    config_path: str | None = None
+
+class AutoRequest(BaseModel):
+    text: str
+    save: bool = False
+    config_path: str | None = None
+
 
 class RecallRequest(BaseModel):
     query: str
@@ -71,11 +94,45 @@ def health() -> dict[str, Any]:
 def status(config_path: str | None = None) -> dict[str, Any]:
     return bridge.status(config_path=config_path)
 
+@app.get("/stats")
+def stats(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.stats(config_path=config_path)
+
+@app.get("/memory-health")
+def memory_health(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.health(config_path=config_path)
+
 
 @app.post("/remember")
 def remember(req: RememberRequest) -> dict[str, Any]:
     payload = req.model_dump(exclude={"config_path"})
     return bridge.remember(payload, config_path=req.config_path)
+
+@app.post("/remember-batch")
+def remember_batch(req: RememberBatchRequest) -> dict[str, Any]:
+    config_path = req.config_path
+    memories = []
+    for item in req.memories:
+        payload = item.model_dump(exclude={"config_path"})
+        memories.append(payload)
+        config_path = config_path or item.config_path
+    return bridge.remember_batch(memories, config_path=config_path)
+
+@app.post("/show")
+def show(req: ShowRequest) -> dict[str, Any]:
+    return bridge.show(req.memory_id, config_path=req.config_path)
+
+@app.post("/context")
+def context(req: ContextRequest) -> dict[str, Any]:
+    return bridge.context(req.query, limit=req.limit, config_path=req.config_path)
+
+@app.post("/todo")
+def todo(req: TodoRequest) -> dict[str, Any]:
+    return bridge.todo(req.task, priority=req.priority, config_path=req.config_path)
+
+@app.post("/auto")
+def auto(req: AutoRequest) -> dict[str, Any]:
+    return bridge.auto(req.text, save=req.save, config_path=req.config_path)
 
 
 @app.post("/recall")

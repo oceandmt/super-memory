@@ -17,6 +17,13 @@ MCP_PROFILE = "normal"
 
 NORMAL_TOOLS = {
     "super_memory_remember",
+    "super_memory_remember_batch",
+    "super_memory_show",
+    "super_memory_context",
+    "super_memory_todo",
+    "super_memory_auto",
+    "super_memory_stats",
+    "super_memory_health",
     "super_memory_recall",
     "super_memory_prefetch",
     "super_memory_sync_turn",
@@ -56,6 +63,60 @@ TOOLS: dict[str, JSON] = {
             },
             ["content"],
         ),
+    },
+    "super_memory_remember_batch": {
+        "description": "Save multiple memories through the same canonical-first layer order; partial failures stay per item.",
+        "inputSchema": _schema(
+            {
+                "memories": {"type": "array", "items": {"type": "object"}, "maxItems": 20},
+                "config_path": {"type": "string"},
+            },
+            ["memories"],
+        ),
+    },
+    "super_memory_show": {
+        "description": "Show a memory by id across derived Super Memory layers without changing canonical markdown.",
+        "inputSchema": _schema({"memory_id": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
+    },
+    "super_memory_context": {
+        "description": "Get recent or query-relevant Super Memory context from the merged layer view.",
+        "inputSchema": _schema(
+            {
+                "query": {"type": "string", "default": ""},
+                "limit": {"type": "integer", "default": 10},
+                "config_path": {"type": "string"},
+            }
+        ),
+    },
+    "super_memory_todo": {
+        "description": "Save a TODO memory through canonical-first layer order.",
+        "inputSchema": _schema(
+            {
+                "task": {"type": "string"},
+                "priority": {"type": "integer", "default": 5},
+                "config_path": {"type": "string"},
+            },
+            ["task"],
+        ),
+    },
+    "super_memory_auto": {
+        "description": "Extract simple memory candidates from text and optionally save them canonical-first.",
+        "inputSchema": _schema(
+            {
+                "text": {"type": "string"},
+                "save": {"type": "boolean", "default": False},
+                "config_path": {"type": "string"},
+            },
+            ["text"],
+        ),
+    },
+    "super_memory_stats": {
+        "description": "Alias of status for neural-memory-style stats consumers.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_health": {
+        "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
     "super_memory_recall": {
         "description": "Recall memories from Super Memory layers.",
@@ -150,6 +211,21 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_remember":
         config_path = args.pop("config_path", None)
         return bridge.remember(args, config_path=config_path)
+    if name == "super_memory_remember_batch":
+        config_path = args.pop("config_path", None)
+        return bridge.remember_batch(args["memories"], config_path=config_path)
+    if name == "super_memory_show":
+        return bridge.show(args["memory_id"], config_path=args.get("config_path"))
+    if name == "super_memory_context":
+        return bridge.context(args.get("query", ""), limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_todo":
+        return bridge.todo(args["task"], priority=args.get("priority", 5), config_path=args.get("config_path"))
+    if name == "super_memory_auto":
+        return bridge.auto(args["text"], save=args.get("save", False), config_path=args.get("config_path"))
+    if name == "super_memory_stats":
+        return bridge.stats(config_path=args.get("config_path"))
+    if name == "super_memory_health":
+        return bridge.health(config_path=args.get("config_path"))
     if name == "super_memory_recall":
         return bridge.recall(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
     if name == "super_memory_prefetch":
