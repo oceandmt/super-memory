@@ -10,7 +10,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -30,7 +30,12 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         metadata=payload.get("metadata", {}),
     )
     results = svc.save(record)
-    return {"record": record.model_dump(mode="json"), "results": [r.model_dump(mode="json") for r in results]}
+    graph_projection = None
+    try:
+        graph_projection = graph.project_memory(record, config_path=config_path)
+    except Exception as exc:  # graph projection is derived and must not break canonical-first save
+        graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return {"record": record.model_dump(mode="json"), "results": [r.model_dump(mode="json") for r in results], "graph_projection": graph_projection}
 
 
 
@@ -53,11 +58,17 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             metadata=payload.get("metadata", {}),
         )
         results = svc.save(record)
+        graph_projection = None
+        try:
+            graph_projection = graph.project_memory(record, config_path=config_path)
+        except Exception as exc:
+            graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         canonical = next((r for r in results if r.layer.value == "workspace_markdown"), None)
         items.append({
             "ok": bool(canonical and canonical.ok),
             "record": record.model_dump(mode="json"),
             "results": [r.model_dump(mode="json") for r in results],
+            "graph_projection": graph_projection,
         })
     return {"ok": all(item["ok"] for item in items), "items": items}
 
@@ -272,3 +283,70 @@ def promotion_candidates(limit: int = 20, config_path: str | None = None) -> dic
 
 def feedback_outcome(memory_id: str | None = None, success: bool = True, outcome: str = "", config_path: str | None = None) -> dict[str, Any]:
     return cognitive.feedback_outcome(memory_id=memory_id, success=success, outcome=outcome, config_path=config_path)
+
+# Phase 7 / Layer 4 graph maturity
+def graph_stats(config_path: str | None = None) -> dict[str, Any]:
+    return graph.stats(config_path=config_path)
+
+def graph_neighbors(neuron_or_memory_id: str, direction: str = "out", limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return graph.neighbors(neuron_or_memory_id, direction=direction, limit=limit, config_path=config_path)
+
+def graph_recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    return graph.recall(query, limit=limit, config_path=config_path)
+
+def graph_rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return graph.rebuild(limit=limit, config_path=config_path)
+
+# Phase 7 / P2 lifecycle
+def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.review(config_path=config_path, limit=limit)
+
+def lifecycle_cache(action: str = "status", config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.cache(action=action, config_path=config_path)
+
+def lifecycle_tier(action: str = "evaluate", dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.tier(action=action, dry_run=dry_run, config_path=config_path, limit=limit)
+
+def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.compression(action=action, dry_run=dry_run, config_path=config_path, limit=limit)
+
+def reflex_status(config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.reflex_status(config_path=config_path)
+
+# Phase 7 / P3 safe flows
+def train_local(path: str, domain_tag: str = "local", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return safe_flows.train(path, domain_tag=domain_tag, recursive=recursive, limit=limit, save=save, config_path=config_path)
+
+def import_local(path: str, source_name: str = "local-import", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return safe_flows.import_local(path, source_name=source_name, recursive=recursive, limit=limit, save=save, config_path=config_path)
+
+def watch_scan(directory: str, recursive: bool = True, limit: int = 200, save: bool = False, config_path: str | None = None) -> dict[str, Any]:
+    return safe_flows.watch_scan(directory, recursive=recursive, limit=limit, save=save, config_path=config_path)
+
+def sync_status(config_path: str | None = None) -> dict[str, Any]:
+    return safe_flows.sync_status(config_path=config_path)
+
+def store_status(config_path: str | None = None) -> dict[str, Any]:
+    return safe_flows.store_status(config_path=config_path)
+
+# Phase 7 / P1 cognitive workflow
+def hypothesis_create(content: str, confidence: float = 0.5, tags: list[str] | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.hypothesis_create(content, confidence=confidence, tags=tags, config_path=config_path)
+
+def hypothesis_get(hypothesis_id: str, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.hypothesis_get(hypothesis_id, config_path=config_path)
+
+def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.hypothesis_list(status=status, limit=limit, config_path=config_path)
+
+def evidence_add(hypothesis_id: str, content: str, direction: str = "for", weight: float = 0.5, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.evidence_add(hypothesis_id, content, direction=direction, weight=weight, config_path=config_path)
+
+def prediction_create(content: str, confidence: float = 0.7, hypothesis_id: str | None = None, deadline: str | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.prediction_create(content, confidence=confidence, hypothesis_id=hypothesis_id, deadline=deadline, config_path=config_path)
+
+def prediction_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.prediction_list(status=status, limit=limit, config_path=config_path)
+
+def verify_prediction(prediction_id: str, outcome: str, content: str = "", config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.verify_prediction(prediction_id, outcome, content=content, config_path=config_path)

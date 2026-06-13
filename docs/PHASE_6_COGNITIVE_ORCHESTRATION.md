@@ -311,3 +311,20 @@ The desired brain-like model is not four independent memories fighting each othe
 - Honcho remembers social/session context.
 - NeuralMemory-style remembers associations and patterns.
 - The cognitive controller decides attention, routing, recall arbitration, consolidation, promotion, and learning from outcomes.
+
+
+## Phase 7 — Layer 4 NeuralMemory-style completion baseline
+
+Phase 7 extends the Phase 6 controller with a deterministic, safe-by-default subset of NeuralMemory-style Layer 4 behavior:
+
+1. **Graph maturity:** memory records are projected into derived `cognitive_neurons`, `cognitive_synapses`, and `cognitive_fibers` tables. This gives Layer 4 inspectable graph structure without making it canonical.
+2. **Cognitive workflow:** hypotheses, evidence, predictions, and verification outcomes are stored in local SQLite tables with deterministic confidence updates. Supporting evidence moves confidence toward 1.0; opposing evidence moves it toward 0.0.
+3. **Lifecycle hygiene:** review, activation cache, tier evaluation, compression-candidate marking, and reflex status are available as audit/report operations. Content is not truncated by default.
+4. **Safe local flows:** train/import/watch are local workspace-only operations. Watch is a one-shot scan, not a daemon. Sync/store surfaces are status-only until a future backend is explicitly configured.
+
+Safety constraints remain unchanged:
+
+- Do not activate real OpenClaw runtime hooks outside sandbox without an explicit instruction.
+- Do not use real provider/API tokens for this baseline.
+- Do not mount real `~/.openclaw` read-write into sandbox tests.
+- Workspace Markdown is still the canonical local truth; Layer 4 is a derived projection.

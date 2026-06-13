@@ -65,6 +65,27 @@ ADVANCED_TOOLS = {
     "super_memory_conflict_resolve",
     "super_memory_promotion_candidates",
     "super_memory_feedback_outcome",
+    "super_memory_graph_stats",
+    "super_memory_graph_neighbors",
+    "super_memory_graph_recall",
+    "super_memory_graph_rebuild",
+    "super_memory_hypothesis_create",
+    "super_memory_hypothesis_get",
+    "super_memory_hypothesis_list",
+    "super_memory_evidence_add",
+    "super_memory_prediction_create",
+    "super_memory_prediction_list",
+    "super_memory_verify_prediction",
+    "super_memory_lifecycle_review",
+    "super_memory_lifecycle_cache",
+    "super_memory_lifecycle_tier",
+    "super_memory_lifecycle_compression",
+    "super_memory_reflex_status",
+    "super_memory_train_local",
+    "super_memory_import_local",
+    "super_memory_watch_scan",
+    "super_memory_sync_status",
+    "super_memory_store_status",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -273,6 +294,31 @@ for _name, _desc, _props in [
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, [k for k in ["payload", "query", "conflict_id", "resolution"] if k in _props])}
 
 
+for _name, _desc, _props, _required in [
+    ("super_memory_graph_stats", "Show Layer 4 neuron/synapse/fiber counts.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_graph_neighbors", "List graph neighbors for a neuron or memory id.", {"id": {"type": "string"}, "direction": {"type": "string", "default": "out"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, ["id"]),
+    ("super_memory_graph_recall", "Recall cognitive fibers from Layer 4 graph.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_graph_rebuild", "Rebuild derived Layer 4 graph from SQLite memories.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_hypothesis_create", "Create a deterministic cognitive hypothesis.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.5}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
+    ("super_memory_hypothesis_get", "Get hypothesis detail with evidence/predictions.", {"hypothesis_id": {"type": "string"}, "config_path": {"type": "string"}}, ["hypothesis_id"]),
+    ("super_memory_hypothesis_list", "List hypotheses.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
+    ("super_memory_evidence_add", "Add evidence for/against a hypothesis.", {"hypothesis_id": {"type": "string"}, "content": {"type": "string"}, "direction": {"type": "string", "default": "for"}, "weight": {"type": "number", "default": 0.5}, "config_path": {"type": "string"}}, ["hypothesis_id", "content"]),
+    ("super_memory_prediction_create", "Create a falsifiable prediction.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.7}, "hypothesis_id": {"type": "string"}, "deadline": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
+    ("super_memory_prediction_list", "List predictions.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
+    ("super_memory_verify_prediction", "Verify a prediction as correct/wrong.", {"prediction_id": {"type": "string"}, "outcome": {"type": "string"}, "content": {"type": "string"}, "config_path": {"type": "string"}}, ["prediction_id", "outcome"]),
+    ("super_memory_lifecycle_review", "Review lifecycle hygiene.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_lifecycle_cache", "Manage local activation cache status/save/load/clear.", {"action": {"type": "string", "default": "status"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_train_local", "Train from local markdown/text under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
+    ("super_memory_import_local", "Import local markdown/text/json/jsonl under workspace only.", {"path": {"type": "string"}, "source_name": {"type": "string", "default": "local-import"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
+    ("super_memory_watch_scan", "One-shot file watch scan; no daemon.", {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["directory"]),
+    ("super_memory_sync_status", "Show sync status only; cloud disabled.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_store_status", "Show store status only; community store disabled.", {"config_path": {"type": "string"}}, []),
+]:
+    TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
+
 def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
     if effective == "admin":
@@ -389,6 +435,49 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.promotion_candidates(limit=args.get("limit", 20), config_path=args.get("config_path"))
     if name == "super_memory_feedback_outcome":
         return bridge.feedback_outcome(memory_id=args.get("memory_id"), success=args.get("success", True), outcome=args.get("outcome", ""), config_path=args.get("config_path"))
+
+    if name == "super_memory_graph_stats":
+        return bridge.graph_stats(config_path=args.get("config_path"))
+    if name == "super_memory_graph_neighbors":
+        return bridge.graph_neighbors(args["id"], direction=args.get("direction", "out"), limit=args.get("limit", 20), config_path=args.get("config_path"))
+    if name == "super_memory_graph_recall":
+        return bridge.graph_recall(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_graph_rebuild":
+        return bridge.graph_rebuild(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_hypothesis_create":
+        return bridge.hypothesis_create(args["content"], confidence=args.get("confidence", 0.5), tags=args.get("tags") or [], config_path=args.get("config_path"))
+    if name == "super_memory_hypothesis_get":
+        return bridge.hypothesis_get(args["hypothesis_id"], config_path=args.get("config_path"))
+    if name == "super_memory_hypothesis_list":
+        return bridge.hypothesis_list(status=args.get("status"), limit=args.get("limit", 20), config_path=args.get("config_path"))
+    if name == "super_memory_evidence_add":
+        return bridge.evidence_add(args["hypothesis_id"], args["content"], direction=args.get("direction", "for"), weight=args.get("weight", 0.5), config_path=args.get("config_path"))
+    if name == "super_memory_prediction_create":
+        return bridge.prediction_create(args["content"], confidence=args.get("confidence", 0.7), hypothesis_id=args.get("hypothesis_id"), deadline=args.get("deadline"), config_path=args.get("config_path"))
+    if name == "super_memory_prediction_list":
+        return bridge.prediction_list(status=args.get("status"), limit=args.get("limit", 20), config_path=args.get("config_path"))
+    if name == "super_memory_verify_prediction":
+        return bridge.verify_prediction(args["prediction_id"], args["outcome"], content=args.get("content", ""), config_path=args.get("config_path"))
+    if name == "super_memory_lifecycle_review":
+        return bridge.lifecycle_review(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_lifecycle_cache":
+        return bridge.lifecycle_cache(action=args.get("action", "status"), config_path=args.get("config_path"))
+    if name == "super_memory_lifecycle_tier":
+        return bridge.lifecycle_tier(action=args.get("action", "evaluate"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_lifecycle_compression":
+        return bridge.lifecycle_compression(action=args.get("action", "review"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_reflex_status":
+        return bridge.reflex_status(config_path=args.get("config_path"))
+    if name == "super_memory_train_local":
+        return bridge.train_local(args["path"], domain_tag=args.get("domain_tag", "local"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
+    if name == "super_memory_import_local":
+        return bridge.import_local(args["path"], source_name=args.get("source_name", "local-import"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
+    if name == "super_memory_watch_scan":
+        return bridge.watch_scan(args["directory"], recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", False), config_path=args.get("config_path"))
+    if name == "super_memory_sync_status":
+        return bridge.sync_status(config_path=args.get("config_path"))
+    if name == "super_memory_store_status":
+        return bridge.store_status(config_path=args.get("config_path"))
     raise ValueError(f"unknown tool: {name}")
 
 

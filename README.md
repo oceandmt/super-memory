@@ -70,6 +70,7 @@ Implemented now:
 - Phase 4 optional/heavy feature skeletons: train/import/index, cloud sync, Telegram backup, visualize, store/community brain, and watch directory daemon remain disabled-safe stubs until explicitly configured
 - Phase 5 sandbox backtest harness: OpenSandbox/OpenClaw isolated test plan, sandbox-only config fixture, dry-run CLI, and safety contract tests
 - Phase 6 cognitive orchestration baseline: working memory, attention scoring, memory routing, parallel save, recall arbitration, consolidation cycle, conflict resolution, promotion candidates, and feedback outcome recording
+- Phase 7 Layer 4 completion baseline: derived neuron/synapse/fiber graph projection, deterministic hypothesis/evidence/prediction/verify workflow, lifecycle review/cache/tier/compression/reflex status, and workspace-only local train/import/watch scan/sync/store status flows
 - Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
 Planned next:

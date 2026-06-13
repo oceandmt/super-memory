@@ -128,6 +128,58 @@ class FeedbackOutcomeRequest(BaseModel):
     outcome: str = ""
     config_path: str | None = None
 
+class GraphNeighborsRequest(BaseModel):
+    id: str
+    direction: str = "out"
+    limit: int = 20
+    config_path: str | None = None
+
+class GraphRecallRequest(BaseModel):
+    query: str
+    limit: int = 10
+    config_path: str | None = None
+
+class HypothesisCreateRequest(BaseModel):
+    content: str
+    confidence: float = 0.5
+    tags: list[str] = Field(default_factory=list)
+    config_path: str | None = None
+
+class EvidenceAddRequest(BaseModel):
+    hypothesis_id: str
+    content: str
+    direction: str = "for"
+    weight: float = 0.5
+    config_path: str | None = None
+
+class PredictionCreateRequest(BaseModel):
+    content: str
+    confidence: float = 0.7
+    hypothesis_id: str | None = None
+    deadline: str | None = None
+    config_path: str | None = None
+
+class VerifyPredictionRequest(BaseModel):
+    prediction_id: str
+    outcome: str
+    content: str = ""
+    config_path: str | None = None
+
+class LifecycleRequest(BaseModel):
+    action: str = "status"
+    dry_run: bool = True
+    limit: int = 500
+    config_path: str | None = None
+
+class LocalFlowRequest(BaseModel):
+    path: str
+    domain_tag: str = "local"
+    source_name: str = "local-import"
+    recursive: bool = True
+    limit: int = 200
+    save: bool = True
+    config_path: str | None = None
+
 
 @app.get("/health")
 def health() -> dict[str, Any]:
@@ -336,6 +388,90 @@ def promotion_candidates_post(req: PromotionCandidatesRequest) -> dict[str, Any]
 def feedback_outcome(req: FeedbackOutcomeRequest) -> dict[str, Any]:
     return bridge.feedback_outcome(memory_id=req.memory_id, success=req.success, outcome=req.outcome, config_path=req.config_path)
 
+
+@app.get("/graph/stats")
+def graph_stats(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.graph_stats(config_path=config_path)
+
+@app.post("/graph/neighbors")
+def graph_neighbors(req: GraphNeighborsRequest) -> dict[str, Any]:
+    return bridge.graph_neighbors(req.id, direction=req.direction, limit=req.limit, config_path=req.config_path)
+
+@app.post("/graph/recall")
+def graph_recall(req: GraphRecallRequest) -> dict[str, Any]:
+    return bridge.graph_recall(req.query, limit=req.limit, config_path=req.config_path)
+
+@app.post("/graph/rebuild")
+def graph_rebuild(req: PromotionCandidatesRequest) -> dict[str, Any]:
+    return bridge.graph_rebuild(limit=req.limit, config_path=req.config_path)
+
+@app.post("/hypothesis")
+def hypothesis_create(req: HypothesisCreateRequest) -> dict[str, Any]:
+    return bridge.hypothesis_create(req.content, confidence=req.confidence, tags=req.tags, config_path=req.config_path)
+
+@app.get("/hypothesis/{hypothesis_id}")
+def hypothesis_get(hypothesis_id: str, config_path: str | None = None) -> dict[str, Any]:
+    return bridge.hypothesis_get(hypothesis_id, config_path=config_path)
+
+@app.get("/hypotheses")
+def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return bridge.hypothesis_list(status=status, limit=limit, config_path=config_path)
+
+@app.post("/evidence")
+def evidence_add(req: EvidenceAddRequest) -> dict[str, Any]:
+    return bridge.evidence_add(req.hypothesis_id, req.content, direction=req.direction, weight=req.weight, config_path=req.config_path)
+
+@app.post("/prediction")
+def prediction_create(req: PredictionCreateRequest) -> dict[str, Any]:
+    return bridge.prediction_create(req.content, confidence=req.confidence, hypothesis_id=req.hypothesis_id, deadline=req.deadline, config_path=req.config_path)
+
+@app.get("/predictions")
+def prediction_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return bridge.prediction_list(status=status, limit=limit, config_path=config_path)
+
+@app.post("/verify-prediction")
+def verify_prediction(req: VerifyPredictionRequest) -> dict[str, Any]:
+    return bridge.verify_prediction(req.prediction_id, req.outcome, content=req.content, config_path=req.config_path)
+
+@app.post("/lifecycle/review")
+def lifecycle_review(req: LifecycleRequest) -> dict[str, Any]:
+    return bridge.lifecycle_review(limit=req.limit, config_path=req.config_path)
+
+@app.post("/lifecycle/cache")
+def lifecycle_cache(req: LifecycleRequest) -> dict[str, Any]:
+    return bridge.lifecycle_cache(action=req.action, config_path=req.config_path)
+
+@app.post("/lifecycle/tier")
+def lifecycle_tier(req: LifecycleRequest) -> dict[str, Any]:
+    return bridge.lifecycle_tier(action=req.action, dry_run=req.dry_run, limit=req.limit, config_path=req.config_path)
+
+@app.post("/lifecycle/compression")
+def lifecycle_compression(req: LifecycleRequest) -> dict[str, Any]:
+    return bridge.lifecycle_compression(action=req.action, dry_run=req.dry_run, limit=req.limit, config_path=req.config_path)
+
+@app.get("/reflex/status")
+def reflex_status(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.reflex_status(config_path=config_path)
+
+@app.post("/train-local")
+def train_local(req: LocalFlowRequest) -> dict[str, Any]:
+    return bridge.train_local(req.path, domain_tag=req.domain_tag, recursive=req.recursive, limit=req.limit, save=req.save, config_path=req.config_path)
+
+@app.post("/import-local")
+def import_local(req: LocalFlowRequest) -> dict[str, Any]:
+    return bridge.import_local(req.path, source_name=req.source_name, recursive=req.recursive, limit=req.limit, save=req.save, config_path=req.config_path)
+
+@app.post("/watch-scan")
+def watch_scan(req: LocalFlowRequest) -> dict[str, Any]:
+    return bridge.watch_scan(req.path, recursive=req.recursive, limit=req.limit, save=req.save, config_path=req.config_path)
+
+@app.get("/sync-status")
+def sync_status(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.sync_status(config_path=config_path)
+
+@app.get("/store-status")
+def store_status(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.store_status(config_path=config_path)
 
 def main() -> None:
     uvicorn.run("super_memory.api:app", host="127.0.0.1", port=8765, reload=False)

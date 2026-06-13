@@ -323,3 +323,40 @@ Admin/all profiles expose the deterministic Phase 6 cognitive orchestration base
 - `super_memory_feedback_outcome` — record task/memory outcome feedback and optionally save a linked lesson/blocker.
 
 These tools implement the Phase 6 brain-like controller model while preserving the core invariant: Workspace Markdown remains canonical truth and derived layers only enrich recall.
+
+
+## Phase 7 Layer 4 completion tools
+
+Admin/all profiles also expose a safer NeuralMemory-inspired Layer 4 baseline. These tools are still deterministic and project-local; they do not enable real external sync, cloud store, background daemons, or active OpenClaw runtime hooks.
+
+Graph maturity:
+
+- `super_memory_graph_stats` — count derived neurons, synapses, and fibers.
+- `super_memory_graph_neighbors` — inspect graph neighbors for a neuron or memory id.
+- `super_memory_graph_recall` — recall matching cognitive fibers.
+- `super_memory_graph_rebuild` — rebuild the derived graph from existing SQLite memory rows.
+
+Cognitive workflow:
+
+- `super_memory_hypothesis_create` / `super_memory_hypothesis_get` / `super_memory_hypothesis_list`
+- `super_memory_evidence_add`
+- `super_memory_prediction_create` / `super_memory_prediction_list`
+- `super_memory_verify_prediction`
+
+Lifecycle hygiene:
+
+- `super_memory_lifecycle_review`
+- `super_memory_lifecycle_cache`
+- `super_memory_lifecycle_tier`
+- `super_memory_lifecycle_compression`
+- `super_memory_reflex_status`
+
+Safe local flows:
+
+- `super_memory_train_local` — train from `.md` / `.txt` under `workspace_root` only.
+- `super_memory_import_local` — import `.md` / `.txt` / `.json` / `.jsonl` under `workspace_root` only.
+- `super_memory_watch_scan` — one-shot scan manifest; no daemon.
+- `super_memory_sync_status` — status-only; cloud sync disabled.
+- `super_memory_store_status` — status-only; community store disabled.
+
+Invariant: Workspace Markdown remains canonical truth. Phase 7 graph/cognitive/lifecycle/store outputs are derived projections or audit/status surfaces unless they call the same canonical-first save path.
