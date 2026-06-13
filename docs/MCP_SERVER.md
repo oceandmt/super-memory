@@ -62,7 +62,7 @@ Profiles:
 - `admin`: normal tools plus promotion
 - `all`: every implemented tool
 
-Admin/development profile also exposes the Phase 3 advanced intelligence tools and Phase 4 disabled-safe optional skeletons. These stay out of the safe normal profile to avoid surprising operators.
+Admin/development profile also exposes the Phase 3 advanced intelligence tools, Phase 4 disabled-safe optional skeletons, Phase 6 cognitive orchestration tools, Phase 7 graph/reasoning/lifecycle/safe-flow tools, and Phase 8 diagnostics/contract/supervised-smoke tools. These stay out of the safe normal profile to avoid surprising operators.
 
 ### `super_memory_remember`
 
@@ -360,3 +360,14 @@ Safe local flows:
 - `super_memory_store_status` — status-only; community store disabled.
 
 Invariant: Workspace Markdown remains canonical truth. Phase 7 graph/cognitive/lifecycle/store outputs are derived projections or audit/status surfaces unless they call the same canonical-first save path.
+
+### Phase 8 live-readiness tools
+
+Admin/all profiles expose Phase 8 qualification helpers:
+
+- `super_memory_diagnostics` — returns a JSON dashboard for canonical-first health, sqlite state, graph projection availability, lifecycle review, safe optional feature status, watch/ingest manifest counts, and warnings.
+- `super_memory_memory_slot_contract` — runs a no-live-config memory-slot contract: save → canonical reference → memory_search → memory_get → show → graph projection/recall.
+- `super_memory_mcp_contract` — verifies the MCP tool exposure contract for the selected profile.
+- `super_memory_supervised_runtime_smoke` — local supervised runtime smoke that checks API/MCP/plugin syntax/contracts without writing active OpenClaw config.
+
+These tools are project-local qualification aids. They do not apply Super Memory to the live OpenClaw runtime.

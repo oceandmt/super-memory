@@ -142,7 +142,7 @@ def _entity_terms(record: MemoryRecord) -> list[str]:
         terms.append(record.project)
     terms.extend([t for t in record.normalized_tags() if not t.startswith("agent:")])
     # Deterministic lightweight entity extraction: TitleCase/acronyms plus exact identifiers.
-    for match in re.findall(r"\b[A-Z][A-Za-z0-9_-]{2,}\b|/[a-zA-Z0-9_./-]+|[a-zA-Z0-9_.-]+\([^)]*\)", record.content):
+    for match in re.findall(r"\b[A-Z][A-Za-z0-9_-]{2,}\b|\b[a-z][a-z0-9_]+(?:[-_.][a-z0-9_]+)+\b|/[a-zA-Z0-9_./-]+|[a-zA-Z0-9_.-]+\([^)]*\)", record.content):
         terms.append(match)
     seen: set[str] = set()
     out: list[str] = []
@@ -273,4 +273,39 @@ def rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
             continue
         seen.add(rec.id)
         projected.append(project_memory(rec, config_path=config_path))
+    return {"ok": True, "projected": len(projected), "items": projected[:20], "truncated": len(projected) > 20}
+
+
+def cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
+    store = _store(config_path)
+    with store.connect() as conn:
+        before = conn.execute("SELECT COUNT(*) c FROM cognitive_neurons").fetchone()["c"]
+        conn.execute(
+            """
+            DELETE FROM cognitive_neurons
+            WHERE source_memory_id IS NOT NULL
+              AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
+            """
+        )
+        conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id NOT IN (SELECT id FROM cognitive_neurons) OR target_neuron_id NOT IN (SELECT id FROM cognitive_neurons)")
+        conn.execute("DELETE FROM cognitive_fibers WHERE anchor_neuron_id NOT IN (SELECT id FROM cognitive_neurons)")
+        after = conn.execute("SELECT COUNT(*) c FROM cognitive_neurons").fetchone()["c"]
+    return {"ok": True, "removed_neurons": before - after, "neurons_before": before, "neurons_after": after}
+
+def rebuild_incremental(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit, default=500, maximum=2000)
+    store = _store(config_path)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT m.* FROM memories m
+            LEFT JOIN cognitive_fibers f ON f.id = 'f:' || m.id
+            WHERE f.id IS NULL OR f.updated_at < m.created_at
+            ORDER BY m.created_at DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    projected = []
+    for row in rows:
+        projected.append(project_memory(row_to_memory(row), config_path=config_path))
     return {"ok": True, "projected": len(projected), "items": projected[:20], "truncated": len(projected) > 20}

@@ -328,3 +328,17 @@ Safety constraints remain unchanged:
 - Do not use real provider/API tokens for this baseline.
 - Do not mount real `~/.openclaw` read-write into sandbox tests.
 - Workspace Markdown is still the canonical local truth; Layer 4 is a derived projection.
+
+## Phase 8 live-readiness baseline
+
+Phase 8 adds qualification and quality hardening around the Phase 6/7 brain model:
+
+- Diagnostics dashboard for canonical-first health, SQLite state, graph projection availability, lifecycle review, safe optional feature status, and watch/ingest manifest state.
+- Memory-slot contract smoke covering save → search → get → show → graph projection/recall.
+- MCP contract smoke for expected admin tool exposure.
+- Local supervised no-live-config runtime smoke for API/MCP/plugin syntax/contracts.
+- Graph quality improvements: broader deterministic entity extraction, incremental rebuild, and orphan cleanup.
+- Reasoning quality improvements: hypothesis confidence history, evidence provenance, prediction verification timestamps, and deadline expiry.
+- Safe-flow quality improvements: hash manifest dedup for train/import, watch-save only for changed files, and new/skipped counters.
+
+This phase still does not replace live OpenClaw memory in production. The next promotion gate is a fully supervised OpenSandbox gateway/plugin runtime smoke with live OpenClaw hook API validation.

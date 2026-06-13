@@ -10,7 +10,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -297,6 +297,12 @@ def graph_recall(query: str, limit: int = 10, config_path: str | None = None) ->
 def graph_rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return graph.rebuild(limit=limit, config_path=config_path)
 
+def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return graph.rebuild_incremental(limit=limit, config_path=config_path)
+
+def graph_cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
+    return graph.cleanup_orphans(config_path=config_path)
+
 # Phase 7 / P2 lifecycle
 def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.review(config_path=config_path, limit=limit)
@@ -350,3 +356,20 @@ def prediction_list(status: str | None = None, limit: int = 20, config_path: str
 
 def verify_prediction(prediction_id: str, outcome: str, content: str = "", config_path: str | None = None) -> dict[str, Any]:
     return reasoning.verify_prediction(prediction_id, outcome, content=content, config_path=config_path)
+
+def expire_predictions(config_path: str | None = None) -> dict[str, Any]:
+    return reasoning.expire_predictions(config_path=config_path)
+
+
+# Phase 8 live-readiness / diagnostics / contracts
+def diagnostics(config_path: str | None = None) -> dict[str, Any]:
+    return phase8.diagnostics(config_path=config_path)
+
+def memory_slot_contract(config_path: str | None = None) -> dict[str, Any]:
+    return phase8.memory_slot_contract(config_path=config_path)
+
+def mcp_contract(profile: str = "admin", config_path: str | None = None) -> dict[str, Any]:
+    return phase8.mcp_contract(profile=profile, config_path=config_path)
+
+def supervised_runtime_smoke(config_path: str | None = None) -> dict[str, Any]:
+    return phase8.supervised_runtime_smoke(config_path=config_path)

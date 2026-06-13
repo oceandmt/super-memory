@@ -86,6 +86,10 @@ ADVANCED_TOOLS = {
     "super_memory_watch_scan",
     "super_memory_sync_status",
     "super_memory_store_status",
+    "super_memory_diagnostics",
+    "super_memory_memory_slot_contract",
+    "super_memory_mcp_contract",
+    "super_memory_supervised_runtime_smoke",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -168,6 +172,22 @@ TOOLS: dict[str, JSON] = {
     },
     "super_memory_stats": {
         "description": "Alias of status for neural-memory-style stats consumers.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_diagnostics": {
+        "description": "Phase 8 diagnostics dashboard for canonical-first, sqlite, graph, lifecycle, and safe optional states.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_memory_slot_contract": {
+        "description": "Run Phase 8 memory-slot replacement contract: save/search/get/show/graph projection.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_mcp_contract": {
+        "description": "Verify MCP stdio tools/list exposure for required Super Memory tools.",
+        "inputSchema": _schema({"profile": {"type": "string", "default": "admin"}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_supervised_runtime_smoke": {
+        "description": "Run local supervised no-live-config Phase 8 runtime smoke.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
     "super_memory_health": {
@@ -352,6 +372,14 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.auto(args["text"], save=args.get("save", False), config_path=args.get("config_path"))
     if name == "super_memory_stats":
         return bridge.stats(config_path=args.get("config_path"))
+    if name == "super_memory_diagnostics":
+        return bridge.diagnostics(config_path=args.get("config_path"))
+    if name == "super_memory_memory_slot_contract":
+        return bridge.memory_slot_contract(config_path=args.get("config_path"))
+    if name == "super_memory_mcp_contract":
+        return bridge.mcp_contract(profile=args.get("profile", "admin"), config_path=args.get("config_path"))
+    if name == "super_memory_supervised_runtime_smoke":
+        return bridge.supervised_runtime_smoke(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
     if name == "super_memory_sanitize_prompt":

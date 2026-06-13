@@ -171,6 +171,14 @@ class LifecycleRequest(BaseModel):
     limit: int = 500
     config_path: str | None = None
 
+
+class Phase8Request(BaseModel):
+    config_path: str | None = None
+
+class McpContractRequest(BaseModel):
+    profile: str = "admin"
+    config_path: str | None = None
+
 class LocalFlowRequest(BaseModel):
     path: str
     domain_tag: str = "local"
@@ -479,3 +487,19 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+@app.post("/diagnostics")
+def diagnostics(req: Phase8Request) -> dict[str, Any]:
+    return bridge.diagnostics(config_path=req.config_path)
+
+@app.post("/memory-slot-contract")
+def memory_slot_contract(req: Phase8Request) -> dict[str, Any]:
+    return bridge.memory_slot_contract(config_path=req.config_path)
+
+@app.post("/mcp-contract")
+def mcp_contract(req: McpContractRequest) -> dict[str, Any]:
+    return bridge.mcp_contract(profile=req.profile, config_path=req.config_path)
+
+@app.post("/supervised-runtime-smoke")
+def supervised_runtime_smoke(req: Phase8Request) -> dict[str, Any]:
+    return bridge.supervised_runtime_smoke(config_path=req.config_path)

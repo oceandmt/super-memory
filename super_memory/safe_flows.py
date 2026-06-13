@@ -90,20 +90,58 @@ def _file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def _init_ingest_manifest(store: SuperMemoryStore) -> None:
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    with store.connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ingest_manifest (
+                key TEXT PRIMARY KEY,
+                flow TEXT NOT NULL,
+                path TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL DEFAULT 0,
+                saved_memory_id TEXT,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+def _manifest_seen(store: SuperMemoryStore, key: str) -> bool:
+    _init_ingest_manifest(store)
+    with store.connect() as conn:
+        return conn.execute("SELECT key FROM ingest_manifest WHERE key=?", (key,)).fetchone() is not None
+
+def _manifest_record(store: SuperMemoryStore, *, key: str, flow: str, path: str, sha256: str, chunk_index: int, memory_id: str | None) -> None:
+    _init_ingest_manifest(store)
+    with store.connect() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO ingest_manifest (key, flow, path, sha256, chunk_index, saved_memory_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (key, flow, path, sha256, chunk_index, memory_id, datetime.now(timezone.utc).isoformat()),
+        )
+
+
 def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit: int = 200, max_chunks_per_file: int = 20, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
     limit = _bounded_limit(limit)
     max_chunks_per_file = _bounded_limit(max_chunks_per_file, default=20, maximum=200)
     target, cfg = _resolve_under_workspace(path, config_path)
+    store = SuperMemoryStore(cfg)
     files = list(_iter_files(target, TEXT_EXTENSIONS, recursive=recursive, limit=limit))
     items = []
     saved_count = 0
+    skipped_count = 0
     for file_path in files:
         rel = str(file_path.relative_to(Path(cfg.workspace_root).resolve()))
         text = file_path.read_text(encoding="utf-8", errors="ignore")
         file_chunks = _chunks(text)[:max_chunks_per_file]
-        file_item = {"path": rel, "sha256": _file_hash(file_path), "chunks": len(file_chunks), "saved": 0}
+        file_item = {"path": rel, "sha256": _file_hash(file_path), "chunks": len(file_chunks), "saved": 0, "skipped": 0}
         if save:
             for idx, chunk in enumerate(file_chunks, start=1):
+                key = hashlib.sha256(f"train\0{rel}\0{file_item['sha256']}\0{idx}\0{chunk}".encode("utf-8")).hexdigest()
+                if _manifest_seen(store, key):
+                    skipped_count += 1
+                    file_item["skipped"] += 1
+                    continue
                 payload = {
                     "content": sanitize_prompt(chunk, max_chars=3000),
                     "type": MemoryType.CONTEXT.value,
@@ -116,16 +154,20 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
                 if result["results"] and result["results"][0]["ok"]:
                     saved_count += 1
                     file_item["saved"] += 1
+                    _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
+                    _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
         items.append(file_item)
-    return {"ok": True, "enabled": True, "mode": "local_text_markdown", "path": str(target), "files": items, "saved_chunks": saved_count, "external_backends": "disabled"}
+    return {"ok": True, "enabled": True, "mode": "local_text_markdown", "path": str(target), "files": items, "saved_chunks": saved_count, "skipped_chunks": skipped_count, "external_backends": "disabled"}
 
 
 def import_local(path: str, *, source_name: str = "local-import", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
     limit = _bounded_limit(limit)
     target, cfg = _resolve_under_workspace(path, config_path)
+    store = SuperMemoryStore(cfg)
     files = list(_iter_files(target, IMPORT_EXTENSIONS, recursive=recursive, limit=limit))
     imported = []
     saved_count = 0
+    skipped_count = 0
     for file_path in files:
         rel = str(file_path.relative_to(Path(cfg.workspace_root).resolve()))
         records: list[dict[str, Any]] = []
@@ -144,10 +186,16 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
                 records = [x if isinstance(x, dict) else {"content": str(x)} for x in obj["memories"]]
             else:
                 records = [obj if isinstance(obj, dict) else {"content": str(obj)}]
-        file_item = {"path": rel, "records": len(records), "saved": 0}
+        digest = _file_hash(file_path)
+        file_item = {"path": rel, "sha256": digest, "records": len(records), "saved": 0, "skipped": 0}
         if save:
             for idx, record in enumerate(records[:limit], start=1):
                 content = record.get("content") or record.get("text") or record.get("message") or json.dumps(record, ensure_ascii=False)
+                key = hashlib.sha256(f"import\0{source_name}\0{rel}\0{digest}\0{idx}\0{content}".encode("utf-8")).hexdigest()
+                if _manifest_seen(store, key):
+                    skipped_count += 1
+                    file_item["skipped"] += 1
+                    continue
                 payload = {
                     "content": content,
                     "type": record.get("type", MemoryType.CONTEXT.value),
@@ -163,8 +211,10 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
                 if result["results"] and result["results"][0]["ok"]:
                     saved_count += 1
                     file_item["saved"] += 1
+                    _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=result["record"]["id"])
+                    _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=result["record"]["id"])
         imported.append(file_item)
-    return {"ok": True, "enabled": True, "mode": "local_import", "path": str(target), "files": imported, "saved_records": saved_count, "external_backends": "disabled"}
+    return {"ok": True, "enabled": True, "mode": "local_import", "path": str(target), "files": imported, "saved_records": saved_count, "skipped_records": skipped_count, "external_backends": "disabled"}
 
 
 def watch_scan(directory: str, *, recursive: bool = True, limit: int = 200, save: bool = False, config_path: str | None = None) -> dict[str, Any]:
@@ -203,7 +253,15 @@ def watch_scan(directory: str, *, recursive: bool = True, limit: int = 200, save
             )
     saved = None
     if save and changed:
-        saved = import_local(str(target), source_name="watch-scan", recursive=recursive, limit=limit, save=True, config_path=config_path)
+        saved_items = []
+        total_saved = 0
+        total_skipped = 0
+        for item in changed:
+            one = import_local(item["path"], source_name="watch-scan", recursive=False, limit=limit, save=True, config_path=config_path)
+            saved_items.append(one)
+            total_saved += int(one.get("saved_records", 0))
+            total_skipped += int(one.get("skipped_records", 0))
+        saved = {"ok": True, "files": saved_items, "saved_records": total_saved, "skipped_records": total_skipped}
     return {"ok": True, "enabled": True, "mode": "one_shot_scan", "path": str(target), "changed": changed, "unchanged": unchanged, "saved": saved, "daemon": False, "external_backends": "disabled"}
 
 

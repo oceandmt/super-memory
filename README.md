@@ -71,12 +71,13 @@ Implemented now:
 - Phase 5 sandbox backtest harness: OpenSandbox/OpenClaw isolated test plan, sandbox-only config fixture, dry-run CLI, and safety contract tests
 - Phase 6 cognitive orchestration baseline: working memory, attention scoring, memory routing, parallel save, recall arbitration, consolidation cycle, conflict resolution, promotion candidates, and feedback outcome recording
 - Phase 7 Layer 4 completion baseline: derived neuron/synapse/fiber graph projection, deterministic hypothesis/evidence/prediction/verify workflow, lifecycle review/cache/tier/compression/reflex status, and workspace-only local train/import/watch scan/sync/store status flows
+- Phase 8 live-readiness baseline: diagnostics dashboard, memory-slot contract smoke, MCP contract check, local supervised no-live-config runtime smoke, graph incremental rebuild/orphan cleanup, reasoning confidence/provenance history, prediction expiry, and train/import/watch dedup manifests
 - Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
 Planned next:
 
 - Direct upstream adapters after deeper source-level mapping
-- Harden the non-applied memory capability runtime contract in project tests
+- Full supervised gateway/plugin runtime smoke inside OpenSandbox with live OpenClaw hook API validation before any production slot replacement
 - Self-improvement proposal generator via Skill Workshop
 - Better recall ranking and source citations
 
