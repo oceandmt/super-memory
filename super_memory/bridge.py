@@ -7,11 +7,13 @@ from .compat import memory_get_compatible, memory_search_compatible
 from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
+from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    payload = normalize_memory_payload(payload)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     record = MemoryRecord(
@@ -32,6 +34,7 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
 
 
 def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = None) -> dict[str, Any]:
+    payloads = normalize_memory_batch(payloads)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     items = []
@@ -90,6 +93,7 @@ def todo(task: str, priority: int = 5, config_path: str | None = None) -> dict[s
     }, config_path=config_path)
 
 def auto(text: str, save: bool = False, config_path: str | None = None) -> dict[str, Any]:
+    text = sanitize_auto_capture(text)
     candidates = []
     for raw in text.splitlines():
         line = raw.strip(" -\t")
@@ -105,7 +109,7 @@ def auto(text: str, save: bool = False, config_path: str | None = None) -> dict[
             mem_type = MemoryType.BLOCKER
         elif any(word in lowered for word in ["workflow", "process", "quy trình"]):
             mem_type = MemoryType.WORKFLOW
-        candidates.append({"content": line, "type": mem_type.value, "scope": MemoryScope.SESSION.value, "source": "super-memory.auto"})
+        candidates.append(normalize_memory_payload({"content": line, "type": mem_type.value, "scope": MemoryScope.SESSION.value, "source": "super-memory.auto"}, auto_capture=True))
     result = {"candidates": candidates, "saved": None}
     if save and candidates:
         result["saved"] = remember_batch(candidates, config_path=config_path)
@@ -127,6 +131,7 @@ def health(config_path: str | None = None) -> dict[str, Any]:
     }
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    query = sanitize_prompt(query)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     hits = svc.recall(query, limit=limit)
@@ -134,6 +139,7 @@ def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[
 
 
 def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    query = sanitize_prompt(query)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     records = svc.prefetch(query, limit=limit)
@@ -141,6 +147,11 @@ def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dic
 
 
 def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    payload = dict(payload)
+    if payload.get("user_message"):
+        payload["user_message"] = sanitize_auto_capture(payload["user_message"])
+    if payload.get("assistant_message"):
+        payload["assistant_message"] = sanitize_auto_capture(payload["assistant_message"])
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     ctx = TurnContext(
@@ -186,6 +197,7 @@ def status(config_path: str | None = None) -> dict[str, Any]:
 
 
 def memory_search(query: str, max_results: int = 5, min_score: float = 0.0, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
+    query = sanitize_prompt(query)
     cfg = load_config(config_path)
     return memory_search_compatible(query, max_results=max_results, min_score=min_score, corpus=corpus, config=cfg)
 

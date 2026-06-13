@@ -24,6 +24,9 @@ NORMAL_TOOLS = {
     "super_memory_auto",
     "super_memory_stats",
     "super_memory_health",
+    "super_memory_sanitize_prompt",
+    "super_memory_sanitize_auto_capture",
+    "super_memory_normalize_memory",
     "super_memory_recall",
     "super_memory_prefetch",
     "super_memory_sync_turn",
@@ -117,6 +120,18 @@ TOOLS: dict[str, JSON] = {
     "super_memory_health": {
         "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_sanitize_prompt": {
+        "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
+        "inputSchema": _schema({"text": {"type": "string"}}, ["text"]),
+    },
+    "super_memory_sanitize_auto_capture": {
+        "description": "Sanitize text before auto-capture storage.",
+        "inputSchema": _schema({"text": {"type": "string"}}, ["text"]),
+    },
+    "super_memory_normalize_memory": {
+        "description": "Normalize a memory payload schema without saving it.",
+        "inputSchema": _schema({"memory": {"type": "object"}, "auto_capture": {"type": "boolean", "default": False}}, ["memory"]),
     },
     "super_memory_recall": {
         "description": "Recall memories from Super Memory layers.",
@@ -226,6 +241,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.stats(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
+    if name == "super_memory_sanitize_prompt":
+        return {"text": bridge.sanitize_prompt(args["text"])}
+    if name == "super_memory_sanitize_auto_capture":
+        return {"text": bridge.sanitize_auto_capture(args["text"])}
+    if name == "super_memory_normalize_memory":
+        return bridge.normalize_memory_payload(args["memory"], auto_capture=args.get("auto_capture", False))
     if name == "super_memory_recall":
         return bridge.recall(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
     if name == "super_memory_prefetch":

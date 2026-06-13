@@ -47,6 +47,13 @@ class AutoRequest(BaseModel):
     save: bool = False
     config_path: str | None = None
 
+class SanitizeRequest(BaseModel):
+    text: str
+
+class NormalizeMemoryRequest(BaseModel):
+    memory: dict[str, Any]
+    auto_capture: bool = False
+
 
 class RecallRequest(BaseModel):
     query: str
@@ -133,6 +140,18 @@ def todo(req: TodoRequest) -> dict[str, Any]:
 @app.post("/auto")
 def auto(req: AutoRequest) -> dict[str, Any]:
     return bridge.auto(req.text, save=req.save, config_path=req.config_path)
+
+@app.post("/sanitize-prompt")
+def sanitize_prompt(req: SanitizeRequest) -> dict[str, Any]:
+    return {"text": bridge.sanitize_prompt(req.text)}
+
+@app.post("/sanitize-auto-capture")
+def sanitize_auto_capture(req: SanitizeRequest) -> dict[str, Any]:
+    return {"text": bridge.sanitize_auto_capture(req.text)}
+
+@app.post("/normalize-memory")
+def normalize_memory(req: NormalizeMemoryRequest) -> dict[str, Any]:
+    return bridge.normalize_memory_payload(req.memory, auto_capture=req.auto_capture)
 
 
 @app.post("/recall")

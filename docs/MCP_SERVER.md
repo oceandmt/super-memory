@@ -58,7 +58,7 @@ Super Memory follows the NeuralMemory MCP lesson: expose a narrow daily-core too
 
 Profiles:
 
-- `normal` default: remember, remember-batch, show, context, todo, auto, stats, health, recall, prefetch, sync-turn, memory-search, memory-get, status
+- `normal` default: remember, remember-batch, show, context, todo, auto, stats, health, sanitize-prompt, sanitize-auto-capture, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, status
 - `admin`: normal tools plus promotion
 - `all`: every implemented tool
 
@@ -153,6 +153,31 @@ Check Super Memory consistency guardrails: canonical-first enabled and workspace
 Args:
 
 - `config_path`
+
+### `super_memory_sanitize_prompt`
+
+Sanitize recall/prompt text by removing control characters, normalizing whitespace, redacting common secret shapes, and enforcing a length cap.
+
+Args:
+
+- `text` required
+
+### `super_memory_sanitize_auto_capture`
+
+Sanitize text before it can become a stored auto-capture memory. This uses the same deterministic safety path as prompt sanitization with a memory-sized cap.
+
+Args:
+
+- `text` required
+
+### `super_memory_normalize_memory`
+
+Normalize an external memory payload without saving it. This folds schema aliases such as `agentId` → `agent_id`, `sessionId` → `session_id`, `memoryType` → `type`, and `memoryScope` → `scope`; canonicalizes `type`/`scope`; sanitizes content/tags/metadata; clamps trust score; and moves unknown top-level keys into `metadata.dropped_fields` for auditability.
+
+Args:
+
+- `memory` required object
+- `auto_capture` default false
 
 ### `super_memory_prefetch`
 
