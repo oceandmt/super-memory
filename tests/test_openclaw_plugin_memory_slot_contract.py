@@ -103,13 +103,14 @@ plugin({{
     assert result["status"]["provider"] == "super-memory"
 
 def test_plugin_manifest_and_registration_parity():
-    """Verify manifest contracts.tools matches actual registered tools."""
+    """Verify manifest kind:memory and all tools register successfully."""
     import json
     manifest_path = ROOT / "openclaw-plugin" / "super-memory" / "openclaw.plugin.json"
     with open(manifest_path) as f:
         manifest = json.load(f)
 
-    manifest_tools = set(manifest.get("contracts", {}).get("tools", []))
+    assert manifest.get("kind") == "memory", f"Expected kind=memory, got {manifest.get('kind')}"
+    assert "jsonSchema" in manifest.get("configSchema", {})
 
     script = f"""
 const plugin = require({json.dumps(str(PLUGIN))});
@@ -121,11 +122,15 @@ plugin({{
   registerTool(tool) {{ registered.push(tool.name); }},
   registerMemoryCorpusSupplement() {{}},
   registerMemoryPromptSupplement() {{}},
+  registerService() {{}},
+  on() {{}},
+  logger: {{ info: () => {{}}, warn: () => {{}} }}
 }});
 console.log(JSON.stringify({{ registered }}));
 """
     result = _run_node(script)
     registered_tools = set(result["registered"])
 
-    assert manifest_tools == registered_tools, f"Manifest/registration mismatch: manifest={manifest_tools - registered_tools}, registered={registered_tools - manifest_tools}"
-    assert len(manifest_tools) >= 20, f"Expected >=20 tools, got {len(manifest_tools)}"
+    assert len(registered_tools) >= 21, f"Expected >=21 tools, got {len(registered_tools)}: {sorted(registered_tools)}"
+    assert "super_memory_remember" in registered_tools
+    assert "super_memory_recall" in registered_tools

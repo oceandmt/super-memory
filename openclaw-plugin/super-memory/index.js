@@ -1,6 +1,49 @@
 module.exports = function superMemoryPlugin(api) {
   const cfg = api.config || {};
   const baseUrl = cfg.apiBaseUrl || 'http://127.0.0.1:8765';
+  const registeredTools = [];
+
+
+  function registerTool(def) {
+    if (typeof api.registerTool !== 'function') {
+      return false;
+    }
+    const parameters = def.parameters || def.inputSchema || {
+      type: 'object',
+      properties: {},
+      additionalProperties: false
+    };
+    const execute = def.execute || (def.handler
+      ? async (_id, args) => def.handler(args || {})
+      : undefined);
+    if (typeof execute !== 'function') {
+      throw new Error('super-memory tool ' + def.name + ' missing execute/handler');
+    }
+    api.registerTool({
+      name: def.name,
+      description: def.description,
+      parameters: parameters,
+      execute: execute
+    }, { name: def.name });
+    registeredTools.push({ name: def.name, description: def.description });
+    return true;
+  }
+
+  function buildToolInstructions() {
+    const toolList = registeredTools
+      .map((t) => `- ${t.name}: ${String(t.description || '').slice(0, 100)}`)
+      .join('\n');
+    return `Super Memory gives you canonical-first local memory for OpenClaw. These are TOOL CALLS, not CLI commands. Use them for project memory when available.\n\n## Available Super Memory Tools\n${toolList}\n\nUse super_memory_search_compatible / super_memory_get_compatible for OpenClaw memory_search/memory_get compatibility checks. If Super Memory owns the exclusive memory slot, legacy memory_search/memory_get shims may also be available.`;
+  }
+
+  function cleanText(raw) {
+    return String(raw || '')
+      .replace(/^```json[\s\S]*?```/gim, '')
+      .replace(/^(?:Conversation info|Sender|Context)\s*\(.*?\)\s*:?.*$/gim, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
 
   async function post(path, body) {
     const res = await fetch(`${baseUrl}${path}`, {
@@ -115,7 +158,7 @@ module.exports = function superMemoryPlugin(api) {
   }
 
   if (cfg.registerDynamicMcpToolProxy === true && typeof api.registerTool === 'function') {
-    api.registerTool({
+    registerTool({
       name: 'super_memory_mcp_tools_list',
       description: 'Development-only dynamic MCP tools/list proxy for Super Memory.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
@@ -123,7 +166,82 @@ module.exports = function superMemoryPlugin(api) {
     });
   }
 
-  if (cfg.registerSuperMemoryHooks === true) {
+  if (typeof api.registerService === 'function') {
+    api.registerService({
+      id: 'super-memory-api',
+      async start() {
+        try {
+          await get('/health');
+          api.logger?.info?.('Super Memory API reachable in service.start()');
+        } catch (err) {
+          api.logger?.warn?.(`Super Memory API health check failed: ${err.message}`);
+        }
+      },
+      async stop() {}
+    });
+  }
+
+  if (typeof api.on === 'function') {
+    api.on('before_prompt_build', async (event = {}) => {
+      const result = { systemPrompt: buildToolInstructions() };
+      if (cfg.autoContext === true) {
+        try {
+          const query = cleanText(event.prompt || event.query || '');
+          if (query) {
+            const payload = await post('/prefetch', { query, limit: cfg.prePromptLimit || 8 });
+            const text = payload.answer || payload.context || payload.text || payload.summary;
+            if (text) result.prependContext = `[Super Memory — relevant context]\n${text}`;
+          }
+        } catch (err) {
+          api.logger?.warn?.(`Super Memory auto-context failed: ${err.message}`);
+        }
+      }
+      return result;
+    }, { priority: 10 });
+
+    if (cfg.autoSyncTurns === true) {
+      api.on('agent_end', async (event = {}) => {
+        if (event.success === false) return;
+        try {
+          const messages = Array.isArray(event.messages) ? event.messages.slice(-6) : [];
+          const userMessage = messages.filter((m) => m && m.role === 'user').map((m) => m.content).join('\n').slice(-6000);
+          const assistantMessage = messages.filter((m) => m && m.role === 'assistant').map((m) => m.content).join('\n').slice(-6000);
+          if (userMessage || assistantMessage) {
+            await post('/sync-turn', {
+              agent_id: cfg.agentId || 'lucas',
+              session_id: event.sessionId || event.sessionKey,
+              user_message: cleanText(userMessage),
+              assistant_message: cleanText(assistantMessage),
+              metadata: { hook: 'agent_end' }
+            });
+          }
+        } catch (err) {
+          api.logger?.warn?.(`Super Memory auto-sync failed: ${err.message}`);
+        }
+      }, { priority: 90 });
+    }
+
+    api.on('before_compaction', async () => {
+      if (cfg.autoFlush === true) {
+        try { await post('/auto', { text: '[pre-compact emergency flush]', save: true }); }
+        catch (err) { api.logger?.warn?.(`Super Memory pre-compact flush failed: ${err.message}`); }
+      }
+    }, { priority: 5 });
+
+    api.on('before_reset', async () => {
+      if (cfg.autoFlush === true) {
+        try { await post('/auto', { text: '[session boundary — reset]', save: true }); }
+        catch (err) { api.logger?.warn?.(`Super Memory reset flush failed: ${err.message}`); }
+      }
+    }, { priority: 5 });
+
+    api.on('gateway_start', async () => {
+      if (cfg.startupConsolidation === true) {
+        try { await post('/consolidate', { strategy: 'startup', dry_run: true }); }
+        catch (err) { api.logger?.warn?.(`Super Memory startup consolidation failed: ${err.message}`); }
+      }
+    }, { priority: 50 });
+  } else if (cfg.registerSuperMemoryHooks === true) {
     registerHookSkeleton('PrePromptContext', async (ctx = {}) => post('/prefetch', { query: ctx.query || ctx.prompt || '', limit: cfg.prePromptLimit || 8 }));
     registerHookSkeleton('PostAgentCapture', async (ctx = {}) => post('/sync-turn', { user_message: ctx.userMessage, assistant_message: ctx.assistantMessage, session_id: ctx.sessionId, metadata: { hook: 'post-agent-capture' } }));
     registerHookSkeleton('PreCompactionFlush', async (ctx = {}) => post('/auto', { text: ctx.text || ctx.transcript || '', save: true }));
@@ -188,7 +306,7 @@ module.exports = function superMemoryPlugin(api) {
   }
 
   if ((cfg.registerLegacyMemoryShims === true || cfg.registerExclusiveMemoryCapability === true) && typeof api.registerTool === 'function') {
-    api.registerTool({
+    registerTool({
       name: 'memory_search',
       description: 'Legacy OpenClaw memory_search shim backed by Super Memory. Enable only when Super Memory owns the exclusive memory slot.',
       inputSchema: {
@@ -210,7 +328,7 @@ module.exports = function superMemoryPlugin(api) {
       })
     });
 
-    api.registerTool({
+    registerTool({
       name: 'memory_get',
       description: 'Legacy OpenClaw memory_get shim backed by Super Memory. Enable only when Super Memory owns the exclusive memory slot.',
       inputSchema: {
@@ -233,7 +351,7 @@ module.exports = function superMemoryPlugin(api) {
     });
   }
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_remember',
     description: 'Save a memory through Super Memory canonical layer order.',
     inputSchema: {
@@ -254,7 +372,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/remember', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_recall',
     description: 'Recall memories from Super Memory derived layers.',
     inputSchema: {
@@ -268,7 +386,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/recall', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_search_compatible',
     description: 'OpenClaw memory_search-compatible recall payload from Super Memory.',
     inputSchema: {
@@ -284,7 +402,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/memory-search', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_get_compatible',
     description: 'OpenClaw memory_get-compatible read payload from Super Memory virtual paths or workspace files.',
     inputSchema: {
@@ -300,7 +418,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/memory-get', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_prefetch',
     description: 'Merged/deduped Super Memory recall for prompt prefetch.',
     inputSchema: {
@@ -314,7 +432,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/prefetch', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_sync_turn',
     description: 'Save compact OpenClaw turn event to Super Memory.',
     inputSchema: {
@@ -331,7 +449,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/sync-turn', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_promote',
     description: 'Promote a Super Memory item to MEMORY.md and the matching register.',
     inputSchema: {
@@ -342,7 +460,7 @@ module.exports = function superMemoryPlugin(api) {
     handler: async (input) => post('/promote', input)
   });
 
-  api.registerTool({
+  registerTool({
     name: 'super_memory_status',
     description: 'Show Super Memory local service status.',
     inputSchema: { type: 'object', properties: {} },
@@ -368,7 +486,7 @@ module.exports = function superMemoryPlugin(api) {
 
   const getOnlyTools = new Set(['super_memory_stats', 'super_memory_health', 'super_memory_situation']);
   for (const [name, desc, schema, path] of additionalTools) {
-    api.registerTool({
+    registerTool({
       name,
       description: desc,
       inputSchema: schema,

@@ -2,79 +2,82 @@
   "id": "super-memory",
   "name": "Super Memory",
   "version": "0.1.0",
-  "description": "Local multi-layer main memory for OpenClaw multi-agents",
+  "description": "Local multi-layer memory for OpenClaw; can run as additive tools/corpus or exclusive memory-slot provider.",
   "main": "index.js",
   "configSchema": {
-    "type": "object",
-    "properties": {
-      "apiBaseUrl": {
-        "type": "string",
-        "default": "http://127.0.0.1:8765"
+    "jsonSchema": {
+      "type": "object",
+      "properties": {
+        "apiBaseUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8765"
+        },
+        "autoSyncTurns": {
+          "type": "boolean",
+          "default": false
+        },
+        "autoContext": {
+          "type": "boolean",
+          "default": false,
+          "description": "Inject Super Memory prefetch context during before_prompt_build. Keep false until live hook validation passes."
+        },
+        "autoFlush": {
+          "type": "boolean",
+          "default": false,
+          "description": "Flush compact/reset summaries through Super Memory hooks. Keep false until live hook validation passes."
+        },
+        "startupConsolidation": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run dry-run startup consolidation on gateway_start."
+        },
+        "agentId": {
+          "type": "string",
+          "default": "lucas"
+        },
+        "prefetchTimeoutMs": {
+          "type": "number",
+          "default": 1500
+        },
+        "registerExclusiveMemoryCapability": {
+          "type": "boolean",
+          "default": false,
+          "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
+        },
+        "registerLegacyMemoryShims": {
+          "type": "boolean",
+          "default": false,
+          "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
+        },
+        "registerDynamicMcpToolProxy": {
+          "type": "boolean",
+          "default": false,
+          "description": "Development-only guard. Register a dynamic MCP tools/list proxy tool for sandbox backtests."
+        },
+        "registerSuperMemoryHooks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Development-only guard. Register experimental OpenClaw hook skeletons only after live hook API validation."
+        },
+        "prePromptLimit": {
+          "type": "number",
+          "default": 8,
+          "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
+        },
+        "toolProfile": {
+          "type": "string",
+          "default": "normal",
+          "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
+        }
       },
-      "autoSyncTurns": {
-        "type": "boolean",
-        "default": false
-      },
-      "prefetchTimeoutMs": {
-        "type": "number",
-        "default": 1500
-      },
-      "registerExclusiveMemoryCapability": {
-        "type": "boolean",
-        "default": false,
-        "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
-      },
-      "registerLegacyMemoryShims": {
-        "type": "boolean",
-        "default": false,
-        "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
-      },
-      "registerDynamicMcpToolProxy": {
-        "type": "boolean",
-        "default": false,
-        "description": "Development-only guard. Register a dynamic MCP tools/list proxy tool for sandbox backtests."
-      },
-      "registerSuperMemoryHooks": {
-        "type": "boolean",
-        "default": false,
-        "description": "Development-only guard. Register experimental OpenClaw hook skeletons only after live hook API validation."
-      },
-      "prePromptLimit": {
-        "type": "number",
-        "default": 8,
-        "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
-      },
-      "toolProfile": {
-        "type": "string",
-        "default": "normal",
-        "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
-      }
+      "additionalProperties": false
     },
-    "additionalProperties": false
+    "uiHints": {
+      "_setup": {
+        "label": "Optional exclusive memory slot",
+        "help": "For exclusive replacement testing set plugins.slots.memory = \"super-memory\". Otherwise Super Memory tools/corpus can remain additive."
+      }
+    }
   },
-  "contracts": {
-    "tools": [
-      "super_memory_auto",
-      "super_memory_boundaries",
-      "super_memory_conflicts",
-      "super_memory_consolidate",
-      "super_memory_context",
-      "super_memory_get_compatible",
-      "super_memory_health",
-      "super_memory_pin",
-      "super_memory_prefetch",
-      "super_memory_promote",
-      "super_memory_provenance",
-      "super_memory_recall",
-      "super_memory_remember",
-      "super_memory_remember_batch",
-      "super_memory_search_compatible",
-      "super_memory_show",
-      "super_memory_situation",
-      "super_memory_stats",
-      "super_memory_status",
-      "super_memory_sync_turn",
-      "super_memory_todo"
-    ]
-  }
+  "kind": "memory"
 }
