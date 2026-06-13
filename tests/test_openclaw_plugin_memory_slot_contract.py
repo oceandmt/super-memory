@@ -101,3 +101,31 @@ plugin({{
     assert result["file"]["lines"] == 3
     assert result["debug"]["effectiveMode"] == "super-memory"
     assert result["status"]["provider"] == "super-memory"
+
+def test_plugin_manifest_and_registration_parity():
+    """Verify manifest contracts.tools matches actual registered tools."""
+    import json
+    manifest_path = ROOT / "openclaw-plugin" / "super-memory" / "openclaw.plugin.json"
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+
+    manifest_tools = set(manifest.get("contracts", {}).get("tools", []))
+
+    script = f"""
+const plugin = require({json.dumps(str(PLUGIN))});
+const registered = [];
+global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
+plugin({{
+  config: {{ apiBaseUrl: 'http://super-memory.test' }},
+  registerMemoryCapability() {{}},
+  registerTool(tool) {{ registered.push(tool.name); }},
+  registerMemoryCorpusSupplement() {{}},
+  registerMemoryPromptSupplement() {{}},
+}});
+console.log(JSON.stringify({{ registered }}));
+"""
+    result = _run_node(script)
+    registered_tools = set(result["registered"])
+
+    assert manifest_tools == registered_tools, f"Manifest/registration mismatch: manifest={manifest_tools - registered_tools}, registered={registered_tools - manifest_tools}"
+    assert len(manifest_tools) >= 20, f"Expected >=20 tools, got {len(manifest_tools)}"

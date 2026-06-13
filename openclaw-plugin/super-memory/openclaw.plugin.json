@@ -43,23 +43,38 @@
         "type": "number",
         "default": 8,
         "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
+      },
+      "toolProfile": {
+        "type": "string",
+        "default": "normal",
+        "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
       }
     },
     "additionalProperties": false
   },
   "contracts": {
     "tools": [
-      "super_memory_mcp_tools_list",
-      "memory_search",
-      "memory_get",
-      "super_memory_remember",
-      "super_memory_recall",
-      "super_memory_search_compatible",
+      "super_memory_auto",
+      "super_memory_boundaries",
+      "super_memory_conflicts",
+      "super_memory_consolidate",
+      "super_memory_context",
       "super_memory_get_compatible",
+      "super_memory_health",
+      "super_memory_pin",
       "super_memory_prefetch",
-      "super_memory_sync_turn",
       "super_memory_promote",
-      "super_memory_status"
+      "super_memory_provenance",
+      "super_memory_recall",
+      "super_memory_remember",
+      "super_memory_remember_batch",
+      "super_memory_search_compatible",
+      "super_memory_show",
+      "super_memory_situation",
+      "super_memory_stats",
+      "super_memory_status",
+      "super_memory_sync_turn",
+      "super_memory_todo"
     ]
   }
 }

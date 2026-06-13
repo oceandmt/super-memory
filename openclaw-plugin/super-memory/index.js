@@ -348,4 +348,31 @@ module.exports = function superMemoryPlugin(api) {
     inputSchema: { type: 'object', properties: {} },
     handler: async () => get('/status')
   });
+
+  // Phase 1-3 additional tools via HTTP bridge
+  const additionalTools = [
+    ['super_memory_remember_batch', 'Store multiple memories at once.', { type: 'object', properties: { memories: { type: 'array', items: { type: 'object' } } }, required: ['memories'] }, '/remember-batch'],
+    ['super_memory_show', 'Get full content of a memory by ID.', { type: 'object', properties: { memory_id: { type: 'string' } }, required: ['memory_id'] }, '/show'],
+    ['super_memory_context', 'Get recent context records.', { type: 'object', properties: { limit: { type: 'number', default: 10 } } }, '/context'],
+    ['super_memory_todo', 'Create a quick TODO.', { type: 'object', properties: { task: { type: 'string' }, priority: { type: 'number', default: 5 } }, required: ['task'] }, '/todo'],
+    ['super_memory_auto', 'Auto-extract memories from text.', { type: 'object', properties: { text: { type: 'string' }, save: { type: 'boolean', default: true } }, required: ['text'] }, '/auto'],
+    ['super_memory_stats', 'Brain stats: counts and freshness.', { type: 'object', properties: {} }, '/stats'],
+    ['super_memory_health', 'Health check: purity score, grade, warnings.', { type: 'object', properties: {} }, '/health'],
+    ['super_memory_conflicts', 'Detect conflicting memories.', { type: 'object', properties: { content: { type: 'string' }, memory_id: { type: 'string' } } }, '/conflicts'],
+    ['super_memory_provenance', 'Trace memory origin chain.', { type: 'object', properties: { memory_id: { type: 'string' }, action: { type: 'string', default: 'trace' } }, required: ['memory_id'] }, '/provenance'],
+    ['super_memory_pin', 'Pin/unpin as permanent KB.', { type: 'object', properties: { memory_id: { type: 'string' }, action: { type: 'string', default: 'pin' } }, required: ['memory_id'] }, '/pin'],
+    ['super_memory_consolidate', 'Run brain consolidation.', { type: 'object', properties: { strategy: { type: 'string', default: 'all' }, dry_run: { type: 'boolean', default: true } } }, '/consolidate'],
+    ['super_memory_situation', 'Working situation snapshot.', { type: 'object', properties: {} }, '/situation'],
+    ['super_memory_boundaries', 'Manage safety boundaries.', { type: 'object', properties: { domain: { type: 'string' }, content: { type: 'string' } } }, '/boundaries'],
+  ];
+
+  const getOnlyTools = new Set(['super_memory_stats', 'super_memory_health', 'super_memory_situation']);
+  for (const [name, desc, schema, path] of additionalTools) {
+    api.registerTool({
+      name,
+      description: desc,
+      inputSchema: schema,
+      handler: getOnlyTools.has(name) ? async () => get(path) : async (input) => post(path, input)
+    });
+  }
 };

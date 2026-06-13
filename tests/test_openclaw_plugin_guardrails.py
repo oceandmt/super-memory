@@ -30,5 +30,10 @@ def test_manifest_contracts_declare_every_registered_tool():
     declared = set(manifest["contracts"]["tools"])
     source = Path("openclaw-plugin/super-memory/index.js").read_text()
     registered = set(re.findall(r"name:\s*'([^']+)'", source))
+    # Also extract names from array-format tools declared as ['tool_name', ...]
+    registered.update(re.findall(r"\[\s*'(super_memory_[^']+)'\s*,", source))
+    # Filter gated tools that are only registered with config flags
+    gated = {'memory_search', 'memory_get', 'super_memory_mcp_tools_list'}
+    registered = registered - gated
     assert registered
     assert declared == registered
