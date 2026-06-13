@@ -28,8 +28,38 @@
         "type": "boolean",
         "default": false,
         "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
+      },
+      "registerDynamicMcpToolProxy": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register a dynamic MCP tools/list proxy tool for sandbox backtests."
+      },
+      "registerSuperMemoryHooks": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register experimental OpenClaw hook skeletons only after live hook API validation."
+      },
+      "prePromptLimit": {
+        "type": "number",
+        "default": 8,
+        "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
       }
     },
     "additionalProperties": false
+  },
+  "contracts": {
+    "tools": [
+      "super_memory_mcp_tools_list",
+      "memory_search",
+      "memory_get",
+      "super_memory_remember",
+      "super_memory_recall",
+      "super_memory_search_compatible",
+      "super_memory_get_compatible",
+      "super_memory_prefetch",
+      "super_memory_sync_turn",
+      "super_memory_promote",
+      "super_memory_status"
+    ]
   }
 }

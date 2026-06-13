@@ -47,6 +47,26 @@ python scripts/phase5_sandbox_backtest.py --execute
 
 It does not yet create an OpenSandbox lifecycle automatically because the local OpenSandbox endpoint/domain/API-key details must be known first.
 
+Full OpenSandbox/OpenClaw smoke, using a sandbox-local OpenClaw profile only:
+
+```bash
+python scripts/phase5_sandbox_backtest.py --opensandbox-smoke --sandbox-id <sandbox-id>
+```
+
+If `--sandbox-id` is omitted, the harness creates a fresh sandbox with the requested image/timeout. The smoke flow is idempotent for an existing sandbox:
+
+- uploads a tarball of the repo to `/workspace/super-memory`
+- installs OpenClaw inside the sandbox if `openclaw` is missing
+- installs Python dev dependencies in `/workspace/super-memory/.venv`
+- starts the Super Memory API on sandbox loopback `127.0.0.1:8765`
+- writes sandbox-only OpenClaw profile config at `/root/.openclaw-smtest/openclaw.json`
+- fixes plugin ownership to root inside the sandbox so OpenClaw does not block the local plugin path
+- runs `openclaw --profile smtest config validate`
+- runs `openclaw --profile smtest plugins doctor`
+- runs Python/Node syntax checks and `pytest -q`
+
+This smoke check does not mount host `~/.openclaw`, does not use real provider credentials, and does not enable Phase 4 heavy features.
+
 ## Intended sandbox backtest matrix
 
 1. Create OpenSandbox sandbox with Node 22 + Python.

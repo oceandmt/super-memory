@@ -1,4 +1,4 @@
-module.exports = async function superMemoryPlugin(api) {
+module.exports = function superMemoryPlugin(api) {
   const cfg = api.config || {};
   const baseUrl = cfg.apiBaseUrl || 'http://127.0.0.1:8765';
 
