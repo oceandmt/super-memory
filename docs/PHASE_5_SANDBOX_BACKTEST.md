@@ -64,6 +64,7 @@ If `--sandbox-id` is omitted, the harness creates a fresh sandbox with the reque
 - runs `openclaw --profile smtest config validate`
 - runs `openclaw --profile smtest plugins doctor`
 - runs Python/Node syntax checks and `pytest -q`
+- includes Phase 8 JS-level plugin memory-slot contract tests in pytest: guarded exclusive capability registration, `runtime.getMemorySearchManager()`, manager `search()`, manager `readFile()`, and legacy shim exposure in slot mode
 
 This smoke check does not mount host `~/.openclaw`, does not use real provider credentials, and does not enable Phase 4 heavy features.
 
@@ -77,7 +78,7 @@ This smoke check does not mount host `~/.openclaw`, does not use real provider c
 6. Load the generated sandbox-only plugin config.
 7. Verify plugin load.
 8. Verify MCP stdio server.
-9. Verify `memory_search` / `memory_get` replacement behavior.
+9. Verify `memory_search` / `memory_get` replacement behavior; Phase 8 freezes this at JS plugin-contract level with a mocked OpenClaw API, while a future live OpenClaw CLI/session probe can be added once the stable invocation path is confirmed.
 10. Verify dynamic `/mcp-tools` proxy.
 11. Verify guarded hook skeletons only after matching live OpenClaw hook APIs.
 12. Verify failure isolation: canonical markdown failure skips downstream projections.
