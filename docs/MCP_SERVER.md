@@ -307,3 +307,19 @@ Returns Super Memory status as JSON.
 - No embedded LLM required for baseline remember/recall.
 - Tools route through `super_memory.bridge`, so API/CLI/MCP behavior stays aligned.
 - `config_path` allows isolated test configs without touching the active workspace DB.
+
+## Phase 6 cognitive orchestration tools
+
+Admin/all profiles expose the deterministic Phase 6 cognitive orchestration baseline:
+
+- `super_memory_working_memory_get` / `super_memory_working_memory_set` — read and merge short-lived working-memory state.
+- `super_memory_attention_score` — score salience, TTL, promotion candidacy, and layer routing.
+- `super_memory_route_memory` — produce a normalized routed memory payload with attention metadata.
+- `super_memory_parallel_save` — update working memory and, when attention warrants durable storage, run canonical-first save/projection.
+- `super_memory_recall_arbitrate` — recall from layers and explain layer vote/winner policy.
+- `super_memory_consolidation_cycle` — produce a bounded deterministic consolidation report; dry-run by default.
+- `super_memory_conflict_resolve` — record a conflict-resolution event.
+- `super_memory_promotion_candidates` — list deterministic promotion candidates.
+- `super_memory_feedback_outcome` — record task/memory outcome feedback and optionally save a linked lesson/blocker.
+
+These tools implement the Phase 6 brain-like controller model while preserving the core invariant: Workspace Markdown remains canonical truth and derived layers only enrich recall.

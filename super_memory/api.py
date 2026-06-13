@@ -92,6 +92,42 @@ class PromoteRequest(BaseModel):
     memory_id: str
     config_path: str | None = None
 
+class WorkingMemoryRequest(BaseModel):
+    key: str = "default"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    ttl_seconds: int | None = None
+    config_path: str | None = None
+
+class CognitivePayloadRequest(BaseModel):
+    payload: dict[str, Any]
+    config_path: str | None = None
+
+class RecallArbitrateRequest(BaseModel):
+    query: str
+    limit: int = 10
+    config_path: str | None = None
+
+class ConsolidationCycleRequest(BaseModel):
+    strategy: str = "light"
+    dry_run: bool = True
+    config_path: str | None = None
+
+class ConflictResolveRequest(BaseModel):
+    conflict_id: str
+    resolution: str
+    reason: str = ""
+    config_path: str | None = None
+
+class PromotionCandidatesRequest(BaseModel):
+    limit: int = 20
+    config_path: str | None = None
+
+class FeedbackOutcomeRequest(BaseModel):
+    memory_id: str | None = None
+    success: bool = True
+    outcome: str = ""
+    config_path: str | None = None
+
 
 @app.get("/health")
 def health() -> dict[str, Any]:
@@ -255,6 +291,50 @@ def boundaries(req: dict[str, Any]) -> dict[str, Any]:
 @app.post("/optional/{action}")
 def optional(action: str, req: dict[str, Any] | None = None) -> dict[str, Any]:
     return bridge.optional_heavy(action, **(req or {}))
+
+@app.get("/working-memory")
+def working_memory_get(key: str = "default", config_path: str | None = None) -> dict[str, Any]:
+    return bridge.working_memory_get(key=key, config_path=config_path)
+
+@app.post("/working-memory")
+def working_memory_set(req: WorkingMemoryRequest) -> dict[str, Any]:
+    return bridge.working_memory_set(req.payload, key=req.key, ttl_seconds=req.ttl_seconds, config_path=req.config_path)
+
+@app.post("/attention-score")
+def attention_score(req: CognitivePayloadRequest) -> dict[str, Any]:
+    return bridge.attention_score(req.payload, config_path=req.config_path)
+
+@app.post("/route-memory")
+def route_memory(req: CognitivePayloadRequest) -> dict[str, Any]:
+    return bridge.route_memory(req.payload, config_path=req.config_path)
+
+@app.post("/parallel-save")
+def parallel_save(req: CognitivePayloadRequest) -> dict[str, Any]:
+    return bridge.parallel_save(req.payload, config_path=req.config_path)
+
+@app.post("/recall-arbitrate")
+def recall_arbitrate(req: RecallArbitrateRequest) -> dict[str, Any]:
+    return bridge.recall_arbitrate(req.query, limit=req.limit, config_path=req.config_path)
+
+@app.post("/consolidation-cycle")
+def consolidation_cycle(req: ConsolidationCycleRequest) -> dict[str, Any]:
+    return bridge.consolidation_cycle(strategy=req.strategy, dry_run=req.dry_run, config_path=req.config_path)
+
+@app.post("/conflict-resolve")
+def conflict_resolve(req: ConflictResolveRequest) -> dict[str, Any]:
+    return bridge.conflict_resolve(req.conflict_id, req.resolution, reason=req.reason, config_path=req.config_path)
+
+@app.get("/promotion-candidates")
+def promotion_candidates(limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return bridge.promotion_candidates(limit=limit, config_path=config_path)
+
+@app.post("/promotion-candidates")
+def promotion_candidates_post(req: PromotionCandidatesRequest) -> dict[str, Any]:
+    return bridge.promotion_candidates(limit=req.limit, config_path=req.config_path)
+
+@app.post("/feedback-outcome")
+def feedback_outcome(req: FeedbackOutcomeRequest) -> dict[str, Any]:
+    return bridge.feedback_outcome(memory_id=req.memory_id, success=req.success, outcome=req.outcome, config_path=req.config_path)
 
 
 def main() -> None:

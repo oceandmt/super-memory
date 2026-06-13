@@ -10,7 +10,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence
+from . import intelligence, cognitive
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -242,3 +242,33 @@ def memory_search(query: str, max_results: int = 5, min_score: float = 0.0, corp
 def memory_get(path: str, from_line: int = 1, lines: int = 20, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
     cfg = load_config(config_path)
     return memory_get_compatible(path, from_line=from_line, lines=lines, corpus=corpus, config=cfg)
+
+def working_memory_get(key: str = "default", config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.working_memory_get(key=key, config_path=config_path)
+
+def working_memory_set(payload: dict[str, Any], key: str = "default", ttl_seconds: int | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.working_memory_set(payload, key=key, ttl_seconds=ttl_seconds, config_path=config_path)
+
+def attention_score(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.attention_score(payload, config_path=config_path)
+
+def route_memory(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.route_memory(payload, config_path=config_path)
+
+def parallel_save(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.parallel_save(payload, config_path=config_path)
+
+def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.recall_arbitrate(query, limit=limit, config_path=config_path)
+
+def consolidation_cycle(strategy: str = "light", dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.consolidation_cycle(strategy=strategy, dry_run=dry_run, config_path=config_path)
+
+def conflict_resolve(conflict_id: str, resolution: str, reason: str = "", config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.conflict_resolve(conflict_id, resolution, reason=reason, config_path=config_path)
+
+def promotion_candidates(limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.promotion_candidates(limit=limit, config_path=config_path)
+
+def feedback_outcome(memory_id: str | None = None, success: bool = True, outcome: str = "", config_path: str | None = None) -> dict[str, Any]:
+    return cognitive.feedback_outcome(memory_id=memory_id, success=success, outcome=outcome, config_path=config_path)

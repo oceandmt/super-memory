@@ -55,6 +55,16 @@ ADVANCED_TOOLS = {
     "super_memory_visualize",
     "super_memory_store",
     "super_memory_watch",
+    "super_memory_working_memory_get",
+    "super_memory_working_memory_set",
+    "super_memory_attention_score",
+    "super_memory_route_memory",
+    "super_memory_parallel_save",
+    "super_memory_recall_arbitrate",
+    "super_memory_consolidation_cycle",
+    "super_memory_conflict_resolve",
+    "super_memory_promotion_candidates",
+    "super_memory_feedback_outcome",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -248,6 +258,20 @@ for _name in ["train", "import", "index", "sync", "telegram_backup", "visualize"
         "inputSchema": _schema({"params": {"type": "object"}}),
     }
 
+for _name, _desc, _props in [
+    ("super_memory_working_memory_get", "Get Phase 6 short-lived working memory state.", {"key": {"type": "string", "default": "default"}, "config_path": {"type": "string"}}),
+    ("super_memory_working_memory_set", "Set/merge Phase 6 short-lived working memory state.", {"key": {"type": "string", "default": "default"}, "payload": {"type": "object"}, "ttl_seconds": {"type": "integer"}, "config_path": {"type": "string"}}),
+    ("super_memory_attention_score", "Score memory salience and routing signals.", {"payload": {"type": "object"}, "config_path": {"type": "string"}}),
+    ("super_memory_route_memory", "Route a memory payload using deterministic Phase 6 attention policy.", {"payload": {"type": "object"}, "config_path": {"type": "string"}}),
+    ("super_memory_parallel_save", "Run Phase 6 working-memory plus canonical-first save/projection flow.", {"payload": {"type": "object"}, "config_path": {"type": "string"}}),
+    ("super_memory_recall_arbitrate", "Recall from layers and explain layer arbitration.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}),
+    ("super_memory_consolidation_cycle", "Run a bounded deterministic Phase 6 consolidation report.", {"strategy": {"type": "string", "default": "light"}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    ("super_memory_conflict_resolve", "Record a Phase 6 conflict resolution event.", {"conflict_id": {"type": "string"}, "resolution": {"type": "string"}, "reason": {"type": "string"}, "config_path": {"type": "string"}}),
+    ("super_memory_promotion_candidates", "List deterministic promotion candidates.", {"limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}),
+    ("super_memory_feedback_outcome", "Record task/memory outcome feedback for learning.", {"memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "outcome": {"type": "string"}, "config_path": {"type": "string"}}),
+]:
+    TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, [k for k in ["payload", "query", "conflict_id", "resolution"] if k in _props])}
+
 
 def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
@@ -345,6 +369,26 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.boundaries(domain=args.get("domain", "global"), content=args.get("content"), config_path=args.get("config_path"))
     if name.startswith("super_memory_") and name.replace("super_memory_", "") in {"train", "import", "index", "sync", "telegram_backup", "visualize", "store", "watch"}:
         return bridge.optional_heavy(name.replace("super_memory_", ""), **(args.get("params") or {}))
+    if name == "super_memory_working_memory_get":
+        return bridge.working_memory_get(key=args.get("key", "default"), config_path=args.get("config_path"))
+    if name == "super_memory_working_memory_set":
+        return bridge.working_memory_set(args.get("payload", {}), key=args.get("key", "default"), ttl_seconds=args.get("ttl_seconds"), config_path=args.get("config_path"))
+    if name == "super_memory_attention_score":
+        return bridge.attention_score(args["payload"], config_path=args.get("config_path"))
+    if name == "super_memory_route_memory":
+        return bridge.route_memory(args["payload"], config_path=args.get("config_path"))
+    if name == "super_memory_parallel_save":
+        return bridge.parallel_save(args["payload"], config_path=args.get("config_path"))
+    if name == "super_memory_recall_arbitrate":
+        return bridge.recall_arbitrate(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_consolidation_cycle":
+        return bridge.consolidation_cycle(strategy=args.get("strategy", "light"), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_conflict_resolve":
+        return bridge.conflict_resolve(args["conflict_id"], args["resolution"], reason=args.get("reason", ""), config_path=args.get("config_path"))
+    if name == "super_memory_promotion_candidates":
+        return bridge.promotion_candidates(limit=args.get("limit", 20), config_path=args.get("config_path"))
+    if name == "super_memory_feedback_outcome":
+        return bridge.feedback_outcome(memory_id=args.get("memory_id"), success=args.get("success", True), outcome=args.get("outcome", ""), config_path=args.get("config_path"))
     raise ValueError(f"unknown tool: {name}")
 
 

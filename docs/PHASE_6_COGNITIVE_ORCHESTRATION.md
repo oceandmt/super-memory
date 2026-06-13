@@ -1,6 +1,6 @@
 # Phase 6 — Cognitive Orchestration Model
 
-Status: proposed / design reference  
+Status: deterministic baseline implemented  
 Project: `projects/super-memory`  
 Purpose: make the four Super Memory layers cooperate like complementary human memory systems without breaking canonical-first safety.
 
@@ -237,9 +237,9 @@ Examples:
 - User correction: supersede old assumption.
 - Repeated recall usefulness: increase salience.
 
-## API/tool ideas for Phase 6
+## Implemented API/tool surface for Phase 6
 
-Potential new tools/endpoints:
+Implemented bridge/MCP tool names:
 
 - `super_memory_working_memory_get`
 - `super_memory_working_memory_set`
@@ -252,7 +252,7 @@ Potential new tools/endpoints:
 - `super_memory_promotion_candidates`
 - `super_memory_feedback_outcome`
 
-Suggested API endpoints:
+Implemented HTTP API endpoints:
 
 - `GET /working-memory`
 - `POST /working-memory`
