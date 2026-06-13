@@ -219,7 +219,15 @@ def stats(config_path: str | None = None) -> dict[str, Any]:
     return {"ok": True, "neurons": {r["kind"]: r["c"] for r in neurons}, "synapses": {r["relation"]: r["c"] for r in synapses}, "fibers": fibers, "canonical_first": True}
 
 
+def _bounded_limit(limit: int, default: int = 20, maximum: int = 500) -> int:
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(maximum, value))
+
 def neighbors(neuron_or_memory_id: str, direction: str = "out", limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit)
     store = _store(config_path)
     with store.connect() as conn:
         node = conn.execute("SELECT id FROM cognitive_neurons WHERE id=? OR source_memory_id=? LIMIT 1", (neuron_or_memory_id, neuron_or_memory_id)).fetchone()
@@ -234,6 +242,7 @@ def neighbors(neuron_or_memory_id: str, direction: str = "out", limit: int = 20,
 
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit, default=10)
     store = _store(config_path)
     q = f"%{query.lower()}%"
     with store.connect() as conn:
@@ -253,6 +262,7 @@ def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[
 
 
 def rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit, default=500, maximum=2000)
     store = _store(config_path)
     rows = store.list_memory_rows(limit=limit)
     projected = []

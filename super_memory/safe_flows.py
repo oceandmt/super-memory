@@ -16,6 +16,26 @@ TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
 IMPORT_EXTENSIONS = TEXT_EXTENSIONS | {".json", ".jsonl"}
 
 
+def _bounded_limit(limit: int, default: int = 200, maximum: int = 1000) -> int:
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(maximum, value))
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, tuple):
+        return [str(item) for item in value if item is not None]
+    if isinstance(value, str):
+        return [value]
+    return []
+
+def _object_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
 def _resolve_under_workspace(path: str | None, config_path: str | None = None) -> tuple[Path, Any]:
     cfg = load_config(config_path)
     root = Path(cfg.workspace_root).resolve()
@@ -31,6 +51,7 @@ def _resolve_under_workspace(path: str | None, config_path: str | None = None) -
 
 
 def _iter_files(path: Path, extensions: set[str], recursive: bool = True, limit: int = 200) -> Iterable[Path]:
+    limit = _bounded_limit(limit)
     if path.is_file():
         if path.suffix.lower() in extensions:
             yield path
@@ -70,6 +91,8 @@ def _file_hash(path: Path) -> str:
 
 
 def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit: int = 200, max_chunks_per_file: int = 20, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit)
+    max_chunks_per_file = _bounded_limit(max_chunks_per_file, default=20, maximum=200)
     target, cfg = _resolve_under_workspace(path, config_path)
     files = list(_iter_files(target, TEXT_EXTENSIONS, recursive=recursive, limit=limit))
     items = []
@@ -98,6 +121,7 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
 
 
 def import_local(path: str, *, source_name: str = "local-import", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit)
     target, cfg = _resolve_under_workspace(path, config_path)
     files = list(_iter_files(target, IMPORT_EXTENSIONS, recursive=recursive, limit=limit))
     imported = []
@@ -130,10 +154,10 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
                     "scope": record.get("scope", MemoryScope.PROJECT.value),
                     "agent_id": record.get("agent_id", "lucas"),
                     "project": record.get("project"),
-                    "tags": list(record.get("tags", [])) + ["imported", f"source:{source_name}", f"file:{rel}"],
+                    "tags": _string_list(record.get("tags")) + ["imported", f"source:{source_name}", f"file:{rel}"],
                     "source": record.get("source", rel),
                     "trust_score": record.get("trust_score"),
-                    "metadata": {**record.get("metadata", {}), "flow": "import", "source_name": source_name, "import_index": idx},
+                    "metadata": {**_object_dict(record.get("metadata")), "flow": "import", "source_name": source_name, "import_index": idx},
                 }
                 result = bridge.remember(payload, config_path=config_path)
                 if result["results"] and result["results"][0]["ok"]:
@@ -144,6 +168,7 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
 
 
 def watch_scan(directory: str, *, recursive: bool = True, limit: int = 200, save: bool = False, config_path: str | None = None) -> dict[str, Any]:
+    limit = _bounded_limit(limit)
     target, cfg = _resolve_under_workspace(directory, config_path)
     store = SuperMemoryStore(cfg)
     store.path.parent.mkdir(parents=True, exist_ok=True)
