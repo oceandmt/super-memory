@@ -65,6 +65,9 @@ Implemented now:
 - MCP stdio server
 - Phase 1 neural-memory-inspired daily tools: batch remember, show, context, todo, auto extraction, stats, and health
 - Phase 1.1 guardrails: prompt sanitization, auto-capture sanitization, and schema normalization before save/recall flows
+- Phase 2 hardening skeletons: MCP subprocess client, dynamic MCP tools/list proxy endpoint, guarded OpenClaw hook skeletons for pre-prompt context / post-agent capture / pre-compaction flush / reset flush / startup consolidation, and memory_search/memory_get contract tests
+- Phase 3 advanced intelligence baseline tools: conflicts, provenance, source, version, pin, consolidate, gaps, explain, situation, reflex, and boundaries
+- Phase 4 optional/heavy feature skeletons: train/import/index, cloud sync, Telegram backup, visualize, store/community brain, and watch directory daemon remain disabled-safe stubs until explicitly configured
 - Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
 Planned next:

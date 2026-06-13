@@ -7,6 +7,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from . import bridge
+from . import mcp_server
 
 app = FastAPI(title="Super Memory API", version="0.1.0")
 
@@ -100,6 +101,10 @@ def health() -> dict[str, Any]:
 @app.get("/status")
 def status(config_path: str | None = None) -> dict[str, Any]:
     return bridge.status(config_path=config_path)
+
+@app.get("/mcp-tools")
+def mcp_tools() -> dict[str, Any]:
+    return {"tools": mcp_server._tool_descriptors()}
 
 @app.get("/stats")
 def stats(config_path: str | None = None) -> dict[str, Any]:
@@ -198,6 +203,58 @@ def promote(req: PromoteRequest) -> dict[str, Any]:
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "promotion failed"))
     return result
+
+@app.post("/conflicts")
+def conflicts(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.conflicts(content=req.get("content"), memory_id=req.get("memory_id"), config_path=req.get("config_path"))
+
+@app.post("/provenance")
+def provenance(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.provenance(req["memory_id"], action=req.get("action", "trace"), actor=req.get("actor", "super-memory"), config_path=req.get("config_path"))
+
+@app.post("/source")
+def source(req: dict[str, Any]) -> dict[str, Any]:
+    config_path = req.pop("config_path", None)
+    return bridge.source(req, config_path=config_path)
+
+@app.post("/version")
+def version(req: dict[str, Any]) -> dict[str, Any]:
+    config_path = req.pop("config_path", None)
+    action = req.pop("action", "create")
+    name = req.pop("name", "snapshot")
+    return bridge.version(action=action, name=name, config_path=config_path, **req)
+
+@app.post("/pin")
+def pin(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.pin(req["memory_id"], action=req.get("action", "pin"), config_path=req.get("config_path"))
+
+@app.post("/consolidate")
+def consolidate(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.consolidate(strategy=req.get("strategy", "all"), dry_run=req.get("dry_run", True), config_path=req.get("config_path"))
+
+@app.post("/gaps")
+def gaps(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.gaps(req["topic"], action=req.get("action", "detect"), config_path=req.get("config_path"))
+
+@app.post("/explain")
+def explain(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.explain(req["from_entity"], req["to_entity"], config_path=req.get("config_path"))
+
+@app.get("/situation")
+def situation(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.situation(config_path=config_path)
+
+@app.post("/reflex")
+def reflex(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.reflex(req["memory_id"], action=req.get("action", "pin"), config_path=req.get("config_path"))
+
+@app.post("/boundaries")
+def boundaries(req: dict[str, Any]) -> dict[str, Any]:
+    return bridge.boundaries(domain=req.get("domain", "global"), content=req.get("content"), config_path=req.get("config_path"))
+
+@app.post("/optional/{action}")
+def optional(action: str, req: dict[str, Any] | None = None) -> dict[str, Any]:
+    return bridge.optional_heavy(action, **(req or {}))
 
 
 def main() -> None:

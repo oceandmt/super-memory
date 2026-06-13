@@ -35,6 +35,28 @@ NORMAL_TOOLS = {
     "super_memory_status",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
+ADVANCED_TOOLS = {
+    "super_memory_conflicts",
+    "super_memory_provenance",
+    "super_memory_source",
+    "super_memory_version",
+    "super_memory_pin",
+    "super_memory_consolidate",
+    "super_memory_gaps",
+    "super_memory_explain",
+    "super_memory_situation",
+    "super_memory_reflex",
+    "super_memory_boundaries",
+    "super_memory_train",
+    "super_memory_import",
+    "super_memory_index",
+    "super_memory_sync",
+    "super_memory_telegram_backup",
+    "super_memory_visualize",
+    "super_memory_store",
+    "super_memory_watch",
+}
+ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
 
 def _text(content: Any) -> list[JSON]:
@@ -205,6 +227,27 @@ TOOLS: dict[str, JSON] = {
     },
 }
 
+for _name, _desc, _props in [
+    ("super_memory_conflicts", "Detect/list deterministic conflict candidates.", {"content": {"type": "string"}, "memory_id": {"type": "string"}, "config_path": {"type": "string"}}),
+    ("super_memory_provenance", "Trace/verify/approve memory provenance.", {"memory_id": {"type": "string"}, "action": {"type": "string", "default": "trace"}, "actor": {"type": "string", "default": "super-memory"}, "config_path": {"type": "string"}}),
+    ("super_memory_source", "Register an external source metadata record.", {"name": {"type": "string"}, "source_type": {"type": "string"}, "version": {"type": "string"}, "status": {"type": "string"}, "metadata": {"type": "object"}, "config_path": {"type": "string"}}),
+    ("super_memory_version", "Create/list lightweight memory version snapshots.", {"action": {"type": "string", "default": "create"}, "name": {"type": "string", "default": "snapshot"}, "description": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}),
+    ("super_memory_pin", "Record pin/unpin intent for a memory.", {"memory_id": {"type": "string"}, "action": {"type": "string", "default": "pin"}, "config_path": {"type": "string"}}),
+    ("super_memory_consolidate", "Record a safe non-destructive consolidation event.", {"strategy": {"type": "string", "default": "all"}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    ("super_memory_gaps", "Detect/record a knowledge gap event.", {"topic": {"type": "string"}, "action": {"type": "string", "default": "detect"}, "config_path": {"type": "string"}}),
+    ("super_memory_explain", "Explain relationship by merged recall path.", {"from_entity": {"type": "string"}, "to_entity": {"type": "string"}, "config_path": {"type": "string"}}),
+    ("super_memory_situation", "Return current memory situation summary.", {"config_path": {"type": "string"}}),
+    ("super_memory_reflex", "Record reflex pin/unpin intent for a memory.", {"memory_id": {"type": "string"}, "action": {"type": "string", "default": "pin"}, "config_path": {"type": "string"}}),
+    ("super_memory_boundaries", "List or save domain boundary memory.", {"domain": {"type": "string", "default": "global"}, "content": {"type": "string"}, "config_path": {"type": "string"}}),
+]:
+    TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props)}
+
+for _name in ["train", "import", "index", "sync", "telegram_backup", "visualize", "store", "watch"]:
+    TOOLS[f"super_memory_{_name}"] = {
+        "description": f"Phase 4 optional/heavy {_name} skeleton; disabled unless explicitly configured.",
+        "inputSchema": _schema({"params": {"type": "object"}}),
+    }
+
 
 def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
@@ -274,6 +317,34 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.promote(args["memory_id"], config_path=args.get("config_path"))
     if name == "super_memory_status":
         return bridge.status(config_path=args.get("config_path"))
+    if name == "super_memory_conflicts":
+        return bridge.conflicts(content=args.get("content"), memory_id=args.get("memory_id"), config_path=args.get("config_path"))
+    if name == "super_memory_provenance":
+        return bridge.provenance(args["memory_id"], action=args.get("action", "trace"), actor=args.get("actor", "super-memory"), config_path=args.get("config_path"))
+    if name == "super_memory_source":
+        config_path = args.pop("config_path", None)
+        return bridge.source(args, config_path=config_path)
+    if name == "super_memory_version":
+        config_path = args.pop("config_path", None)
+        action = args.pop("action", "create")
+        name_arg = args.pop("name", "snapshot")
+        return bridge.version(action=action, name=name_arg, config_path=config_path, **args)
+    if name == "super_memory_pin":
+        return bridge.pin(args["memory_id"], action=args.get("action", "pin"), config_path=args.get("config_path"))
+    if name == "super_memory_consolidate":
+        return bridge.consolidate(strategy=args.get("strategy", "all"), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_gaps":
+        return bridge.gaps(args["topic"], action=args.get("action", "detect"), config_path=args.get("config_path"))
+    if name == "super_memory_explain":
+        return bridge.explain(args["from_entity"], args["to_entity"], config_path=args.get("config_path"))
+    if name == "super_memory_situation":
+        return bridge.situation(config_path=args.get("config_path"))
+    if name == "super_memory_reflex":
+        return bridge.reflex(args["memory_id"], action=args.get("action", "pin"), config_path=args.get("config_path"))
+    if name == "super_memory_boundaries":
+        return bridge.boundaries(domain=args.get("domain", "global"), content=args.get("content"), config_path=args.get("config_path"))
+    if name.startswith("super_memory_") and name.replace("super_memory_", "") in {"train", "import", "index", "sync", "telegram_backup", "visualize", "store", "watch"}:
+        return bridge.optional_heavy(name.replace("super_memory_", ""), **(args.get("params") or {}))
     raise ValueError(f"unknown tool: {name}")
 
 

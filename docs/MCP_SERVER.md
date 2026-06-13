@@ -62,6 +62,8 @@ Profiles:
 - `admin`: normal tools plus promotion
 - `all`: every implemented tool
 
+Admin/development profile also exposes the Phase 3 advanced intelligence tools and Phase 4 disabled-safe optional skeletons. These stay out of the safe normal profile to avoid surprising operators.
+
 ### `super_memory_remember`
 
 Save memory through Super Memory canonical-first layer order.
@@ -245,6 +247,39 @@ Return local status and counts.
 Args:
 
 - `config_path`
+
+## Phase 3 advanced intelligence tools
+
+Available in `admin` / `all` MCP profiles:
+
+- `super_memory_conflicts`
+- `super_memory_provenance`
+- `super_memory_source`
+- `super_memory_version`
+- `super_memory_pin`
+- `super_memory_consolidate`
+- `super_memory_gaps`
+- `super_memory_explain`
+- `super_memory_situation`
+- `super_memory_reflex`
+- `super_memory_boundaries`
+
+These tools currently provide deterministic baseline behavior and safe event/audit records. They do not pretend to run a heavyweight contradiction model or destructive consolidation pass unless those backends are explicitly added later.
+
+## Phase 4 optional/heavy skeletons
+
+Available in `admin` / `all` MCP profiles as disabled-safe stubs:
+
+- `super_memory_train`
+- `super_memory_import`
+- `super_memory_index`
+- `super_memory_sync`
+- `super_memory_telegram_backup`
+- `super_memory_visualize`
+- `super_memory_store`
+- `super_memory_watch`
+
+They return `enabled=false` until explicitly configured so project development does not start daemons, cloud sync, imports, backups, or community-store actions by accident.
 
 ## Resource
 

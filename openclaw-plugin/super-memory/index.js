@@ -12,6 +12,22 @@ module.exports = async function superMemoryPlugin(api) {
     return res.json();
   }
 
+  function registerHookSkeleton(name, handler) {
+    const candidates = [
+      `register${name}`,
+      `on${name}`,
+      'registerHook'
+    ];
+    for (const key of candidates) {
+      if (typeof api[key] === 'function') {
+        if (key === 'registerHook') api[key](name, handler);
+        else api[key](handler);
+        return true;
+      }
+    }
+    return false;
+  }
+
   async function get(path) {
     const res = await fetch(`${baseUrl}${path}`);
     if (!res.ok) throw new Error(`super-memory ${path} failed: ${res.status} ${await res.text()}`);
@@ -96,6 +112,23 @@ module.exports = async function superMemoryPlugin(api) {
         async listArtifacts() { return []; }
       }
     });
+  }
+
+  if (cfg.registerDynamicMcpToolProxy === true && typeof api.registerTool === 'function') {
+    api.registerTool({
+      name: 'super_memory_mcp_tools_list',
+      description: 'Development-only dynamic MCP tools/list proxy for Super Memory.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      handler: async () => get('/mcp-tools')
+    });
+  }
+
+  if (cfg.registerSuperMemoryHooks === true) {
+    registerHookSkeleton('PrePromptContext', async (ctx = {}) => post('/prefetch', { query: ctx.query || ctx.prompt || '', limit: cfg.prePromptLimit || 8 }));
+    registerHookSkeleton('PostAgentCapture', async (ctx = {}) => post('/sync-turn', { user_message: ctx.userMessage, assistant_message: ctx.assistantMessage, session_id: ctx.sessionId, metadata: { hook: 'post-agent-capture' } }));
+    registerHookSkeleton('PreCompactionFlush', async (ctx = {}) => post('/auto', { text: ctx.text || ctx.transcript || '', save: true }));
+    registerHookSkeleton('ResetFlush', async (ctx = {}) => post('/auto', { text: ctx.text || 'reset flush', save: true }));
+    registerHookSkeleton('StartupConsolidation', async () => post('/consolidate', { strategy: 'startup', dry_run: true }));
   }
 
   if (typeof api.registerMemoryCorpusSupplement === 'function') {

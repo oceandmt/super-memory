@@ -10,6 +10,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
+from . import intelligence
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -129,6 +130,42 @@ def health(config_path: str | None = None) -> dict[str, Any]:
         "enabled_layers": [layer.value for layer in cfg.enabled_layers],
         "status": st,
     }
+
+def conflicts(content: str | None = None, memory_id: str | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.conflicts(content=content, memory_id=memory_id, config_path=config_path)
+
+def provenance(memory_id: str, action: str = "trace", actor: str = "super-memory", config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.provenance(memory_id, action=action, actor=actor, config_path=config_path)
+
+def source(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.source(payload, config_path=config_path)
+
+def version(action: str = "create", name: str = "snapshot", config_path: str | None = None, **kwargs: Any) -> dict[str, Any]:
+    return intelligence.version(action=action, name=name, config_path=config_path, **kwargs)
+
+def pin(memory_id: str, action: str = "pin", config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.pin(memory_id, action=action, config_path=config_path)
+
+def consolidate(strategy: str = "all", dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.consolidate(strategy=strategy, dry_run=dry_run, config_path=config_path)
+
+def gaps(topic: str, action: str = "detect", config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.gaps(topic, action=action, config_path=config_path)
+
+def explain(from_entity: str, to_entity: str, config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.explain(from_entity, to_entity, config_path=config_path)
+
+def situation(config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.situation(config_path=config_path)
+
+def reflex(memory_id: str, action: str = "pin", config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.reflex(memory_id, action=action, config_path=config_path)
+
+def boundaries(domain: str = "global", content: str | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return intelligence.boundaries(domain=domain, content=content, config_path=config_path)
+
+def optional_heavy(action: str, **kwargs: Any) -> dict[str, Any]:
+    return intelligence.heavy_optional(action, **kwargs)
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
     query = sanitize_prompt(query)
