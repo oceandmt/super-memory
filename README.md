@@ -68,6 +68,7 @@ Implemented now:
 - Phase 2 hardening skeletons: MCP subprocess client, dynamic MCP tools/list proxy endpoint, guarded OpenClaw hook skeletons for pre-prompt context / post-agent capture / pre-compaction flush / reset flush / startup consolidation, and memory_search/memory_get contract tests
 - Phase 3 advanced intelligence baseline tools: conflicts, provenance, source, version, pin, consolidate, gaps, explain, situation, reflex, and boundaries
 - Phase 4 optional/heavy feature skeletons: train/import/index, cloud sync, Telegram backup, visualize, store/community brain, and watch directory daemon remain disabled-safe stubs until explicitly configured
+- Phase 5 sandbox backtest harness: OpenSandbox/OpenClaw isolated test plan, sandbox-only config fixture, dry-run CLI, and safety contract tests
 - Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
 Planned next:
