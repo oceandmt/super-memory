@@ -237,18 +237,28 @@ def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: s
     # Phase 5: Create semantic memories
     semantic_created = _create_semantic_memories(store, config_path, promotion, dry_run) if promotion else []
 
-    # Phase 6: Rebuild graph projection (incremental for merged memories)
+    # Phase 6: Rebuild graph projection.
+    # - For merge/dedup consolidation, rebuild canonical merged memories.
+    # - For explicit graph/all strategies, project all loaded memories so the
+    #   maintenance endpoint is useful even when no duplicate merges occurred.
     graph_rebuilt = 0
-    if not dry_run and merged:
+    graph_errors: list[dict[str, str]] = []
+    graph_targets: list[MemoryRecord] = []
+    if strategy in {"all", "graph"}:
+        graph_targets = memories
+    elif merged:
         for merge_action in merged:
             if merge_action["action"] == "merged":
                 canonical = store.get_memory(merge_action["canonical"])
                 if canonical:
-                    try:
-                        project_memory(canonical, config_path=config_path)
-                        graph_rebuilt += 1
-                    except Exception:
-                        pass
+                    graph_targets.append(canonical)
+    if not dry_run and graph_targets:
+        for memory in graph_targets:
+            try:
+                project_memory(memory, config_path=config_path)
+                graph_rebuilt += 1
+            except Exception as exc:
+                graph_errors.append({"memory_id": memory.id, "error": f"{type(exc).__name__}: {exc}"})
 
     return {
         "ok": True,
@@ -261,5 +271,6 @@ def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: s
         "promotion_candidates": len(promotion),
         "semantic_created": semantic_created,
         "graph_rebuilt": graph_rebuilt,
+        "graph_errors": graph_errors[:10],
         "real_consolidation": True,
     }
