@@ -11,9 +11,10 @@ WORKSPACE_MARKDOWN → MEMPALACE → HONCHO → NEURAL_MEMORY
 ```
 
 **Key behavior:**
-- If workspace Markdown save fails, downstream layers are skipped by default
-- This prevents derived layers from containing data that isn't in the canonical layer
-- Trade-off: Better data consistency vs. potential "nothing saved" on permission/path errors
+- Workspace Markdown is attempted first.
+- If workspace Markdown save fails, downstream SQLite-backed layers still save the record.
+- Downstream fallback results are marked with `pending_canonical_sync=True` so operators can retry canonical sync later.
+- This prevents data loss when workspace paths or permissions are temporarily broken while still preserving canonical-first observability.
 
 **Configuration:**
 ```python
@@ -22,7 +23,7 @@ SuperMemoryConfig(
 )
 ```
 
-Set `require_canonical_first=False` to allow downstream layers to save even when Markdown fails (not recommended for production).
+Set `require_canonical_first=False` to run all enabled layers independently without pending-canonical-sync fallback semantics.
 
 ### 2. Multi-layer architecture
 

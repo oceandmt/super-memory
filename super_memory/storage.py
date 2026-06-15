@@ -49,6 +49,23 @@ class SuperMemoryStore:
         with self.connect() as conn:
             return conn.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
 
+    def get_pending_sync(self, layer: str) -> list[MemoryRecord]:
+        """Return memories that have pending_canonical_sync for a given layer."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE layer = ? AND pending_canonical_sync = 1 ORDER BY created_at ASC",
+                (layer,)
+            ).fetchall()
+        return [row_to_memory(r) for r in rows]
+
+    def clear_pending_sync(self, memory_id: str, layer: str) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE memories SET pending_canonical_sync = 0 WHERE id = ? AND layer = ?",
+                (memory_id, layer)
+            )
+            conn.commit()
+
 
 def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
     return MemoryRecord(

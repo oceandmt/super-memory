@@ -74,6 +74,7 @@ class SaveResult(BaseModel):
     ok: bool
     reference: str | None = None
     message: str | None = None
+    pending_canonical_sync: bool = False
 
 
 class SuperMemoryConfig(BaseModel):

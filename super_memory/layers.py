@@ -101,10 +101,16 @@ class SQLiteLayerBackend(MemoryBackend):
                     trust_score REAL,
                     created_at TEXT NOT NULL,
                     metadata_json TEXT NOT NULL,
+                    pending_canonical_sync INTEGER DEFAULT 0,
                     PRIMARY KEY (id, layer)
                 )
                 """
             )
+            try:
+                conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc).lower():
+                    raise
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_layer ON memories(layer)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope)")
@@ -164,12 +170,13 @@ class SQLiteLayerBackend(MemoryBackend):
 
     def save(self, record: MemoryRecord) -> SaveResult:
         tags = record.normalized_tags()
+        pending_sync = record.metadata.get("pending_canonical_sync", False)
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memories
-                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, pending_canonical_sync)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -185,6 +192,7 @@ class SQLiteLayerBackend(MemoryBackend):
                     record.trust_score,
                     record.created_at.isoformat(),
                     json.dumps(record.metadata, ensure_ascii=False),
+                    1 if pending_sync else 0,
                 ),
             )
             conn.execute(
