@@ -1,7 +1,7 @@
 # Super Memory Layers, Tools, Connections, and Cooperation Report
 
 Status: Phase 5 / sandbox-qualified development candidate  
-Project: `projects/super-memory`  
+Project: Super Memory  
 Current reference commit when written: `a1a2b45 fix: harden sandbox openclaw plugin smoke`
 
 ## Executive summary

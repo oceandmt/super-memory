@@ -7,7 +7,7 @@
 1. Start the local API:
 
 ```bash
-cd projects/super-memory
+cd super-memory
 . .venv/bin/activate
 super-memory-api
 ```

@@ -81,7 +81,7 @@ class SuperMemoryConfig(BaseModel):
     daily_memory_dir: str = "memory"
     long_term_file: str = "MEMORY.md"
     registers_dir: str = "memory/registers"
-    sqlite_path: str = "projects/super-memory/data/super-memory.sqlite3"
+    sqlite_path: str = "data/super-memory.sqlite3"
     enabled_layers: list[MemoryLayer] = Field(
         default_factory=lambda: [
             MemoryLayer.WORKSPACE_MARKDOWN,

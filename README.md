@@ -13,10 +13,12 @@ Super Memory uses the Hermes-style idea of layered agent memory as the base, wit
 ## Install for local development
 
 ```bash
-cd projects/super-memory
+git clone <repo-url> super-memory
+cd super-memory
 python -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
+pytest
 ```
 
 ## CLI

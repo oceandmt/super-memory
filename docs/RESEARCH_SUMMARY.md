@@ -1,6 +1,6 @@
 # Super Memory Research Summary
 
-This summary distills the repository research into implementation decisions for `projects/super-memory`.
+This summary distills the repository research into implementation decisions for Super Memory.
 
 ## Hermes Agent patterns to adopt
 

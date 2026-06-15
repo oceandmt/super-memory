@@ -1,6 +1,6 @@
 # Super-Memory vs Neural-Memory Comparison
 
-Comprehensive comparison between `projects/super-memory` (local OpenClaw-specific) and `nhadaututtheky/neural-memory` (GitHub PyPI package).
+Comprehensive comparison between Super Memory (local OpenClaw-specific) and `nhadaututtheky/neural-memory` (GitHub PyPI package).
 
 ## Executive Summary
 
@@ -172,7 +172,7 @@ Comprehensive comparison between `projects/super-memory` (local OpenClaw-specifi
 
 ```bash
 # Development install
-cd projects/super-memory
+cd super-memory
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
 

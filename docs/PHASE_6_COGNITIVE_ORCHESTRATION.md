@@ -1,7 +1,7 @@
 # Phase 6 — Cognitive Orchestration Model
 
 Status: deterministic baseline implemented  
-Project: `projects/super-memory`  
+Project: Super Memory  
 Purpose: make the four Super Memory layers cooperate like complementary human memory systems without breaking canonical-first safety.
 
 ## Summary

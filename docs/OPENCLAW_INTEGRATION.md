@@ -26,7 +26,7 @@ Do **not** replace or fork `memory-core` in v1. Instead:
 
 1. Keep `Workspace Markdown` as canonical local truth.
 2. Let existing `memory-core` continue indexing canonical markdown.
-3. Run Super Memory as a local sidecar/library under `projects/super-memory`.
+3. Run Super Memory as a local sidecar/library as a local sidecar/library.
 4. Add an OpenClaw plugin wrapper later that calls the Python app or imports it via a local bridge.
 
 Plugin should use:
