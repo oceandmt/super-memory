@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from .models import MemoryRecord, SuperMemoryConfig
+from .models import MemoryRecord, MemoryType, SuperMemoryConfig
 
 
 def sqlite_path(config: SuperMemoryConfig) -> Path:
@@ -72,10 +72,17 @@ def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
     # Preserve pending_canonical_sync flag in metadata if present
     if "pending_canonical_sync" in row.keys() and row["pending_canonical_sync"]:
         metadata["pending_canonical_sync"] = True
+    raw_type = row["type"]
+    # Gracefully map legacy/invalid type values to a safe fallback so
+    # consolidation and other bulk-read paths do not break on old data.
+    valid_types = {t.value for t in MemoryType}
+    if raw_type not in valid_types:
+        metadata["original_type"] = raw_type
+        raw_type = "context"
     return MemoryRecord(
         id=row["id"],
         content=row["content"],
-        type=row["type"],
+        type=raw_type,
         scope=row["scope"],
         agent_id=row["agent_id"],
         session_id=row["session_id"],
