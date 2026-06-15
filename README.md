@@ -1,5 +1,10 @@
 # Super Memory
 
+[![CI](https://github.com/YOUR_USERNAME/super-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/super-memory/actions/workflows/ci.yml)
+[![PyPI version](https://badge.fury.io/py/super-memory.svg)](https://badge.fury.io/py/super-memory)
+[![Python Versions](https://img.shields.io/pypi/pyversions/super-memory.svg)](https://pypi.org/project/super-memory/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Local multi-layer memory app for OpenClaw multi-agents.
 
 Super Memory uses the Hermes-style idea of layered agent memory as the base, with Workspace Markdown as canonical truth and local adapters for MemPalace, Honcho, and NeuralMemory-style functions.
