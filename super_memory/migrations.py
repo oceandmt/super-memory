@@ -5,6 +5,7 @@ Safe to run repeatedly; uses CREATE IF NOT EXISTS and additive ALTERs.
 """
 from __future__ import annotations
 
+import fcntl
 import sqlite3
 from pathlib import Path
 from typing import Iterable
@@ -92,25 +93,33 @@ def _migrate_honcho_events(conn: sqlite3.Connection) -> list[str]:
 def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]:
     config = config or load_config()
     db_path = sqlite_path(config)
+    lock_path = db_path.with_suffix(".migration.lock")
     schema_sql = SCHEMA_FILE.read_text(encoding="utf-8")
-    with sqlite3.connect(db_path, timeout=30) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        # Phase 1: heal legacy missing columns (separate tx so indexes reference them)
-        changed = []
-        changed.extend(_migrate_memories(conn))
-        changed.extend(_migrate_honcho_events(conn))
-        conn.commit()
-    # Phase 2: full schema with clean columns
-    with sqlite3.connect(db_path, timeout=30) as conn:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.executescript(schema_sql)
-        changed2 = []
-        changed2.extend(_migrate_memories(conn))
-        changed2.extend(_migrate_honcho_events(conn))
-        conn.commit()
-    return {"ok": True, "db_path": str(db_path), "changed": changed+changed2, "change_count": len(changed)+len(changed2)}
+    
+    # Acquire file lock to serialize concurrent migrations
+    with open(lock_path, "w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                # Phase 1: heal legacy missing columns (separate tx so indexes reference them)
+                changed = []
+                changed.extend(_migrate_memories(conn))
+                changed.extend(_migrate_honcho_events(conn))
+                conn.commit()
+            # Phase 2: full schema with clean columns
+            with sqlite3.connect(db_path, timeout=30) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=30000")
+                conn.executescript(schema_sql)
+                changed2 = []
+                changed2.extend(_migrate_memories(conn))
+                changed2.extend(_migrate_honcho_events(conn))
+                conn.commit()
+            return {"ok": True, "db_path": str(db_path), "changed": changed+changed2, "change_count": len(changed)+len(changed2)}
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def main() -> None:
