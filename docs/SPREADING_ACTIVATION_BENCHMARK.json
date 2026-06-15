@@ -1,0 +1,28 @@
+{
+  "benchmark": "spreading_activation",
+  "mode": "synthetic_layer4_graph",
+  "results": [
+    {
+      "size": 1000,
+      "queries": 50,
+      "seed_total_ms": 645.83,
+      "seed_per_memory_ms": 0.6458,
+      "recall_p50_ms": 37.0866,
+      "recall_p95_ms": 49.2012,
+      "recall_avg_ms": 38.355,
+      "hit_rate": 1.0,
+      "avg_activated": 1005.64
+    },
+    {
+      "size": 10000,
+      "queries": 50,
+      "seed_total_ms": 6013.77,
+      "seed_per_memory_ms": 0.6014,
+      "recall_p50_ms": 404.105,
+      "recall_p95_ms": 464.9092,
+      "recall_avg_ms": 405.6831,
+      "hit_rate": 1.0,
+      "avg_activated": 10005.64
+    }
+  ]
+}

@@ -74,6 +74,33 @@ Implemented now:
 - Phase 8 live-readiness baseline: diagnostics dashboard, memory-slot contract smoke, MCP contract check, local supervised no-live-config runtime smoke, graph incremental rebuild/orphan cleanup, reasoning confidence/provenance history, prediction expiry, and train/import/watch dedup manifests
 - Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
 
+## OpenClaw Workspace Templates
+
+Super Memory ships with a ready-to-use OpenClaw workspace starter pack so any OpenClaw instance can operate immediately after installing the plugin.
+
+**Included templates**: `openclaw-plugin/super-memory/workspace-templates/`
+- `AGENTS.md` — startup procedures and Super Memory tool guide
+- `SOUL.md` — persona, boundaries, language policy
+- `USER.md` — human profile template
+- `IDENTITY.md` — assistant identity
+- `MEMORY.md` — curated long-term memory starter
+- `HEARTBEAT.md` — periodic check template
+- `memory/active-memory-rules.md` — memory doctrine
+
+**Included skill**: `openclaw-plugin/super-memory/skills/super-memory-operator/`
+- First-run checklist
+- Daily operating procedures
+- Troubleshooting guide
+- Memory write style guidelines
+
+**Quick install**:
+
+```bash
+bash scripts/install-workspace-templates.sh
+```
+
+See `docs/OPENCLAW_WORKSPACE_TEMPLATES.md` for details and recommended OpenClaw config.
+
 Planned next:
 
 - Direct upstream adapters after deeper source-level mapping

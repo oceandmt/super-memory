@@ -10,7 +10,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -176,6 +176,26 @@ def boundaries(domain: str = "global", content: str | None = None, config_path: 
     return intelligence.boundaries(domain=domain, content=content, config_path=config_path)
 
 def optional_heavy(action: str, **kwargs: Any) -> dict[str, Any]:
+    config_path = kwargs.pop("config_path", None)
+    if action == "train":
+        return safe_flows.train(
+            kwargs.get("path", "."),
+            domain_tag=kwargs.get("domain_tag", "local"),
+            recursive=kwargs.get("recursive", True),
+            limit=kwargs.get("limit", 200),
+            max_chunks_per_file=kwargs.get("max_chunks_per_file", 20),
+            save=kwargs.get("save", True),
+            config_path=config_path,
+        )
+    if action == "index":
+        return code_index.index_codebase(
+            kwargs.get("path", "."),
+            extensions=kwargs.get("extensions"),
+            recursive=kwargs.get("recursive", True),
+            limit=kwargs.get("limit", 500),
+            save=kwargs.get("save", True),
+            config_path=config_path,
+        )
     return intelligence.heavy_optional(action, **kwargs)
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
@@ -294,6 +314,10 @@ def graph_neighbors(neuron_or_memory_id: str, direction: str = "out", limit: int
 def graph_recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
     return graph.recall(query, limit=limit, config_path=config_path)
 
+def spreading_activation_recall(query: str, depth: int = 2, top_k: int = 20, seed_limit: int = 30, config_path: str | None = None) -> dict[str, Any]:
+    """Neural-memory-style spreading activation recall through the cognitive graph."""
+    return graph.spreading_activation(query, depth=depth, top_k=top_k, seed_limit=seed_limit, config_path=config_path)
+
 def graph_rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return graph.rebuild(limit=limit, config_path=config_path)
 
@@ -322,6 +346,12 @@ def reflex_status(config_path: str | None = None) -> dict[str, Any]:
 # Phase 7 / P3 safe flows
 def train_local(path: str, domain_tag: str = "local", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
     return safe_flows.train(path, domain_tag=domain_tag, recursive=recursive, limit=limit, save=save, config_path=config_path)
+
+def index_local(path: str, extensions: list[str] | None = None, recursive: bool = True, limit: int = 500, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return code_index.index_codebase(path, extensions=extensions, recursive=recursive, limit=limit, save=save, config_path=config_path)
+
+def index_status(config_path: str | None = None) -> dict[str, Any]:
+    return code_index.index_status(config_path=config_path)
 
 def import_local(path: str, source_name: str = "local-import", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:
     return safe_flows.import_local(path, source_name=source_name, recursive=recursive, limit=limit, save=save, config_path=config_path)

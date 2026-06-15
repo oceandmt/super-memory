@@ -18,26 +18,32 @@ class SuperMemoryStore:
         self.path = sqlite_path(config)
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path)
+        conn = sqlite3.connect(self.path, timeout=30)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         return conn
 
     def get_memory(self, memory_id: str, layer: str | None = None) -> MemoryRecord | None:
-        where = "id = ?"
         params: list[str] = [memory_id]
+        sql = "SELECT * FROM memories WHERE id = ?"
         if layer:
-            where += " AND layer = ?"
+            sql += " AND layer = ?"
             params.append(layer)
+        sql += " LIMIT 1"
         with self.connect() as conn:
-            row = conn.execute(f"SELECT * FROM memories WHERE {where} LIMIT 1", params).fetchone()
+            row = conn.execute(sql, params).fetchone()
         if not row:
             return None
         return row_to_memory(row)
 
     def graph_neighbors(self, memory_id: str, direction: str = "out") -> list[sqlite3.Row]:
+        if direction not in {"out", "in"}:
+            raise ValueError(f"invalid graph direction: {direction}")
         column = "source_memory_id" if direction == "out" else "target_memory_id"
+        sql = "SELECT * FROM graph_edges WHERE " + column + " = ?"
         with self.connect() as conn:
-            return conn.execute(f"SELECT * FROM graph_edges WHERE {column} = ?", (memory_id,)).fetchall()
+            return conn.execute(sql, (memory_id,)).fetchall()
 
     def list_memory_rows(self, limit: int = 100) -> list[sqlite3.Row]:
         with self.connect() as conn:

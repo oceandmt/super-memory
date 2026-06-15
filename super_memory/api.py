@@ -139,6 +139,13 @@ class GraphRecallRequest(BaseModel):
     limit: int = 10
     config_path: str | None = None
 
+class SpreadingActivationRecallRequest(BaseModel):
+    query: str
+    depth: int = 2
+    top_k: int = 20
+    seed_limit: int = 30
+    config_path: str | None = None
+
 class HypothesisCreateRequest(BaseModel):
     content: str
     confidence: float = 0.5
@@ -185,6 +192,14 @@ class LocalFlowRequest(BaseModel):
     source_name: str = "local-import"
     recursive: bool = True
     limit: int = 200
+    save: bool = True
+    config_path: str | None = None
+
+class IndexRequest(BaseModel):
+    path: str
+    extensions: list[str] | None = None
+    recursive: bool = True
+    limit: int = 500
     save: bool = True
     config_path: str | None = None
 
@@ -409,6 +424,22 @@ def graph_neighbors(req: GraphNeighborsRequest) -> dict[str, Any]:
 def graph_recall(req: GraphRecallRequest) -> dict[str, Any]:
     return bridge.graph_recall(req.query, limit=req.limit, config_path=req.config_path)
 
+@app.post("/graph/spreading-recall")
+def spreading_activation_recall(req: SpreadingActivationRecallRequest) -> dict[str, Any]:
+    return bridge.spreading_activation_recall(req.query, depth=req.depth, top_k=req.top_k, seed_limit=req.seed_limit, config_path=req.config_path)
+
+@app.post("/nmem/recall")
+def nmem_recall(req: SpreadingActivationRecallRequest) -> dict[str, Any]:
+    result = bridge.spreading_activation_recall(req.query, depth=req.depth, top_k=req.top_k, seed_limit=req.seed_limit, config_path=req.config_path)
+    return {
+        "answer": result.get("results", []),
+        "confidence": 1.0 if result.get("results") else 0.0,
+        "neurons_activated": result.get("total_activated", 0),
+        "depth_used": result.get("depth", req.depth),
+        "elapsed_ms": result.get("elapsed_ms", 0),
+        "raw": result,
+    }
+
 @app.post("/graph/rebuild")
 def graph_rebuild(req: PromotionCandidatesRequest) -> dict[str, Any]:
     return bridge.graph_rebuild(limit=req.limit, config_path=req.config_path)
@@ -464,6 +495,14 @@ def reflex_status(config_path: str | None = None) -> dict[str, Any]:
 @app.post("/train-local")
 def train_local(req: LocalFlowRequest) -> dict[str, Any]:
     return bridge.train_local(req.path, domain_tag=req.domain_tag, recursive=req.recursive, limit=req.limit, save=req.save, config_path=req.config_path)
+
+@app.post("/index-local")
+def index_local(req: IndexRequest) -> dict[str, Any]:
+    return bridge.index_local(req.path, extensions=req.extensions, recursive=req.recursive, limit=req.limit, save=req.save, config_path=req.config_path)
+
+@app.get("/index-status")
+def index_status(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.index_status(config_path=config_path)
 
 @app.post("/import-local")
 def import_local(req: LocalFlowRequest) -> dict[str, Any]:

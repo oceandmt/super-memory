@@ -145,10 +145,14 @@ def hypothesis_get(hypothesis_id: str, config_path: str | None = None) -> dict[s
 
 def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
     store = _store(config_path)
-    where = "WHERE status=?" if status else ""
-    params: tuple[Any, ...] = (status, limit) if status else (limit,)
+    if status:
+        sql = "SELECT * FROM cognitive_hypotheses WHERE status=? ORDER BY updated_at DESC LIMIT ?"
+        params: tuple[Any, ...] = (status, limit)
+    else:
+        sql = "SELECT * FROM cognitive_hypotheses ORDER BY updated_at DESC LIMIT ?"
+        params = (limit,)
     with store.connect() as conn:
-        rows = conn.execute(f"SELECT * FROM cognitive_hypotheses {where} ORDER BY updated_at DESC LIMIT ?", params).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return {"ok": True, "hypotheses": [{"id": r["id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "tags": json.loads(r["tags_json"]), "updated_at": r["updated_at"]} for r in rows]}
 
 
@@ -187,10 +191,14 @@ def prediction_create(content: str, confidence: float = 0.7, hypothesis_id: str 
 
 def prediction_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
     store = _store(config_path)
-    where = "WHERE status=?" if status else ""
-    params: tuple[Any, ...] = (status, limit) if status else (limit,)
+    if status:
+        sql = "SELECT * FROM cognitive_predictions WHERE status=? ORDER BY updated_at DESC LIMIT ?"
+        params: tuple[Any, ...] = (status, limit)
+    else:
+        sql = "SELECT * FROM cognitive_predictions ORDER BY updated_at DESC LIMIT ?"
+        params = (limit,)
     with store.connect() as conn:
-        rows = conn.execute(f"SELECT * FROM cognitive_predictions {where} ORDER BY updated_at DESC LIMIT ?", params).fetchall()
+        rows = conn.execute(sql, params).fetchall()
     return {"ok": True, "predictions": [{"id": r["id"], "hypothesis_id": r["hypothesis_id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "deadline": r["deadline"], "verified_at": r["verified_at"]} for r in rows]}
 
 

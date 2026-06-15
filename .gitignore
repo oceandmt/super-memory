@@ -6,3 +6,4 @@ data/*.sqlite3
 data/*.sqlite3-*
 .phase5-backtest-result.json
 .phase5-work/
+.openclaw/

@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .config import load_config
+from .extractors import extract_text, available_extractors
 from .models import MemoryScope, MemoryType
 from .sanitize import sanitize_prompt
 from .storage import SuperMemoryStore
 from . import bridge
 
-TEXT_EXTENSIONS = {".md", ".markdown", ".txt"}
+TEXT_EXTENSIONS = {".md", ".markdown", ".txt", ".rst"}
+RICH_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".htm", ".xlsx", ".csv"}
+TRAIN_EXTENSIONS = TEXT_EXTENSIONS | RICH_EXTENSIONS
 IMPORT_EXTENSIONS = TEXT_EXTENSIONS | {".json", ".jsonl"}
 
 
@@ -126,13 +129,17 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
     max_chunks_per_file = _bounded_limit(max_chunks_per_file, default=20, maximum=200)
     target, cfg = _resolve_under_workspace(path, config_path)
     store = SuperMemoryStore(cfg)
-    files = list(_iter_files(target, TEXT_EXTENSIONS, recursive=recursive, limit=limit))
+    files = list(_iter_files(target, TRAIN_EXTENSIONS, recursive=recursive, limit=limit))
     items = []
     saved_count = 0
     skipped_count = 0
+    extraction_failures = 0
     for file_path in files:
         rel = str(file_path.relative_to(Path(cfg.workspace_root).resolve()))
-        text = file_path.read_text(encoding="utf-8", errors="ignore")
+        text = extract_text(file_path)
+        if text is None:
+            extraction_failures += 1
+            continue
         file_chunks = _chunks(text)[:max_chunks_per_file]
         file_item = {"path": rel, "sha256": _file_hash(file_path), "chunks": len(file_chunks), "saved": 0, "skipped": 0}
         if save:
@@ -157,7 +164,7 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
                     _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
                     _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
         items.append(file_item)
-    return {"ok": True, "enabled": True, "mode": "local_text_markdown", "path": str(target), "files": items, "saved_chunks": saved_count, "skipped_chunks": skipped_count, "external_backends": "disabled"}
+    return {"ok": True, "enabled": True, "mode": "local_text_rich_documents", "path": str(target), "files": items, "saved_chunks": saved_count, "skipped_chunks": skipped_count, "extraction_failures": extraction_failures, "extractors": available_extractors(), "external_backends": "disabled"}
 
 
 def import_local(path: str, *, source_name: str = "local-import", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:

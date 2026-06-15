@@ -1,0 +1,3375 @@
+{
+  "version": "0.1.0",
+  "generated_at": "2026-06-15T11:00:00Z",
+  "total_tools": 132,
+  "tools": [
+    {
+      "name": "super_memory_remember",
+      "category": "core",
+      "description": "Save a memory through Super Memory canonical-first layer order.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "default": "context"
+          },
+          "scope": {
+            "type": "string",
+            "default": "session"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "trust_score": {
+            "type": "number"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_remember_batch",
+      "category": "core",
+      "description": "Save multiple memories through the same canonical-first layer order; partial failures stay per item.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memories": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "maxItems": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memories"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_show",
+      "category": "core",
+      "description": "Show a memory by id across derived Super Memory layers without changing canonical markdown.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_context",
+      "category": "core",
+      "description": "Get recent or query-relevant Super Memory context from the merged layer view.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "default": ""
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_todo",
+      "category": "core",
+      "description": "Save a TODO memory through canonical-first layer order.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer",
+            "default": 5
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "task"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_auto",
+      "category": "core",
+      "description": "Extract simple memory candidates from text and optionally save them canonical-first.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "save": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_stats",
+      "category": "core",
+      "description": "Alias of status for neural-memory-style stats consumers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_diagnostics",
+      "category": "core",
+      "description": "Phase 8 diagnostics dashboard for canonical-first, sqlite, graph, lifecycle, and safe optional states.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_memory_slot_contract",
+      "category": "other",
+      "description": "Run Phase 8 memory-slot replacement contract: save/search/get/show/graph projection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_mcp_contract",
+      "category": "other",
+      "description": "Verify MCP stdio tools/list exposure for required Super Memory tools.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "default": "admin"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_supervised_runtime_smoke",
+      "category": "other",
+      "description": "Run local supervised no-live-config Phase 8 runtime smoke.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_health",
+      "category": "core",
+      "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sanitize_prompt",
+      "category": "core",
+      "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sanitize_auto_capture",
+      "category": "core",
+      "description": "Sanitize text before auto-capture storage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_normalize_memory",
+      "category": "core",
+      "description": "Normalize a memory payload schema without saving it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory": {
+            "type": "object"
+          },
+          "auto_capture": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "memory"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_recall",
+      "category": "core",
+      "description": "Recall memories from Super Memory layers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_prefetch",
+      "category": "core",
+      "description": "Merged/deduped Super Memory recall for prompt prefetch.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sync_turn",
+      "category": "core",
+      "description": "Save a compact multi-agent conversation turn event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "user_message": {
+            "type": "string"
+          },
+          "assistant_message": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_memory_search",
+      "category": "core",
+      "description": "OpenClaw memory_search-compatible recall payload from Super Memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 5
+          },
+          "min_score": {
+            "type": "number",
+            "default": 0
+          },
+          "corpus": {
+            "type": "string",
+            "default": "all"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_memory_get",
+      "category": "core",
+      "description": "OpenClaw memory_get-compatible read from Super Memory virtual paths or workspace files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "from_line": {
+            "type": "integer",
+            "default": 1
+          },
+          "lines": {
+            "type": "integer",
+            "default": 20
+          },
+          "corpus": {
+            "type": "string",
+            "default": "all"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_promote",
+      "category": "core",
+      "description": "Promote a memory to MEMORY.md and the matching register.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_status",
+      "category": "core",
+      "description": "Show Super Memory local status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_palace_search",
+      "category": "mempalace",
+      "description": "Search memories within spatial scope (wing/room/hall)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "wing": {
+            "type": "string",
+            "description": "Filter by palace wing (e.g. project name)"
+          },
+          "room": {
+            "type": "string",
+            "description": "Filter by room (e.g. session or type)"
+          },
+          "hall": {
+            "type": "string",
+            "description": "Filter by hall (facts, events, decisions, etc.)"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_load_layer",
+      "category": "mempalace",
+      "description": "Load a specific memory layer (1=verbatim, 2=structured, 3=spatial, 4=compressed)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "layer": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4,
+            "description": "Layer number 1-4"
+          },
+          "query": {
+            "type": "string",
+            "description": "Query for layers 2 and 4"
+          },
+          "wing": {
+            "type": "string",
+            "description": "Wing filter for layer 3"
+          },
+          "room": {
+            "type": "string",
+            "description": "Room filter for layer 3"
+          },
+          "hall": {
+            "type": "string",
+            "description": "Hall filter for layer 3"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          }
+        },
+        "required": [
+          "layer"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_wings",
+      "category": "mempalace",
+      "description": "List all palace wings with memory counts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_rooms",
+      "category": "mempalace",
+      "description": "List palace rooms, optionally filtered by wing",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "wing": {
+            "type": "string",
+            "description": "Filter by wing"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_halls",
+      "category": "mempalace",
+      "description": "List palace halls, optionally filtered by wing/room",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "wing": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_drawers",
+      "category": "mempalace",
+      "description": "List palace drawers with optional spatial filters",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "wing": {
+            "type": "string"
+          },
+          "room": {
+            "type": "string"
+          },
+          "hall": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_summary",
+      "category": "mempalace",
+      "description": "Quick spatial overview (wings/rooms/halls/drawers counts)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_startup_context",
+      "category": "mempalace",
+      "description": "Generate minimal startup context (target ≤200 tokens)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 500,
+            "default": 200
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_palace_extract",
+      "category": "mempalace",
+      "description": "Extract entities, concepts, domains, and relationships from text",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to analyze"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_ask",
+      "category": "honcho",
+      "description": "Ask about a peer using local Honcho peer model, conclusions, and messages",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "about_peer": {
+            "type": "string",
+            "default": "boss"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_context",
+      "category": "honcho",
+      "description": "Build Honcho-style session context block",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 1000
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_profile",
+      "category": "honcho",
+      "description": "Read or update local Honcho peer profile",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "role": {
+            "type": "string",
+            "default": "human"
+          },
+          "facts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "merge": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_conclude",
+      "category": "honcho",
+      "description": "Create/list/delete conclusions about a peer",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "about_peer": {
+            "type": "string",
+            "default": "boss"
+          },
+          "delete_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_search",
+      "category": "honcho",
+      "description": "Search local Honcho messages and conclusions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "peer_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_analyze_turn",
+      "category": "honcho",
+      "description": "Run dialectic analysis on a turn and optionally update peer model",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user_message": {
+            "type": "string"
+          },
+          "assistant_message": {
+            "type": "string"
+          },
+          "peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3,
+            "default": 2
+          },
+          "save": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "user_message"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_honcho_sessions",
+      "category": "honcho",
+      "description": "List Honcho sessions with event counts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "default": "openclaw"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_recall",
+      "category": "cross_agent",
+      "description": "Query memories by agent",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query",
+          "agent_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_honcho_ask",
+      "category": "cross_agent",
+      "description": "Query Honcho events by observer agent",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "observer_agent": {
+            "type": "string"
+          },
+          "about_peer": {
+            "type": "string",
+            "default": "boss"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query",
+          "observer_agent"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_summary",
+      "category": "cross_agent",
+      "description": "Agent activity summary",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "days": {
+            "type": "integer",
+            "default": 30
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_compare",
+      "category": "cross_agent",
+      "description": "Compare two agents' knowledge",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_a": {
+            "type": "string"
+          },
+          "agent_b": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "agent_a",
+          "agent_b",
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_list_agents",
+      "category": "cross_session",
+      "description": "List all agent IDs",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_timeline",
+      "category": "session",
+      "description": "Timeline of Honcho events for a session",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_list",
+      "category": "session",
+      "description": "List Honcho sessions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_evolution",
+      "category": "session",
+      "description": "Peer evolution across sessions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_search",
+      "category": "session",
+      "description": "Search Honcho session events",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_capture_event",
+      "category": "cross_session",
+      "description": "Capture a Honcho event",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "observer_peer_id": {
+            "type": "string",
+            "default": "agent"
+          },
+          "observed_peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "workspace": {
+            "type": "string",
+            "default": "openclaw"
+          },
+          "source": {
+            "type": "string",
+            "default": "capture_hook"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "analyze": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_capture_turn",
+      "category": "cross_session",
+      "description": "Capture a user/assistant turn",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user_message": {
+            "type": "string"
+          },
+          "assistant_message": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "observer_peer_id": {
+            "type": "string",
+            "default": "agent"
+          },
+          "observed_peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "analyze": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "user_message"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_create_handoff",
+      "category": "other",
+      "description": "Create an agent handoff bundle",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from_agent": {
+            "type": "string"
+          },
+          "to_agent": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          },
+          "memory_limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "context": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "from_agent",
+          "to_agent",
+          "title",
+          "summary"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_get_handoff",
+      "category": "other",
+      "description": "Retrieve a handoff bundle",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bundle_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_list_handoffs",
+      "category": "other",
+      "description": "List handoff bundles",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to_agent": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_update_handoff_status",
+      "category": "other",
+      "description": "Update handoff status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bundle_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "status"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_auto_handoff_on_spawn",
+      "category": "core",
+      "description": "Create a spawn handoff with extra context",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from_agent": {
+            "type": "string"
+          },
+          "to_agent": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "object"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "context_files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "memory_limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "from_agent",
+          "to_agent",
+          "objective"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_load_current_handoff",
+      "category": "other",
+      "description": "Load latest open handoff for an agent",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_complete_handoff_with_outcome",
+      "category": "other",
+      "description": "Complete handoff and record outcome",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bundle_id": {
+            "type": "string"
+          },
+          "outcome_summary": {
+            "type": "string"
+          },
+          "created_artifacts_json": {},
+          "proof_status": {
+            "type": "string",
+            "default": "unknown"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "outcome_summary"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_session_synthesis",
+      "category": "cross_session",
+      "description": "Synthesize Honcho events across sessions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "peer_id": {
+            "type": "string",
+            "default": "boss"
+          },
+          "window_days": {
+            "type": "integer",
+            "default": 30
+          },
+          "depth": {
+            "type": "integer",
+            "default": 2
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_shared_recall",
+      "category": "cross_session",
+      "description": "Recall shared-scope memories",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_promote_to_shared",
+      "category": "core",
+      "description": "Promote a memory to shared scope",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_conflicts",
+      "category": "cross_agent",
+      "description": "List/check/resolve cross-agent conflicts",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "list"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "conflict_id": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_post_turn_capture",
+      "category": "p0_p5",
+      "description": "Capture a completed turn into Honcho events",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "user_message": {
+            "type": "string"
+          },
+          "assistant_message": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_message",
+          "assistant_message",
+          "session_id",
+          "agent_id",
+          "workspace"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_start_context",
+      "category": "session",
+      "description": "Load bounded startup context",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          },
+          "peer_id": {
+            "type": "string"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 800
+          }
+        },
+        "required": [
+          "session_id",
+          "agent_id",
+          "peer_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_end_summary",
+      "category": "session",
+      "description": "Summarize and close a session",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "agent_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_delegation_handoff",
+      "category": "p0_p5",
+      "description": "Create a delegation handoff bundle",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from_agent": {
+            "type": "string"
+          },
+          "to_agent": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "constraints": {
+            "type": "object"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_agent",
+          "to_agent",
+          "objective",
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_scope_recall",
+      "category": "p0_p5",
+      "description": "Hybrid recall across markdown, Honcho, MemPalace, and graph layers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "agent_scope": {
+            "type": "string",
+            "default": "current"
+          },
+          "session_scope": {
+            "type": "string",
+            "default": "recent"
+          },
+          "source_layers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 2000
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_extract_claims",
+      "category": "p0_p5",
+      "description": "Extract subject-predicate-object claims from a memory",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_find_contradictions",
+      "category": "p0_p5",
+      "description": "Find opposing claims across agents",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "required": [
+          "topic"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_resolve_contradiction",
+      "category": "p0_p5",
+      "description": "Resolve a claim contradiction",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "claim_a_id": {
+            "type": "string"
+          },
+          "claim_b_id": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_a_id",
+          "claim_b_id",
+          "resolution"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_agent_belief_report",
+      "category": "p0_p5",
+      "description": "List claims held by an agent on a topic",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "required": [
+          "agent_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_create_session_summary",
+      "category": "p0_p5",
+      "description": "Create a compressed session archive",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "max_events": {
+            "type": "integer",
+            "default": 50
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_get_session_summary",
+      "category": "p0_p5",
+      "description": "Get one session archive summary",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_list_session_summaries",
+      "category": "p0_p5",
+      "description": "List recent session summaries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_search_session_archives",
+      "category": "p0_p5",
+      "description": "Search archived session summaries",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "offset": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_timeline_view",
+      "category": "session",
+      "description": "View session as raw, summary, decisions, or blockers",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "default": "summarized"
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_agent_report",
+      "category": "cross_agent",
+      "description": "Per-agent activity report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "default": 7
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_session_health",
+      "category": "session",
+      "description": "Session health report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_memory_pollution_report",
+      "category": "p0_p5",
+      "description": "Memory pollution and quality report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_export_memory_graph",
+      "category": "p0_p5",
+      "description": "Export memory graph",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "default": "json"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_conflicts",
+      "category": "knowledge_mgmt",
+      "description": "Detect/list deterministic conflict candidates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_provenance",
+      "category": "knowledge_mgmt",
+      "description": "Trace/verify/approve memory provenance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "default": "trace"
+          },
+          "actor": {
+            "type": "string",
+            "default": "super-memory"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_source",
+      "category": "knowledge_mgmt",
+      "description": "Register an external source metadata record.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_version",
+      "category": "knowledge_mgmt",
+      "description": "Create/list lightweight memory version snapshots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "create"
+          },
+          "name": {
+            "type": "string",
+            "default": "snapshot"
+          },
+          "description": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_pin",
+      "category": "knowledge_mgmt",
+      "description": "Record pin/unpin intent for a memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "default": "pin"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_consolidate",
+      "category": "knowledge_mgmt",
+      "description": "Record a safe non-destructive consolidation event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "default": "all"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_gaps",
+      "category": "knowledge_mgmt",
+      "description": "Detect/record a knowledge gap event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "default": "detect"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_explain",
+      "category": "knowledge_mgmt",
+      "description": "Explain relationship by merged recall path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from_entity": {
+            "type": "string"
+          },
+          "to_entity": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_situation",
+      "category": "knowledge_mgmt",
+      "description": "Return current memory situation summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_reflex",
+      "category": "knowledge_mgmt",
+      "description": "Record reflex pin/unpin intent for a memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "default": "pin"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_boundaries",
+      "category": "knowledge_mgmt",
+      "description": "List or save domain boundary memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "default": "global"
+          },
+          "content": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_train",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy train skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_import",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy import skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_index",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy index skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_sync",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy sync skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_telegram_backup",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy telegram_backup skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_visualize",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy visualize skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_store",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy store skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_watch",
+      "category": "knowledge_mgmt",
+      "description": "Phase 4 optional/heavy watch skeleton; disabled unless explicitly configured.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "params": {
+            "type": "object"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_working_memory_get",
+      "category": "routing",
+      "description": "Get Phase 6 short-lived working memory state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "default": "default"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_working_memory_set",
+      "category": "routing",
+      "description": "Set/merge Phase 6 short-lived working memory state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "default": "default"
+          },
+          "payload": {
+            "type": "object"
+          },
+          "ttl_seconds": {
+            "type": "integer"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_attention_score",
+      "category": "routing",
+      "description": "Score memory salience and routing signals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_route_memory",
+      "category": "routing",
+      "description": "Route a memory payload using deterministic Phase 6 attention policy.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_parallel_save",
+      "category": "routing",
+      "description": "Run Phase 6 working-memory plus canonical-first save/projection flow.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "payload": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_arbitrate",
+      "category": "core",
+      "description": "Recall from layers and explain layer arbitration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_consolidation_cycle",
+      "category": "routing",
+      "description": "Run a bounded deterministic Phase 6 consolidation report.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "string",
+            "default": "light"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_conflict_resolve",
+      "category": "routing",
+      "description": "Record a Phase 6 conflict resolution event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conflict_id": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conflict_id",
+          "resolution"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_promotion_candidates",
+      "category": "routing",
+      "description": "List deterministic promotion candidates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_feedback_outcome",
+      "category": "routing",
+      "description": "Record task/memory outcome feedback for learning.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean",
+            "default": true
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_graph_stats",
+      "category": "graph",
+      "description": "Show Layer 4 neuron/synapse/fiber counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_graph_neighbors",
+      "category": "graph",
+      "description": "List graph neighbors for a neuron or memory id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "default": "out"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_graph_recall",
+      "category": "graph",
+      "description": "Recall cognitive fibers from Layer 4 graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_spreading_activation_recall",
+      "category": "graph",
+      "description": "Neural-memory-style spreading activation recall through the cognitive graph.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "default": 2
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 20
+          },
+          "seed_limit": {
+            "type": "integer",
+            "default": 30
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "nmem_recall",
+      "category": "neural_passthrough",
+      "description": "Compatibility alias: neural-memory-style spreading activation recall.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "default": 2
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 20
+          },
+          "seed_limit": {
+            "type": "integer",
+            "default": 30
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_graph_rebuild",
+      "category": "graph",
+      "description": "Rebuild derived Layer 4 graph from SQLite memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_hypothesis_create",
+      "category": "cognitive",
+      "description": "Create a deterministic cognitive hypothesis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "default": 0.5
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_hypothesis_get",
+      "category": "cognitive",
+      "description": "Get hypothesis detail with evidence/predictions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hypothesis_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hypothesis_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_hypothesis_list",
+      "category": "cognitive",
+      "description": "List hypotheses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_evidence_add",
+      "category": "cognitive",
+      "description": "Add evidence for/against a hypothesis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "hypothesis_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "default": "for"
+          },
+          "weight": {
+            "type": "number",
+            "default": 0.5
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hypothesis_id",
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_prediction_create",
+      "category": "cognitive",
+      "description": "Create a falsifiable prediction.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "default": 0.7
+          },
+          "hypothesis_id": {
+            "type": "string"
+          },
+          "deadline": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_prediction_list",
+      "category": "cognitive",
+      "description": "List predictions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_verify_prediction",
+      "category": "cognitive",
+      "description": "Verify a prediction as correct/wrong.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prediction_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prediction_id",
+          "outcome"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_lifecycle_review",
+      "category": "lifecycle",
+      "description": "Review lifecycle hygiene.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_lifecycle_cache",
+      "category": "lifecycle",
+      "description": "Manage local activation cache status/save/load/clear.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "status"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_lifecycle_tier",
+      "category": "lifecycle",
+      "description": "Evaluate/apply deterministic memory tiers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "evaluate"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_lifecycle_compression",
+      "category": "lifecycle",
+      "description": "Review/mark compression candidates without truncating content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "review"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_reflex_status",
+      "category": "knowledge_mgmt",
+      "description": "Show reflex audit events and missing refs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_train_local",
+      "category": "knowledge_mgmt",
+      "description": "Train from local text/rich docs under workspace only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "domain_tag": {
+            "type": "string",
+            "default": "local"
+          },
+          "recursive": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "save": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_index_local",
+      "category": "knowledge_mgmt",
+      "description": "Index code symbols/imports under workspace only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recursive": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "save": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_index_status",
+      "category": "knowledge_mgmt",
+      "description": "Show local code index manifest status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_import_local",
+      "category": "knowledge_mgmt",
+      "description": "Import local markdown/text/json/jsonl under workspace only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string",
+            "default": "local-import"
+          },
+          "recursive": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "save": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_watch_scan",
+      "category": "knowledge_mgmt",
+      "description": "One-shot file watch scan; no daemon.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directory": {
+            "type": "string"
+          },
+          "recursive": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "save": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "directory"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_sync_status",
+      "category": "knowledge_mgmt",
+      "description": "Show sync status only; cloud disabled.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_store_status",
+      "category": "knowledge_mgmt",
+      "description": "Show store status only; community store disabled.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    }
+  ]
+}

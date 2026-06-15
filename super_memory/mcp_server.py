@@ -8,6 +8,19 @@ import traceback
 from typing import Any, Callable
 
 from . import bridge
+from .config import load_config
+from .mempalace.tools import MemPalaceTools, MEMPALACE_TOOLS
+from .honcho.tools import HonchoTools, HONCHO_TOOLS
+from .cross_agent import CrossAgentTools, CROSS_AGENT_TOOLS
+from .session_timeline import SessionTimelineTools, SESSION_TIMELINE_TOOLS
+from .capture_hook import CaptureHook, CAPTURE_HOOK_TOOLS
+from .handoff import HandoffTools, HANDOFF_TOOLS
+from .synthesis import SynthesisTools, SYNTHESIS_TOOLS
+from .hooks import HookManager, HOOKS_TOOLS
+from .hybrid_recall import HybridRecall, HYBRID_RECALL_TOOLS
+from .claim_extractor import ClaimExtractor, CLAIM_EXTRACTOR_TOOLS
+from .session_archive import SessionArchive, SESSION_ARCHIVE_TOOLS
+from .reports import Reports, REPORTS_TOOLS
 
 JSON = dict[str, Any]
 
@@ -68,6 +81,8 @@ ADVANCED_TOOLS = {
     "super_memory_graph_stats",
     "super_memory_graph_neighbors",
     "super_memory_graph_recall",
+    "super_memory_spreading_activation_recall",
+    "nmem_recall",
     "super_memory_graph_rebuild",
     "super_memory_hypothesis_create",
     "super_memory_hypothesis_get",
@@ -81,7 +96,27 @@ ADVANCED_TOOLS = {
     "super_memory_lifecycle_tier",
     "super_memory_lifecycle_compression",
     "super_memory_reflex_status",
+    # MemPalace Phase 1 tools
+    "super_memory_palace_search",
+    "super_memory_palace_load_layer",
+    "super_memory_palace_wings",
+    "super_memory_palace_rooms",
+    "super_memory_palace_halls",
+    "super_memory_palace_drawers",
+    "super_memory_palace_summary",
+    "super_memory_palace_startup_context",
+    "super_memory_palace_extract",
+    # Honcho Phase 2 tools
+    "super_memory_honcho_ask",
+    "super_memory_honcho_context",
+    "super_memory_honcho_profile",
+    "super_memory_honcho_conclude",
+    "super_memory_honcho_search",
+    "super_memory_honcho_analyze_turn",
+    "super_memory_honcho_sessions",
     "super_memory_train_local",
+    "super_memory_index_local",
+    "super_memory_index_status",
     "super_memory_import_local",
     "super_memory_watch_scan",
     "super_memory_sync_status",
@@ -90,6 +125,48 @@ ADVANCED_TOOLS = {
     "super_memory_memory_slot_contract",
     "super_memory_mcp_contract",
     "super_memory_supervised_runtime_smoke",
+    # Cross-agent / cross-session Phase A+B+C tools
+    "super_memory_cross_agent_recall",
+    "super_memory_cross_agent_honcho_ask",
+    "super_memory_cross_agent_summary",
+    "super_memory_cross_agent_compare",
+    "super_memory_list_agents",
+    "super_memory_session_timeline",
+    "super_memory_session_list",
+    "super_memory_session_evolution",
+    "super_memory_session_search",
+    "super_memory_capture_event",
+    "super_memory_capture_turn",
+    "super_memory_create_handoff",
+    "super_memory_get_handoff",
+    "super_memory_list_handoffs",
+    "super_memory_update_handoff_status",
+    "super_memory_cross_session_synthesis",
+    "super_memory_shared_recall",
+    "super_memory_promote_to_shared",
+    "super_memory_cross_agent_conflicts",
+    # P0-P5 Optimization tools
+    "super_memory_post_turn_capture",
+    "super_memory_session_start_context",
+    "super_memory_session_end_summary",
+    "super_memory_delegation_handoff",
+    "super_memory_cross_scope_recall",
+    "super_memory_extract_claims",
+    "super_memory_find_contradictions",
+    "super_memory_resolve_contradiction",
+    "super_memory_agent_belief_report",
+    "super_memory_create_session_summary",
+    "super_memory_get_session_summary",
+    "super_memory_list_session_summaries",
+    "super_memory_search_session_archives",
+    "super_memory_session_timeline_view",
+    "super_memory_auto_handoff_on_spawn",
+    "super_memory_load_current_handoff",
+    "super_memory_complete_handoff_with_outcome",
+    "super_memory_cross_agent_report",
+    "super_memory_session_health",
+    "super_memory_memory_pollution_report",
+    "super_memory_export_memory_graph",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -278,6 +355,12 @@ TOOLS: dict[str, JSON] = {
     },
 }
 
+for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
+    TOOLS[_tool["name"]] = {
+        "description": _tool["description"],
+        "inputSchema": _tool["inputSchema"],
+    }
+
 for _name, _desc, _props in [
     ("super_memory_conflicts", "Detect/list deterministic conflict candidates.", {"content": {"type": "string"}, "memory_id": {"type": "string"}, "config_path": {"type": "string"}}),
     ("super_memory_provenance", "Trace/verify/approve memory provenance.", {"memory_id": {"type": "string"}, "action": {"type": "string", "default": "trace"}, "actor": {"type": "string", "default": "super-memory"}, "config_path": {"type": "string"}}),
@@ -318,6 +401,8 @@ for _name, _desc, _props, _required in [
     ("super_memory_graph_stats", "Show Layer 4 neuron/synapse/fiber counts.", {"config_path": {"type": "string"}}, []),
     ("super_memory_graph_neighbors", "List graph neighbors for a neuron or memory id.", {"id": {"type": "string"}, "direction": {"type": "string", "default": "out"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, ["id"]),
     ("super_memory_graph_recall", "Recall cognitive fibers from Layer 4 graph.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_spreading_activation_recall", "Neural-memory-style spreading activation recall through the cognitive graph.", {"query": {"type": "string"}, "depth": {"type": "integer", "default": 2}, "top_k": {"type": "integer", "default": 20}, "seed_limit": {"type": "integer", "default": 30}, "config_path": {"type": "string"}}, ["query"]),
+    ("nmem_recall", "Compatibility alias: neural-memory-style spreading activation recall.", {"query": {"type": "string"}, "depth": {"type": "integer", "default": 2}, "top_k": {"type": "integer", "default": 20}, "seed_limit": {"type": "integer", "default": 30}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_graph_rebuild", "Rebuild derived Layer 4 graph from SQLite memories.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_hypothesis_create", "Create a deterministic cognitive hypothesis.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.5}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
     ("super_memory_hypothesis_get", "Get hypothesis detail with evidence/predictions.", {"hypothesis_id": {"type": "string"}, "config_path": {"type": "string"}}, ["hypothesis_id"]),
@@ -331,7 +416,9 @@ for _name, _desc, _props, _required in [
     ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_train_local", "Train from local markdown/text under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
+    ("super_memory_train_local", "Train from local text/rich docs under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
+    ("super_memory_index_local", "Index code symbols/imports under workspace only.", {"path": {"type": "string"}, "extensions": {"type": "array", "items": {"type": "string"}}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
+    ("super_memory_index_status", "Show local code index manifest status.", {"config_path": {"type": "string"}}, []),
     ("super_memory_import_local", "Import local markdown/text/json/jsonl under workspace only.", {"path": {"type": "string"}, "source_name": {"type": "string", "default": "local-import"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
     ("super_memory_watch_scan", "One-shot file watch scan; no daemon.", {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["directory"]),
     ("super_memory_sync_status", "Show sync status only; cloud disabled.", {"config_path": {"type": "string"}}, []),
@@ -470,6 +557,11 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.graph_neighbors(args["id"], direction=args.get("direction", "out"), limit=args.get("limit", 20), config_path=args.get("config_path"))
     if name == "super_memory_graph_recall":
         return bridge.graph_recall(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_spreading_activation_recall":
+        return bridge.spreading_activation_recall(args["query"], depth=args.get("depth", 2), top_k=args.get("top_k", 20), seed_limit=args.get("seed_limit", 30), config_path=args.get("config_path"))
+    if name == "nmem_recall":
+        result = bridge.spreading_activation_recall(args["query"], depth=args.get("depth", 2), top_k=args.get("top_k", 20), seed_limit=args.get("seed_limit", 30), config_path=args.get("config_path"))
+        return {"answer": result.get("results", []), "confidence": 1.0 if result.get("results") else 0.0, "neurons_activated": result.get("total_activated", 0), "depth_used": result.get("depth", args.get("depth", 2)), "elapsed_ms": result.get("elapsed_ms", 0), "raw": result}
     if name == "super_memory_graph_rebuild":
         return bridge.graph_rebuild(limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_hypothesis_create":
@@ -498,6 +590,10 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.reflex_status(config_path=args.get("config_path"))
     if name == "super_memory_train_local":
         return bridge.train_local(args["path"], domain_tag=args.get("domain_tag", "local"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
+    if name == "super_memory_index_local":
+        return bridge.index_local(args["path"], extensions=args.get("extensions"), recursive=args.get("recursive", True), limit=args.get("limit", 500), save=args.get("save", True), config_path=args.get("config_path"))
+    if name == "super_memory_index_status":
+        return bridge.index_status(config_path=args.get("config_path"))
     if name == "super_memory_import_local":
         return bridge.import_local(args["path"], source_name=args.get("source_name", "local-import"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
     if name == "super_memory_watch_scan":
@@ -506,6 +602,83 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.sync_status(config_path=args.get("config_path"))
     if name == "super_memory_store_status":
         return bridge.store_status(config_path=args.get("config_path"))
+
+    # Cross-agent / cross-session Phase A+B+C tools
+    phase_abc = {
+        "super_memory_cross_agent_recall": (CrossAgentTools, "cross_agent_recall"),
+        "super_memory_cross_agent_honcho_ask": (CrossAgentTools, "cross_agent_honcho_ask"),
+        "super_memory_cross_agent_summary": (CrossAgentTools, "cross_agent_summary"),
+        "super_memory_cross_agent_compare": (CrossAgentTools, "cross_agent_compare"),
+        "super_memory_list_agents": (CrossAgentTools, "list_agents"),
+        "super_memory_session_timeline": (SessionTimelineTools, "session_timeline"),
+        "super_memory_session_list": (SessionTimelineTools, "session_list"),
+        "super_memory_session_evolution": (SessionTimelineTools, "session_evolution"),
+        "super_memory_session_search": (SessionTimelineTools, "session_search"),
+        "super_memory_capture_event": (CaptureHook, "capture_event"),
+        "super_memory_capture_turn": (CaptureHook, "capture_turn"),
+        "super_memory_create_handoff": (HandoffTools, "create_handoff"),
+        "super_memory_get_handoff": (HandoffTools, "get_handoff"),
+        "super_memory_list_handoffs": (HandoffTools, "list_handoffs"),
+        "super_memory_update_handoff_status": (HandoffTools, "update_handoff_status"),
+        "super_memory_cross_session_synthesis": (SynthesisTools, "cross_session_synthesis"),
+        "super_memory_shared_recall": (SynthesisTools, "shared_recall"),
+        "super_memory_promote_to_shared": (SynthesisTools, "promote_to_shared"),
+        "super_memory_cross_agent_conflicts": (SynthesisTools, "cross_agent_conflicts"),
+    }
+    if name in phase_abc:
+        config_path = args.pop("config_path", None)
+        cls, method = phase_abc[name]
+        return getattr(cls(load_config(config_path)), method)(**args)
+
+    # P0-P5 Optimization tools
+    phase_p0_p5 = {
+        "super_memory_post_turn_capture": (HookManager, "post_turn_capture"),
+        "super_memory_session_start_context": (HookManager, "session_start_context"),
+        "super_memory_session_end_summary": (HookManager, "session_end_summary"),
+        "super_memory_delegation_handoff": (HookManager, "delegation_handoff"),
+        "super_memory_cross_scope_recall": (HybridRecall, "cross_scope_recall"),
+        "super_memory_extract_claims": (ClaimExtractor, "extract_claims_from_memory"),
+        "super_memory_find_contradictions": (ClaimExtractor, "find_contradictions"),
+        "super_memory_resolve_contradiction": (ClaimExtractor, "resolve_contradiction"),
+        "super_memory_agent_belief_report": (ClaimExtractor, "agent_belief_report"),
+        "super_memory_create_session_summary": (SessionArchive, "create_session_summary"),
+        "super_memory_get_session_summary": (SessionArchive, "get_session_summary"),
+        "super_memory_list_session_summaries": (SessionArchive, "list_session_summaries"),
+        "super_memory_search_session_archives": (SessionArchive, "search_session_archives"),
+        "super_memory_session_timeline_view": (SessionArchive, "session_timeline_view"),
+        "super_memory_auto_handoff_on_spawn": (HandoffTools, "auto_handoff_on_spawn"),
+        "super_memory_load_current_handoff": (HandoffTools, "load_current_handoff"),
+        "super_memory_complete_handoff_with_outcome": (HandoffTools, "complete_handoff_with_outcome"),
+        "super_memory_cross_agent_report": (Reports, "cross_agent_report"),
+        "super_memory_session_health": (Reports, "session_health"),
+        "super_memory_memory_pollution_report": (Reports, "memory_pollution_report"),
+        "super_memory_export_memory_graph": (Reports, "export_memory_graph"),
+    }
+    if name in phase_p0_p5:
+        config_path = args.pop("config_path", None)
+        cls, method = phase_p0_p5[name]
+        return getattr(cls(load_config(config_path)), method)(**args)
+
+    # Phase 1 MemPalace tools
+    if name.startswith("super_memory_palace_"):
+        config_path = args.pop("config_path", None)
+        config = load_config(config_path)
+        tools = MemPalaceTools(config)
+        action = name.replace("super_memory_palace_", "palace_")
+        if not hasattr(tools, action):
+            raise ValueError(f"unknown MemPalace action: {action}")
+        return getattr(tools, action)(**args)
+
+    # Phase 2 Honcho tools
+    if name.startswith("super_memory_honcho_"):
+        config_path = args.pop("config_path", None)
+        config = load_config(config_path)
+        tools = HonchoTools(config)
+        action = name.replace("super_memory_honcho_", "honcho_")
+        if not hasattr(tools, action):
+            raise ValueError(f"unknown Honcho action: {action}")
+        return getattr(tools, action)(**args)
+
     raise ValueError(f"unknown tool: {name}")
 
 

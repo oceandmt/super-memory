@@ -7,6 +7,7 @@ from typing import Any
 from uuid import uuid4
 
 from .config import load_config
+from .consolidation import consolidate_real
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
 from .sanitize import normalize_memory_payload, sanitize_prompt
@@ -124,7 +125,10 @@ def situation(config_path: str | None = None) -> dict[str, Any]:
 
 
 def consolidate(strategy: str = "all", dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
-    return _event(config_path, "consolidate", strategy, {"strategy": strategy, "dry_run": dry_run, "note": "skeleton only; no destructive consolidation"})
+    result = consolidate_real(strategy=strategy, dry_run=dry_run, config_path=config_path)
+    if not dry_run:
+        _event(config_path, "consolidate", strategy, {"strategy": strategy, "dry_run": dry_run, "summary": {"merged": len(result.get("merged", [])), "contradictions": len(result.get("contradictions", [])), "semantic_created": len(result.get("semantic_created", []))}})
+    return result
 
 
 def heavy_optional(action: str, **kwargs: Any) -> dict[str, Any]:

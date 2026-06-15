@@ -59,7 +59,7 @@ If `--sandbox-id` is omitted, the harness creates a fresh sandbox with the reque
 - installs OpenClaw inside the sandbox if `openclaw` is missing
 - installs Python dev dependencies in `/workspace/super-memory/.venv`
 - starts the Super Memory API on sandbox loopback `127.0.0.1:8765`
-- writes sandbox-only OpenClaw profile config at `/root/.openclaw-smtest/openclaw.json`
+- writes sandbox-only OpenClaw profile config at `${OPENCLAW_HOME}-smtest/openclaw.json`
 - fixes plugin ownership to root inside the sandbox so OpenClaw does not block the local plugin path
 - runs `openclaw --profile smtest config validate`
 - runs `openclaw --profile smtest plugins doctor`
