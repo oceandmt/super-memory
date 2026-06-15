@@ -68,6 +68,10 @@ class SuperMemoryStore:
 
 
 def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
+    metadata = json.loads(row["metadata_json"])
+    # Preserve pending_canonical_sync flag in metadata if present
+    if "pending_canonical_sync" in row.keys() and row["pending_canonical_sync"]:
+        metadata["pending_canonical_sync"] = True
     return MemoryRecord(
         id=row["id"],
         content=row["content"],
@@ -80,5 +84,5 @@ def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
         source=row["source"],
         trust_score=row["trust_score"],
         created_at=datetime.fromisoformat(row["created_at"]),
-        metadata=json.loads(row["metadata_json"]),
+        metadata=metadata,
     )

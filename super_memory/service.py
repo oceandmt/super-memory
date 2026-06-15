@@ -87,15 +87,21 @@ class SuperMemoryService:
         """
 
         flushed: dict[str, list[SaveResult]] = {}
-        for layer in (MemoryLayer.MEMPALACE, MemoryLayer.HONCHO, MemoryLayer.NEURAL_MEMORY):
+        seen: set[str] = set()
+        pending_layers = (MemoryLayer.MEMPALACE, MemoryLayer.HONCHO, MemoryLayer.NEURAL_MEMORY)
+        for layer in pending_layers:
             if layer not in self.config.enabled_layers:
                 continue
             pending = self.store.get_pending_sync(layer)
             for rec in pending:
+                if rec.id in seen:
+                    continue
+                seen.add(rec.id)
                 try:
                     result = self.backends[MemoryLayer.WORKSPACE_MARKDOWN].save(rec)
                     if result.ok:
-                        self.store.clear_pending_sync(rec.id, layer)
+                        for pending_layer in pending_layers:
+                            self.store.clear_pending_sync(rec.id, pending_layer)
                 except Exception as exc:
                     result = SaveResult(
                         layer=MemoryLayer.WORKSPACE_MARKDOWN,
