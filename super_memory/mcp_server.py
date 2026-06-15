@@ -737,6 +737,7 @@ def handle(request: JSON) -> JSON | None:
 
 
 def serve() -> None:
+    DEBUG = os.environ.get("SUPER_MEMORY_MCP_DEBUG", "0") in ("1", "true", "yes")
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -745,7 +746,8 @@ def serve() -> None:
             request = json.loads(line)
             response = handle(request)
         except Exception as exc:  # keep MCP transport alive and report as JSON-RPC error
-            response = _error(None, -32000, str(exc), traceback.format_exc())
+            data = traceback.format_exc() if DEBUG else f"{type(exc).__name__}: {exc}"
+            response = _error(None, -32000, str(exc), data)
         if response is not None:
             sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
             sys.stdout.flush()

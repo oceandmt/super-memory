@@ -84,89 +84,18 @@ class SQLiteLayerBackend(MemoryBackend):
         return conn
 
     def _init_db(self) -> None:
+        # Use schema.sql as single source of truth for table definitions.
+        # run_migrations() handles CREATE IF NOT EXISTS + additive ALTERs.
+        from .migrations import run_migrations
+        run_migrations(self.config)
         with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS memories (
-                    id TEXT NOT NULL,
-                    layer TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    scope TEXT NOT NULL,
-                    agent_id TEXT NOT NULL,
-                    session_id TEXT,
-                    project TEXT,
-                    tags_json TEXT NOT NULL,
-                    source TEXT,
-                    trust_score REAL,
-                    created_at TEXT NOT NULL,
-                    metadata_json TEXT NOT NULL,
-                    pending_canonical_sync INTEGER DEFAULT 0,
-                    PRIMARY KEY (id, layer)
-                )
-                """
-            )
+            # FTS5 is not in schema.sql (virtual table, tool-specific)
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
             try:
                 conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
             except sqlite3.OperationalError as exc:
                 if "duplicate column" not in str(exc).lower():
                     raise
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_layer ON memories(layer)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_agent ON memories(agent_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(scope)")
-            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS palace_drawers (
-                    id TEXT PRIMARY KEY,
-                    memory_id TEXT NOT NULL,
-                    wing TEXT NOT NULL,
-                    room TEXT NOT NULL,
-                    hall TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    checksum TEXT NOT NULL,
-                    source TEXT,
-                    metadata_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_palace_checksum ON palace_drawers(checksum)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_palace_scope ON palace_drawers(wing, room, hall)")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS honcho_events (
-                    id TEXT PRIMARY KEY,
-                    memory_id TEXT NOT NULL,
-                    workspace TEXT NOT NULL,
-                    session_id TEXT,
-                    observer_peer_id TEXT NOT NULL,
-                    observed_peer_id TEXT,
-                    content TEXT NOT NULL,
-                    source TEXT,
-                    metadata_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_honcho_session ON honcho_events(workspace, session_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_honcho_peer ON honcho_events(observer_peer_id, observed_peer_id)")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS graph_edges (
-                    id TEXT PRIMARY KEY,
-                    source_memory_id TEXT NOT NULL,
-                    target_memory_id TEXT NOT NULL,
-                    relation TEXT NOT NULL,
-                    weight REAL NOT NULL,
-                    confidence REAL,
-                    metadata_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_source ON graph_edges(source_memory_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_graph_target ON graph_edges(target_memory_id)")
 
     def save(self, record: MemoryRecord) -> SaveResult:
         tags = record.normalized_tags()
@@ -195,10 +124,14 @@ class SQLiteLayerBackend(MemoryBackend):
                     1 if pending_sync else 0,
                 ),
             )
-            conn.execute(
-                "INSERT INTO memories_fts(rowid, id, layer, content, tags) VALUES ((SELECT rowid FROM memories WHERE id=? AND layer=?), ?, ?, ?, ?)",
-                (record.id, self.layer.value, record.id, self.layer.value, record.content, " ".join(tags)),
-            )
+            # Fetch rowid after upsert, delete old FTS row to prevent duplicates
+            row = conn.execute("SELECT rowid FROM memories WHERE id = ? AND layer = ?", (record.id, self.layer.value)).fetchone()
+            if row:
+                conn.execute("DELETE FROM memories_fts WHERE rowid = ?", (row["rowid"],))
+                conn.execute(
+                    "INSERT INTO memories_fts(rowid, id, layer, content, tags) VALUES (?, ?, ?, ?, ?)",
+                    (row["rowid"], record.id, self.layer.value, record.content, " ".join(tags)),
+                )
             if self.layer == MemoryLayer.MEMPALACE:
                 self._save_palace_projection(conn, record, tags)
             elif self.layer == MemoryLayer.HONCHO:
@@ -277,18 +210,67 @@ class SQLiteLayerBackend(MemoryBackend):
                 ),
             )
 
+    @staticmethod
+    def _fts_safe_query(raw: str) -> str:
+        """Escape special FTS characters so they don't break MATCH parsing.
+        Falls back to LIKE-compatible plain text if needed.
+        """
+        for ch in ('"', '*', ':', '(', ')', '+', '-', '~', '<', '>', '!'):
+            if ch in raw:
+                raw = raw.replace(ch, ' ')
+        raw = raw.strip()
+        if not raw:
+            return ''
+        # If query looks like it might be an FTS operator, wrap each word as literal
+        tokens = raw.split()
+        safe = ' '.join(f'"{t}"' for t in tokens if t and t.upper() not in ('NEAR', 'AND', 'OR', 'NOT'))
+        return safe or raw
+
     def recall(self, query: str, limit: int = 10) -> list[MemoryRecord]:
-        with self._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT m.* FROM memories_fts f
-                JOIN memories m ON m.rowid = f.rowid
-                WHERE f.memories_fts MATCH ? AND m.layer = ?
-                ORDER BY rank LIMIT ?
-                """,
-                (query, self.layer.value, limit),
-            ).fetchall()
+        fts_query = self._fts_safe_query(query)
         out: list[MemoryRecord] = []
+        with self._connect() as conn:
+            try:
+                if fts_query:
+                    rows = conn.execute(
+                        """
+                        SELECT m.* FROM memories_fts f
+                        JOIN memories m ON m.rowid = f.rowid
+                        WHERE f.memories_fts MATCH ? AND m.layer = ?
+                        ORDER BY rank LIMIT ?
+                        """,
+                        (fts_query, self.layer.value, limit),
+                    ).fetchall()
+                else:
+                    rows = []
+            except sqlite3.OperationalError:
+                # FTS parse failed — fall back to LIKE search
+                rows = conn.execute(
+                    """
+                    SELECT * FROM memories
+                    WHERE content LIKE ? AND layer = ?
+                    LIMIT ?
+                    """,
+                    (f"%{query}%", self.layer.value, limit),
+                ).fetchall()
+            for row in rows:
+                out.append(
+                    MemoryRecord(
+                        id=row["id"],
+                        content=row["content"],
+                        type=row["type"],
+                        scope=row["scope"],
+                        agent_id=row["agent_id"],
+                        session_id=row["session_id"],
+                        project=row["project"],
+                        tags=json.loads(row["tags_json"]),
+                        source=row["source"],
+                        trust_score=row["trust_score"],
+                        created_at=datetime.fromisoformat(row["created_at"]),
+                        metadata=json.loads(row["metadata_json"]),
+                    )
+                )
+        return out
         for row in rows:
             out.append(
                 MemoryRecord(

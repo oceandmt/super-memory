@@ -48,6 +48,16 @@ Default exposed tools include remember, remember-batch, show, context, todo, aut
 
 Guardrail: this project can be developed as an OpenClaw memory-slot replacement candidate, but do not apply/register it into this machine's active OpenClaw config unless Boss explicitly instructs that later.
 
+## API server
+
+Start the FastAPI server (local only):
+
+```bash
+super-memory-api
+```
+
+The API binds to `127.0.0.1:8765` by default. **⚠️ Do not expose this API to a network** — it has no authentication and can access the local filesystem for train/import/watch operations. If you must proxy it, add a reverse-proxy auth layer first.
+
 ## Save order
 
 1. Workspace Markdown = canonical local truth
@@ -55,7 +65,7 @@ Guardrail: this project can be developed as an OpenClaw memory-slot replacement 
 3. Honcho memory functions = conversational participant/session memory
 4. Neural Memory functions = associative/graph/semantic memory
 
-Downstream layers are treated as derived. By default, if canonical Workspace Markdown save fails, later layers are skipped.
+Downstream layers are treated as derived. By default (`require_canonical_first: true`), if canonical Workspace Markdown save fails, downstream SQLite layers **still save** with `pending_canonical_sync=True`. Call `flush_pending()` after recovering the workspace path to replay pending records into Markdown. This resilient fallback prevents data loss while keeping Markdown as the canonical source of truth.
 
 ## Current implementation status
 

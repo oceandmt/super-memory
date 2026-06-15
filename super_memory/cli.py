@@ -31,27 +31,29 @@ def remember(
     config: Optional[str] = None,
     json_out: bool = False,
 ):
-    svc = SuperMemoryService(load_config(config))
-    record = MemoryRecord(
-        content=content,
-        type=type,
-        scope=scope,
-        agent_id=agent_id,
-        session_id=session_id,
-        project=project,
-        tags=tags,
-        source=source,
-    )
-    results = svc.save(record)
+    from . import bridge as _bridge
+    payload = {
+        "content": content,
+        "type": type.value if isinstance(type, MemoryType) else type,
+        "scope": scope.value if isinstance(scope, MemoryScope) else scope,
+        "agent_id": agent_id,
+        "session_id": session_id,
+        "project": project,
+        "tags": tags,
+        "source": source,
+    }
+    result = _bridge.remember(payload, config_path=config)
     if json_out:
-        console.print(json.dumps({"record": record.model_dump(mode="json"), "results": [r.model_dump(mode="json") for r in results]}, ensure_ascii=False, indent=2))
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
         return
-    table = Table(title=f"Saved memory {record.id}")
+    record = result.get("record", {})
+    results = result.get("results", [])
+    table = Table(title=f"Saved memory {record.get('id', '?')}")
     table.add_column("Layer")
     table.add_column("OK")
     table.add_column("Reference / message")
-    for result in results:
-        table.add_row(result.layer.value, "yes" if result.ok else "no", result.reference or result.message or "")
+    for r in results:
+        table.add_row(r.get("layer", "?"), "yes" if r.get("ok") else "no", r.get("reference") or r.get("message") or "")
     console.print(table)
 
 
