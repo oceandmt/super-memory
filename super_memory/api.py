@@ -242,8 +242,11 @@ def remember_batch(req: RememberBatchRequest) -> dict[str, Any]:
     return bridge.remember_batch(memories, config_path=config_path)
 
 @app.post("/show")
-def show(req: ShowRequest) -> dict[str, Any]:
-    return bridge.show(req.memory_id, config_path=req.config_path)
+def show(req: dict[str, Any]) -> dict[str, Any]:
+    memory_id = req.get("memory_id") or req.get("id")
+    if not memory_id:
+        raise HTTPException(status_code=422, detail="memory_id or id is required")
+    return bridge.show(memory_id, config_path=req.get("config_path"))
 
 @app.post("/context")
 def context(req: ContextRequest) -> dict[str, Any]:
@@ -309,8 +312,11 @@ def sync_turn(req: SyncTurnRequest) -> dict[str, Any]:
 
 
 @app.post("/promote")
-def promote(req: PromoteRequest) -> dict[str, Any]:
-    result = bridge.promote(req.memory_id, config_path=req.config_path)
+def promote(req: dict[str, Any]) -> dict[str, Any]:
+    memory_id = req.get("memory_id") or req.get("id")
+    if not memory_id:
+        raise HTTPException(status_code=422, detail="memory_id or id is required")
+    result = bridge.promote(memory_id, config_path=req.get("config_path"))
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "promotion failed"))
     return result
