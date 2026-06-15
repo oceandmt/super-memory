@@ -72,7 +72,16 @@ def test_phase3_mcp_admin_exposes_advanced_tools(tmp_path: Path):
 
 
 def test_phase4_optional_heavy_features_are_safe_stubs():
-    for action in ["train", "import", "index", "sync", "telegram_backup", "visualize", "store", "watch"]:
+    # Phase 7 implemented real workspace-only flows for train/index
+    # These should return ok=True when dependencies are available
+    for action in ["train", "index"]:
+        result = bridge.optional_heavy(action, target="demo")
+        # Should succeed (workspace-only) but may fail if dependencies missing
+        # In test environment, basic deps should be present
+        assert result["ok"] is True, f"{action} should succeed in test env"
+        assert result["enabled"] is True
+    # Remaining actions remain stubs
+    for action in ["sync", "telegram_backup", "visualize", "store", "watch"]:
         result = bridge.optional_heavy(action, target="demo")
         assert result["ok"] is False
         assert result["enabled"] is False

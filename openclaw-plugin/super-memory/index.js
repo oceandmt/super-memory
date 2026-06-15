@@ -135,26 +135,29 @@ module.exports = function superMemoryPlugin(api) {
     };
   }
 
-  if (cfg.registerExclusiveMemoryCapability === true && typeof api.registerMemoryCapability === 'function') {
-    api.registerMemoryCapability({
-      promptBuilder: () => [
-        'Super Memory is the active development memory slot. Preserve Workspace Markdown as canonical truth and use Super Memory search/get for recall.'
-      ],
-      flushPlanResolver: () => null,
-      runtime: {
-        async getMemorySearchManager() {
-          return { manager: createSearchManager() };
+  if (cfg.registerExclusiveMemoryCapability === true) {
+    api.logger?.warn?.('Super Memory running in EXCLUSIVE memory slot mode — canonical markdown may diverge from memory-core');
+    if (typeof api.registerMemoryCapability === 'function') {
+      api.registerMemoryCapability({
+        promptBuilder: () => [
+          'Super Memory is the active development memory slot. Preserve Workspace Markdown as canonical truth and use Super Memory search/get for recall.'
+        ],
+        flushPlanResolver: () => null,
+        runtime: {
+          async getMemorySearchManager() {
+            return { manager: createSearchManager() };
+          },
+          resolveMemoryBackendConfig() {
+            return { backend: 'builtin' };
+          },
+          async closeMemorySearchManager() {},
+          async closeAllMemorySearchManagers() {}
         },
-        resolveMemoryBackendConfig() {
-          return { backend: 'builtin' };
-        },
-        async closeMemorySearchManager() {},
-        async closeAllMemorySearchManagers() {}
-      },
-      publicArtifacts: {
-        async listArtifacts() { return []; }
-      }
-    });
+        publicArtifacts: {
+          async listArtifacts() { return []; }
+        }
+      });
+    }
   }
 
   if (cfg.registerDynamicMcpToolProxy === true && typeof api.registerTool === 'function') {
