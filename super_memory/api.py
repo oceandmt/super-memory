@@ -321,7 +321,10 @@ def conflicts(req: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/provenance")
 def provenance(req: dict[str, Any]) -> dict[str, Any]:
-    return bridge.provenance(req["memory_id"], action=req.get("action", "trace"), actor=req.get("actor", "super-memory"), config_path=req.get("config_path"))
+    memory_id = req.get("memory_id") or req.get("id")
+    if not memory_id:
+        raise HTTPException(status_code=422, detail="memory_id is required")
+    return bridge.provenance(memory_id, action=req.get("action", "trace"), actor=req.get("actor", "super-memory"), config_path=req.get("config_path"))
 
 @app.post("/source")
 def source(req: dict[str, Any]) -> dict[str, Any]:
@@ -337,7 +340,10 @@ def version(req: dict[str, Any]) -> dict[str, Any]:
 
 @app.post("/pin")
 def pin(req: dict[str, Any]) -> dict[str, Any]:
-    return bridge.pin(req["memory_id"], action=req.get("action", "pin"), config_path=req.get("config_path"))
+    memory_id = req.get("memory_id") or req.get("id")
+    if not memory_id:
+        raise HTTPException(status_code=422, detail="memory_id is required")
+    return bridge.pin(memory_id, action=req.get("action", "pin"), config_path=req.get("config_path"))
 
 @app.post("/consolidate")
 def consolidate(req: dict[str, Any]) -> dict[str, Any]:
@@ -354,6 +360,10 @@ def explain(req: dict[str, Any]) -> dict[str, Any]:
 @app.get("/situation")
 def situation(config_path: str | None = None) -> dict[str, Any]:
     return bridge.situation(config_path=config_path)
+
+@app.post("/situation")
+def situation_post(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    return bridge.situation(config_path=(req or {}).get("config_path"))
 
 @app.post("/reflex")
 def reflex(req: dict[str, Any]) -> dict[str, Any]:

@@ -13,6 +13,7 @@ class TurnContext:
     agent_id: str = "lucas"
     session_id: str | None = None
     project: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class HookManager(DBMixin):

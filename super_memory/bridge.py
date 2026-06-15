@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from .config import load_config
@@ -253,12 +254,28 @@ def status(config_path: str | None = None) -> dict[str, Any]:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
         layers = conn.execute("SELECT layer, COUNT(*) as c FROM memories GROUP BY layer").fetchall()
         edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
+        # Also count cognitive graph edges (project_memory writes to cognitive_synapses)
+        try:
+            cog_edges = conn.execute("SELECT COUNT(*) as c FROM cognitive_synapses").fetchone()["c"]
+        except sqlite3.OperationalError:
+            cog_edges = 0
+        try:
+            cog_neurons = conn.execute("SELECT COUNT(*) as c FROM cognitive_neurons").fetchone()["c"]
+        except sqlite3.OperationalError:
+            cog_neurons = 0
+        try:
+            cog_fibers = conn.execute("SELECT COUNT(*) as c FROM cognitive_fibers").fetchone()["c"]
+        except sqlite3.OperationalError:
+            cog_fibers = 0
         drawers = conn.execute("SELECT COUNT(*) as c FROM palace_drawers").fetchone()["c"]
         events = conn.execute("SELECT COUNT(*) as c FROM honcho_events").fetchone()["c"]
     return {
         "total_memories": count,
         "layers": {r["layer"]: r["c"] for r in layers},
-        "graph_edges": edges,
+        "graph_edges": edges + cog_edges,
+        "cognitive_neurons": cog_neurons,
+        "cognitive_synapses": cog_edges,
+        "cognitive_fibers": cog_fibers,
         "palace_drawers": drawers,
         "honcho_events": events,
     }
