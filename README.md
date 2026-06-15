@@ -1,6 +1,6 @@
 # Super Memory
 
-[![CI](https://github.com/YOUR_USERNAME/super-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/super-memory/actions/workflows/ci.yml)
+[![CI](https://github.com/oceandmt/super-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/oceandmt/super-memory/actions/workflows/ci.yml)
 [![PyPI version](https://badge.fury.io/py/super-memory.svg)](https://badge.fury.io/py/super-memory)
 [![Python Versions](https://img.shields.io/pypi/pyversions/super-memory.svg)](https://pypi.org/project/super-memory/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
