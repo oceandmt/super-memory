@@ -11,7 +11,7 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -421,6 +421,26 @@ def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: i
 
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)
+
+def leitner_queue(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
+    """Return memories due for Leitner review."""
+    return leitner.queue(config_path=config_path, limit=limit)
+
+def leitner_mark(fiber_id: str, success: bool, config_path: str | None = None) -> dict[str, Any]:
+    """Record a Leitner review result (success → box++, failure → reset to 0)."""
+    return leitner.mark(fiber_id, success=success, config_path=config_path)
+
+def leitner_schedule(fiber_id: str, box: int, config_path: str | None = None) -> dict[str, Any]:
+    """Manually set a memory's Leitner box."""
+    return leitner.schedule(fiber_id, box=box, config_path=config_path)
+
+def leitner_stats(config_path: str | None = None) -> dict[str, Any]:
+    """Leitner 5-box distribution + review stats."""
+    return leitner.stats(config_path=config_path)
+
+def leitner_auto_seed(limit: int = 100, config_path: str | None = None) -> dict[str, Any]:
+    """Auto-assign Leitner box 0 to unreviewed memories."""
+    return leitner.auto_seed(config_path=config_path, limit=limit)
 
 # Phase 7 / P3 safe flows
 def train_local(path: str, domain_tag: str = "local", recursive: bool = True, limit: int = 200, save: bool = True, config_path: str | None = None) -> dict[str, Any]:

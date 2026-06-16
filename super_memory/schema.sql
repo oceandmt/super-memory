@@ -19,6 +19,8 @@ CREATE TABLE IF NOT EXISTS memories (
     tags_json TEXT NOT NULL DEFAULT '[]',
     source TEXT,
     trust_score REAL,
+    leiter_box INTEGER NOT NULL DEFAULT 0,
+    next_review TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     metadata_json TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (id, layer)

@@ -193,6 +193,14 @@ class LifecycleRequest(BaseModel):
     config_path: str | None = None
 
 
+class LeitnerRequest(BaseModel):
+    action: str = "queue"
+    memory_id: str | None = None
+    success: bool = True
+    box: int = 0
+    limit: int = 50
+    config_path: str | None = None
+
 class Phase8Request(BaseModel):
     config_path: str | None = None
 
@@ -542,6 +550,26 @@ def lifecycle_compression(req: LifecycleRequest) -> dict[str, Any]:
 @app.get("/reflex/status")
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return bridge.reflex_status(config_path=config_path)
+
+@app.post("/leitner")
+def leitner(req: LeitnerRequest) -> dict[str, Any]:
+    """Leitner 5-box: queue|mark|schedule|stats|auto_seed"""
+    if req.action == "queue":
+        return bridge.leitner_queue(limit=req.limit, config_path=req.config_path)
+    elif req.action == "mark":
+        if not req.memory_id:
+            raise HTTPException(status_code=422, detail="memory_id required for mark")
+        return bridge.leitner_mark(req.memory_id, success=req.success, config_path=req.config_path)
+    elif req.action == "schedule":
+        if not req.memory_id:
+            raise HTTPException(status_code=422, detail="memory_id required for schedule")
+        return bridge.leitner_schedule(req.memory_id, box=req.box, config_path=req.config_path)
+    elif req.action == "stats":
+        return bridge.leitner_stats(config_path=req.config_path)
+    elif req.action == "auto_seed":
+        return bridge.leitner_auto_seed(limit=req.limit, config_path=req.config_path)
+    else:
+        raise HTTPException(status_code=422, detail=f"unknown leitner action: {req.action}")
 
 @app.post("/train-local")
 def train_local(req: LocalFlowRequest) -> dict[str, Any]:

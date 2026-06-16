@@ -96,6 +96,7 @@ ADVANCED_TOOLS = {
     "super_memory_lifecycle_tier",
     "super_memory_lifecycle_compression",
     "super_memory_reflex_status",
+    "super_memory_leitner",
     # MemPalace Phase 1 tools
     "super_memory_palace_search",
     "super_memory_palace_load_layer",
@@ -415,6 +416,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_lifecycle_cache", "Manage local activation cache status/save/load/clear.", {"action": {"type": "string", "default": "status"}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
     ("super_memory_train_local", "Train from local text/rich docs under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
     ("super_memory_index_local", "Index code symbols/imports under workspace only.", {"path": {"type": "string"}, "extensions": {"type": "array", "items": {"type": "string"}}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
@@ -588,6 +590,20 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.lifecycle_compression(action=args.get("action", "review"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_reflex_status":
         return bridge.reflex_status(config_path=args.get("config_path"))
+    if name == "super_memory_leitner":
+        action = args.get("action", "queue")
+        if action == "queue":
+            return bridge.leitner_queue(limit=args.get("limit", 50), config_path=args.get("config_path"))
+        elif action == "mark":
+            return bridge.leitner_mark(args["memory_id"], success=args.get("success", True), config_path=args.get("config_path"))
+        elif action == "schedule":
+            return bridge.leitner_schedule(args["memory_id"], box=args.get("box", 0), config_path=args.get("config_path"))
+        elif action == "stats":
+            return bridge.leitner_stats(config_path=args.get("config_path"))
+        elif action == "auto_seed":
+            return bridge.leitner_auto_seed(limit=args.get("limit", 100), config_path=args.get("config_path"))
+        else:
+            raise ValueError(f"unknown leitner action: {action}")
     if name == "super_memory_train_local":
         return bridge.train_local(args["path"], domain_tag=args.get("domain_tag", "local"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
     if name == "super_memory_index_local":
