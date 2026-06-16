@@ -92,6 +92,20 @@ class PromoteRequest(BaseModel):
     memory_id: str
     config_path: str | None = None
 
+class ForgetRequest(BaseModel):
+    memory_id: str
+    hard: bool = False
+    reason: str = ""
+    config_path: str | None = None
+
+class EditRequest(BaseModel):
+    memory_id: str
+    content: str | None = None
+    type: str | None = None
+    priority: int | None = None
+    tier: str | None = None
+    config_path: str | None = None
+
 class WorkingMemoryRequest(BaseModel):
     key: str = "default"
     payload: dict[str, Any] = Field(default_factory=dict)
@@ -319,6 +333,27 @@ def promote(req: dict[str, Any]) -> dict[str, Any]:
     result = bridge.promote(memory_id, config_path=req.get("config_path"))
     if not result.get("ok"):
         raise HTTPException(status_code=404, detail=result.get("error", "promotion failed"))
+    return result
+
+@app.post("/forget")
+def forget(req: ForgetRequest) -> dict[str, Any]:
+    result = bridge.forget(req.memory_id, hard=req.hard, reason=req.reason, config_path=req.config_path)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error", "forget failed"))
+    return result
+
+@app.post("/edit")
+def edit(req: EditRequest) -> dict[str, Any]:
+    result = bridge.edit(
+        req.memory_id,
+        content=req.content,
+        type=req.type,
+        priority=req.priority,
+        tier=req.tier,
+        config_path=req.config_path,
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail=result.get("error", "edit failed"))
     return result
 
 @app.post("/conflicts")
