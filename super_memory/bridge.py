@@ -244,6 +244,67 @@ def promote(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
     return {"ok": True, "memory_id": memory_id, "long_term_path": mem_path, "register_path": reg_path}
 
 
+def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: str | None = None) -> dict[str, Any]:
+    """Delete a memory. Soft delete by default (marks metadata; recoverable).
+    Hard delete also removes related graph synapses, fibers, and cross-layer entries."""
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    record = store.get_memory(memory_id)
+    if not record:
+        return {"ok": False, "error": f"memory not found: {memory_id}"}
+    if not hard:
+        with store.connect() as conn:
+            conn.execute(
+                "UPDATE memories SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
+                (reason, memory_id),
+            )
+            conn.commit()
+        return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete"}
+    # Hard delete: cascade cleanup
+    with store.connect() as conn:
+        conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
+        conn.execute("DELETE FROM graph_edges WHERE source_memory_id = ? OR target_memory_id = ?", (memory_id, memory_id))
+        conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?) OR target_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?)", (memory_id, memory_id))
+        conn.execute("DELETE FROM cognitive_neurons WHERE source_memory_id = ?", (memory_id,))
+        conn.execute("DELETE FROM cognitive_fibers WHERE id = ?", (f"f:{memory_id}",))
+        conn.execute("DELETE FROM honcho_events WHERE memory_id = ?", (memory_id,))
+        conn.execute("DELETE FROM palace_drawers WHERE memory_id = ?", (memory_id,))
+        conn.commit()
+    return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete"}
+
+
+def edit(memory_id: str, content: str | None = None, type: str | None = None, priority: int | None = None, tier: str | None = None, config_path: str | None = None) -> dict[str, Any]:
+    """Edit a memory's content, type, priority, or tier. Preserves all synapses."""
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    record = store.get_memory(memory_id)
+    if not record:
+        return {"ok": False, "error": f"memory not found: {memory_id}"}
+    updates: list[str] = []
+    params: list[Any] = []
+    if content is not None:
+        updates.append("content = ?")
+        params.append(content)
+    if type is not None:
+        updates.append("type = ?")
+        params.append(type)
+    if priority is not None:
+        updates.append("trust_score = ?")
+        params.append(max(0, min(10, priority)) / 10.0)
+    if tier is not None:
+        updates.append("metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.tier', ?)")
+        params.append(tier)
+    if not updates:
+        return {"ok": False, "error": "no fields to update"}
+    params.append(memory_id)
+    set_clause = ", ".join(updates)
+    with store.connect() as conn:
+        conn.execute("UPDATE memories SET " + set_clause + " WHERE id = ?", params)
+        conn.commit()
+    updated = store.get_memory(memory_id)
+    return {"ok": True, "memory_id": memory_id, "updated": updated.model_dump(mode="json") if updated else None}
+
+
 def status(config_path: str | None = None) -> dict[str, Any]:
     cfg = load_config(config_path)
     # Ensure schema exists/upgrades before direct status reads.
@@ -252,13 +313,21 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     with store.connect() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
         layers = conn.execute("SELECT layer, COUNT(*) as c FROM memories GROUP BY layer").fetchall()
-        edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
+        # Unified graph: cognitive_synapses primary + graph_edges legacy
+        cog_syn = conn.execute("SELECT COUNT(*) as c FROM cognitive_synapses").fetchone()["c"]
+        leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
+        edges = cog_syn + leg_edges
         drawers = conn.execute("SELECT COUNT(*) as c FROM palace_drawers").fetchone()["c"]
         events = conn.execute("SELECT COUNT(*) as c FROM honcho_events").fetchone()["c"]
+        neurons = conn.execute("SELECT COUNT(*) as c FROM cognitive_neurons").fetchone()["c"]
+        fibers = conn.execute("SELECT COUNT(*) as c FROM cognitive_fibers").fetchone()["c"]
     return {
         "total_memories": count,
         "layers": {r["layer"]: r["c"] for r in layers},
         "graph_edges": edges,
+        "cognitive_synapses": cog_syn,
+        "cognitive_neurons": neurons,
+        "cognitive_fibers": fibers,
         "palace_drawers": drawers,
         "honcho_events": events,
     }

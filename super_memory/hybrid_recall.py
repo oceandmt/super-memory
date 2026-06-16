@@ -1,7 +1,29 @@
 from __future__ import annotations
+import math
+import re
 import time
 from typing import Any
 from .db import DBMixin, validate_agent_scope, validate_session_scope
+
+def _tokens(text: str) -> list[str]:
+    return [t for t in re.split(r"[^a-zA-Z0-9_]+", (text or "").lower()) if len(t) > 1]
+
+def _tfidf_like(query: str, content: str) -> float:
+    q_terms = _tokens(query)
+    c_terms = _tokens(content)
+    if not q_terms or not c_terms:
+        return 0.0
+    counts: dict[str, int] = {}
+    for t in c_terms:
+        counts[t] = counts.get(t, 0) + 1
+    total = max(1, len(c_terms))
+    score = 0.0
+    for term in q_terms:
+        if term in counts:
+            score += (1 + math.log(1 + counts[term])) / math.sqrt(total)
+    coverage = sum(1 for t in set(q_terms) if t in counts) / max(1, len(set(q_terms)))
+    phrase_boost = 0.5 if query.lower() in (content or "").lower() else 0.0
+    return min(1.0, phrase_boost + coverage * 0.6 + score)
 
 class HybridRecall(DBMixin):
 
@@ -13,16 +35,17 @@ class HybridRecall(DBMixin):
         if any(layer not in allowed_layers for layer in layers):
             raise ValueError(f"invalid source_layers: {layers}")
         if "all" in layers: layers = ["markdown", "honcho", "mempalace", "graph"]
+        candidate_limit = max(limit * 5, 50)
         results: list[dict[str, Any]] = []
         with self._conn() as conn:
             if "markdown" in layers and self._has(conn, "memories"):
-                results += self._search_memories(conn, query, agent_scope, session_scope, limit, "markdown")
+                results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "markdown")
             if "honcho" in layers and self._has(conn, "honcho_events"):
-                results += self._search_honcho(conn, query, agent_scope, session_scope, limit)
+                results += self._search_honcho(conn, query, agent_scope, session_scope, candidate_limit)
             if "mempalace" in layers and self._has(conn, "palace_drawers"):
-                results += self._search_palace(conn, query, limit)
-            if "graph" in layers and self._has(conn, "memories") and self._has(conn, "graph_edges"):
-                results += self._search_memories(conn, query, agent_scope, session_scope, limit, "graph", graph=True)
+                results += self._search_palace(conn, query, candidate_limit)
+            if "graph" in layers and self._has(conn, "memories") and self._has(conn, "cognitive_neurons"):
+                results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "graph", graph=True)
         merged = self._dedup(results)
         ranked = sorted(merged, key=lambda r: self._score(r, query, agent_scope, session_scope), reverse=True)
         return {"ok": True, "query": query, "results": self._truncate(ranked[:limit], max_tokens), "count": min(len(ranked), limit)}
@@ -34,7 +57,7 @@ class HybridRecall(DBMixin):
         if agent_kind == "agent": where.append("agent_id=?"); args.append(agent)
         elif agent_kind == "shared": where.append("scope=?"); args.append("shared")
         if session_kind == "session": where.append("session_id=?"); args.append(sid)
-        if graph: where.append("id IN (SELECT source_memory_id FROM graph_edges UNION SELECT target_memory_id FROM graph_edges)")
+        if graph: where.append("id IN (SELECT source_memory_id FROM cognitive_neurons WHERE source_memory_id IS NOT NULL UNION SELECT source_memory_id FROM graph_edges UNION SELECT target_memory_id FROM graph_edges)")
         sql = "SELECT id,content,agent_id,session_id,created_at,type FROM memories WHERE " + " AND ".join(where) + " ORDER BY created_at DESC LIMIT ?"
         rows = conn.execute(sql, (*args, limit)).fetchall()
         return [self._result(dict(r), layer) for r in rows]
@@ -70,7 +93,7 @@ class HybridRecall(DBMixin):
     def _score(self, r, query, agent_scope, session_scope):
         scope = 1.0 if agent_scope in ("all","current") or (agent_scope.startswith("agent:") and r.get("agent_id") == agent_scope.split(":",1)[1]) else .4
         sess = 1.0 if not session_scope.startswith("session:") or r.get("session_id") == session_scope.split(":",1)[1] else .5
-        exact = 1.0 if query.lower() in (r.get("content") or "").lower() else .2
+        exact = 1.0 if query.lower() in (r.get("content") or "").lower() else _tfidf_like(query, r.get("content") or "")
         recency = .5
         try:
             recency = max(.1, 1 - (time.time() - time.mktime(time.strptime((r.get("created_at") or "")[:19], "%Y-%m-%d %H:%M:%S"))) / 2592000)

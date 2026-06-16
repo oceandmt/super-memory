@@ -163,7 +163,22 @@ CREATE TABLE IF NOT EXISTS palace_drawers (
 -- GRAPH SUBSYSTEM (associative links)
 -- ============================================================================
 
--- Graph edges (memory-to-memory associations)
+-- Cognitive synapses (unified graph: neural+associative edges)
+-- Replaces legacy graph_edges; single source of truth for all graph operations.
+CREATE TABLE IF NOT EXISTS cognitive_synapses (
+    id TEXT PRIMARY KEY,
+    source_neuron_id TEXT NOT NULL,
+    target_neuron_id TEXT NOT NULL,
+    relation TEXT NOT NULL DEFAULT 'associative',
+    weight REAL NOT NULL DEFAULT 0.5,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_neuron_id, target_neuron_id, relation)
+);
+
+-- Legacy graph_edges kept for backward compatibility; new writes go to cognitive_synapses.
 CREATE TABLE IF NOT EXISTS graph_edges (
     id TEXT PRIMARY KEY,
     source_memory_id TEXT NOT NULL,
@@ -222,6 +237,12 @@ CREATE INDEX IF NOT EXISTS idx_graph_source ON graph_edges(source_memory_id);
 CREATE INDEX IF NOT EXISTS idx_graph_target ON graph_edges(target_memory_id);
 CREATE INDEX IF NOT EXISTS idx_graph_relation ON graph_edges(relation);
 CREATE INDEX IF NOT EXISTS idx_graph_weight ON graph_edges(weight DESC);
+
+-- Cognitive synapse indexes (unified graph)
+CREATE INDEX IF NOT EXISTS idx_cognitive_synapses_source ON cognitive_synapses(source_neuron_id);
+CREATE INDEX IF NOT EXISTS idx_cognitive_synapses_target ON cognitive_synapses(target_neuron_id);
+CREATE INDEX IF NOT EXISTS idx_cognitive_synapses_relation ON cognitive_synapses(relation);
+CREATE INDEX IF NOT EXISTS idx_cognitive_synapses_weight ON cognitive_synapses(weight DESC);
 
 -- ============================================================================
 -- TRIGGERS
