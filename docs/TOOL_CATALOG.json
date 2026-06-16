@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 132,
+  "total_tools": 133,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -3142,6 +3142,42 @@
           "limit": {
             "type": "integer",
             "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_leitner",
+      "category": "other",
+      "description": "Leitner 5-box: queue|mark|schedule|stats|auto_seed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "default": "queue"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean",
+            "default": true
+          },
+          "box": {
+            "type": "integer",
+            "default": 0
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
           },
           "config_path": {
             "type": "string"
