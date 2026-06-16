@@ -11,9 +11,18 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from .config import load_config
-from .honcho.tools import HonchoTools
-from .mempalace.tools import MemPalaceTools
+# Support running as script: python super_memory/benchmarks.py
+# or as module: python -m super_memory.benchmarks
+try:
+    from .config import load_config
+    from .honcho.tools import HonchoTools
+    from .mempalace.tools import MemPalaceTools
+except ImportError:
+    # Add parent of super_memory to sys.path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from super_memory.config import load_config
+    from super_memory.honcho.tools import HonchoTools
+    from super_memory.mempalace.tools import MemPalaceTools
 
 
 @dataclass
