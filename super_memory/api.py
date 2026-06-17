@@ -1,14 +1,94 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from . import bridge, mcp_server
+from .config import load_config
+from .observability import metrics as _metrics_snapshot
 
 app = FastAPI(title="Super Memory API", version="0.1.0")
+
+# ── In-memory rate limiter ──────────────────────────────────────────────────
+_RATE_LIMIT_WINDOW_S = 60
+_RATE_LIMIT_MAX = 200
+_rate_buckets: dict[str, list[float]] = {}
+
+_rate_exempt_ips = {"127.0.0.1", "::1", "localhost"}
+
+def _rate_limit_ip(client_ip: str) -> tuple[bool, int]:
+    """Returns (allowed, remaining)."""
+    if client_ip in _rate_exempt_ips:
+        return True, _RATE_LIMIT_MAX
+    now = time.time()
+    window_start = now - _RATE_LIMIT_WINDOW_S
+    if client_ip not in _rate_buckets:
+        _rate_buckets[client_ip] = []
+    # Prune expired timestamps
+    _rate_buckets[client_ip] = [t for t in _rate_buckets[client_ip] if t > window_start]
+    used = len(_rate_buckets[client_ip])
+    remaining = _RATE_LIMIT_MAX - used
+    if remaining <= 0:
+        return False, 0
+    _rate_buckets[client_ip].append(now)
+    return True, remaining - 1
+
+# ── Bearer token auth ────────────────────────────────────────────────────────
+security = HTTPBearer(auto_error=False)
+
+def _get_auth_dependency():
+
+    def verify_token(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> None:
+        cfg = load_config(None)
+        if not cfg.api_token:
+            return  # No token configured → open access (backward compat)
+        if credentials is None or credentials.credentials != cfg.api_token:
+            raise HTTPException(status_code=401, detail="Unauthorized — invalid or missing Bearer token")
+
+    return verify_token
+
+_auth = _get_auth_dependency()  # callable dependency
+
+
+# ── Middleware for rate limiting and auth ────────────────────────────────────
+_HEALTH_PATHS = {"/health", "/mcp-tools"}
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    # ── Rate limiting ───────────────────────────────────────────────────────
+    client_ip = request.client.host if request.client else "unknown"
+    allowed, remaining = _rate_limit_ip(client_ip)
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded. Try again later."},
+            headers={"X-RateLimit-Remaining": "0"},
+        )
+
+    # ── Bearer token auth (skips health endpoints) ──────────────────────────
+    if request.url.path not in _HEALTH_PATHS:
+        cfg = load_config(None)
+        if cfg.api_token:
+            auth_header = request.headers.get("Authorization", "")
+            if not auth_header.startswith("Bearer ") or auth_header[7:] != cfg.api_token:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Unauthorized — invalid or missing Bearer token"},
+                    headers={"X-RateLimit-Remaining": str(remaining)},
+                )
+
+    response = await call_next(request)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
+
+
 
 
 class RememberRequest(BaseModel):
@@ -241,6 +321,13 @@ def mcp_tools() -> dict[str, Any]:
 @app.get("/stats")
 def stats(config_path: str | None = None) -> dict[str, Any]:
     return bridge.stats(config_path=config_path)
+
+@app.get("/metrics")
+def metrics() -> dict[str, Any]:
+    m = _metrics_snapshot()
+    stats_snapshot = bridge.status()
+    return {**m, "service": stats_snapshot}
+
 
 @app.get("/memory-health")
 def memory_health(config_path: str | None = None) -> dict[str, Any]:

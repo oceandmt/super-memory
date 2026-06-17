@@ -167,12 +167,64 @@ class SessionArchive(DBMixin):
             parts.append("Blockers: " + "; ".join(blockers[:3]))
         return "\n".join(parts) or "No notable decisions, actions, preferences, or blockers captured."
 
+
+
+    def sync_archive_to_honcho(self, session_id: str, observer_peer_id: str | None = None) -> dict[str, Any]:
+        """Sync a session archive's key decisions/blockers back as Honcho conclusions.
+
+        Creates honcho_conclusions for each key decision and blocker found in
+        the session archive, enabling Honcho's dialectic reasoning to track
+        resolved decisions across sessions.
+        """
+        summary = self.get_session_summary(session_id)
+        if not summary.get("ok") or not summary.get("summary"):
+            return {"ok": False, "error": "no archive found for session " + session_id}
+        data = summary["summary"]
+        key_decisions = data.get("key_decisions", [])
+        open_blockers = data.get("open_blockers", [])
+        created: list[str] = []
+        with self._conn() as conn:
+            # Write decisions as honcho_conclusions
+            for decision_text in key_decisions:
+                cid = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
+                about = observer_peer_id or "session:" + session_id
+                conn.execute(
+                    """INSERT OR IGNORE INTO honcho_conclusions
+                    (id, about_peer_id, content, confidence, source, metadata_json, created_at)
+                    VALUES (?, ?, ?, 0.85, ?, ?, CURRENT_TIMESTAMP)""",
+                    (cid, about, "[Session Archive] " + decision_text,
+                     f"session_archive:{session_id}",
+                     json.dumps({"session_id": session_id, "category": "decision"})),
+                )
+                created.append(cid)
+            # Write blockers
+            for blocker_text in open_blockers:
+                cid = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
+                about = observer_peer_id or "session:" + session_id
+                conn.execute(
+                    """INSERT OR IGNORE INTO honcho_conclusions
+                    (id, about_peer_id, content, confidence, source, metadata_json, created_at)
+                    VALUES (?, ?, ?, 0.75, ?, ?, CURRENT_TIMESTAMP)""",
+                    (cid, about, "[Session Archive] " + blocker_text,
+                     f"session_archive:{session_id}",
+                     json.dumps({"session_id": session_id, "category": "blocker"})),
+                )
+                created.append(cid)
+            conn.commit()
+        return {"ok": True, "session_id": session_id, "synced_conclusions": len(created), "created": created}
+
     def _decode(self, row):
         for k in ("key_decisions_json","open_blockers_json"):
             row[k[:-5]] = json.loads(row.get(k) or "[]")
         return row
 
 SESSION_ARCHIVE_TOOLS = [
+ {
+  "name": "super_memory_sync_archive_to_honcho",
+  "description": "Sync a session archive's decisions/blockers as Honcho conclusions",
+  "inputSchema": {"type": "object", "properties": {"session_id": {"type": "string"}, "observer_peer_id": {"type": "string"}}, "required": ["session_id"]}
+ },
+
  {"name":"super_memory_create_session_summary","description":"Create a compressed session archive","inputSchema":{"type":"object","properties":{"session_id":{"type":"string"},"max_events":{"type":"integer","default":50}},"required":["session_id"]}},
  {"name":"super_memory_get_session_summary","description":"Get one session archive summary","inputSchema":{"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}},
  {"name":"super_memory_list_session_summaries","description":"List recent session summaries","inputSchema":{"type":"object","properties":{"agent_id":{"type":"string"},"limit":{"type":"integer","default":20},"offset":{"type":"integer","default":0}},"required":[]}},

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import structlog
+
 from . import code_index, cognitive, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
 from .config import load_config
@@ -11,6 +13,8 @@ from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
+
+logger = structlog.get_logger("super-memory.bridge")
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -420,6 +424,10 @@ def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: i
 
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)
+
+def leitner_due(config_path: str | None = None) -> dict[str, Any]:
+    """Return only the count of Leitner-due memories (lightweight)."""
+    return leitner.due(config_path=config_path)
 
 def leitner_queue(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
     """Return memories due for Leitner review."""

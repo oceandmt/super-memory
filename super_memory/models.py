@@ -93,3 +93,5 @@ class SuperMemoryConfig(BaseModel):
     )
     require_canonical_first: bool = True
     neural_memory_embed_llm_mode: str = "optional"  # optional|disabled|external
+    api_token: str = ""  # Bearer token for REST API auth; empty = no auth (backward compat)
+    legacy_graph_edges: bool = True  # dual-write to graph_edges for backward compat; set False to disable

@@ -89,10 +89,33 @@ class SQLiteLayerBackend(MemoryBackend):
         from .migrations import run_migrations
         run_migrations(self.config)
         with self._connect() as conn:
-            # FTS5 is not in schema.sql (virtual table, tool-specific)
-            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
+            # FTS5 content-table form — automatically mirrors memories.content via rowid.
+            # If the old non-content FTS5 table exists (different schema), drop and recreate.
+            try:
+                # Test that the content-table form is present; if MATCH fails w/ schema error, reset.
+                conn.execute("SELECT * FROM memories_fts LIMIT 0")
+                # Check it is the content-table form by inspecting shadow tables
+                try:
+                    conn.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+                    conn.commit()
+                except sqlite3.OperationalError:
+                    # Old schema without content=memories — drop and recreate
+                    conn.execute("DROP TABLE IF EXISTS memories_fts")
+                    conn.execute(
+                        "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
+                        "USING fts5(content, content=memories, content_rowid=rowid)"
+                    )
+                    conn.commit()
+            except sqlite3.OperationalError:
+                # Table doesn't exist at all — create fresh
+                conn.execute(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
+                    "USING fts5(content, content=memories, content_rowid=rowid)"
+                )
+                conn.commit()
             try:
                 conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
+                conn.commit()
             except sqlite3.OperationalError as exc:
                 if "duplicate column" not in str(exc).lower():
                     raise
@@ -124,14 +147,6 @@ class SQLiteLayerBackend(MemoryBackend):
                     1 if pending_sync else 0,
                 ),
             )
-            # Fetch rowid after upsert, delete old FTS row to prevent duplicates
-            row = conn.execute("SELECT rowid FROM memories WHERE id = ? AND layer = ?", (record.id, self.layer.value)).fetchone()
-            if row:
-                conn.execute("DELETE FROM memories_fts WHERE rowid = ?", (row["rowid"],))
-                conn.execute(
-                    "INSERT INTO memories_fts(rowid, id, layer, content, tags) VALUES (?, ?, ?, ?, ?)",
-                    (row["rowid"], record.id, self.layer.value, record.content, " ".join(tags)),
-                )
             if self.layer == MemoryLayer.MEMPALACE:
                 self._save_palace_projection(conn, record, tags)
             elif self.layer == MemoryLayer.HONCHO:
@@ -191,6 +206,8 @@ class SQLiteLayerBackend(MemoryBackend):
         )
 
     def _save_graph_projection(self, conn: sqlite3.Connection, record: MemoryRecord) -> None:
+        if not self.config.legacy_graph_edges:
+            return
         for target in record.metadata.get("related_memory_ids", []):
             conn.execute(
                 """
@@ -236,8 +253,8 @@ class SQLiteLayerBackend(MemoryBackend):
                         """
                         SELECT m.* FROM memories_fts f
                         JOIN memories m ON m.rowid = f.rowid
-                        WHERE f.memories_fts MATCH ? AND m.layer = ?
-                        ORDER BY rank LIMIT ?
+                        WHERE memories_fts MATCH ? AND m.layer = ?
+                        LIMIT ?
                         """,
                         (fts_query, self.layer.value, limit),
                     ).fetchall()

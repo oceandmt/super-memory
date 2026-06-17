@@ -55,6 +55,19 @@ def _ensure_columns(store: SuperMemoryStore) -> None:
         conn.commit()
 
 
+def due(config_path: str | None = None) -> dict[str, Any]:
+    """Return only the count of memories due for Leitner review (lightweight)."""
+    store = _store(config_path)
+    _ensure_columns(store)
+    now = _now()
+    with store.connect() as conn:
+        due_count = conn.execute(
+            "SELECT COUNT(*) as c FROM memories WHERE next_review IS NOT NULL AND next_review <= ?",
+            (now,),
+        ).fetchone()["c"]
+    return {"ok": True, "due_count": due_count, "checked_at": now}
+
+
 def queue(config_path: str | None = None, limit: int = 50) -> dict[str, Any]:
     """Return memories due for review (next_review <= now)."""
     store = _store(config_path)

@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 133,
+  "total_tools": 135,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -1860,6 +1860,28 @@
       ]
     },
     {
+      "name": "super_memory_sync_archive_to_honcho",
+      "category": "knowledge_mgmt",
+      "description": "Sync a session archive's decisions/blockers as Honcho conclusions",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "observer_peer_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
       "name": "super_memory_create_session_summary",
       "category": "p0_p5",
       "description": "Create a compressed session archive",
@@ -3179,6 +3201,23 @@
             "type": "integer",
             "default": 50
           },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_leitner_due",
+      "category": "other",
+      "description": "Return count of Leitner-due memories without loading full queue.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
           "config_path": {
             "type": "string"
           }

@@ -55,22 +55,54 @@ class HybridRecall(DBMixin):
         return {"ok": True, "query": query, "results": self._truncate(ranked[:limit], max_tokens), "count": min(len(ranked), limit)}
 
     def _search_memories(self, conn, query, agent_scope, session_scope, limit, layer, graph=False):
-        where, args = ["content LIKE ?"], [f"%{query}%"]
+        import sqlite3 as _sqlite3
         agent_kind, agent = validate_agent_scope(agent_scope)
         session_kind, sid = validate_session_scope(session_scope)
+
+        # Build filter clauses for base-table join
+        where: list[str] = []
+        args: list = []
         if agent_kind == "agent":
-            where.append("agent_id=?")
+            where.append("m.agent_id=?")
             args.append(agent)
         elif agent_kind == "shared":
-            where.append("scope=?")
+            where.append("m.scope=?")
             args.append("shared")
         if session_kind == "session":
-            where.append("session_id=?")
+            where.append("m.session_id=?")
             args.append(sid)
         if graph:
-            where.append("id IN (SELECT source_memory_id FROM cognitive_neurons WHERE source_memory_id IS NOT NULL UNION SELECT source_memory_id FROM graph_edges UNION SELECT target_memory_id FROM graph_edges)")
-        sql = "SELECT id,content,agent_id,session_id,created_at,type FROM memories WHERE " + " AND ".join(where) + " ORDER BY created_at DESC LIMIT ?"
-        rows = conn.execute(sql, (*args, limit)).fetchall()
+            where.append(
+                "m.id IN (SELECT source_memory_id FROM cognitive_neurons "
+                "WHERE source_memory_id IS NOT NULL "
+                "UNION SELECT source_memory_id FROM graph_edges "
+                "UNION SELECT target_memory_id FROM graph_edges)"
+            )
+        filter_sql = (" AND " + " AND ".join(where)) if where else ""
+
+        # Try FTS5 MATCH first; fall back to LIKE on OperationalError
+        fts_query = query.replace('"', ' ').strip()
+        rows = None
+        if fts_query:
+            try:
+                fts_sql = (
+                    "SELECT m.id, m.content, m.agent_id, m.session_id, m.created_at, m.type "
+                    "FROM memories_fts f "
+                    "JOIN memories m ON m.rowid = f.rowid "
+                    "WHERE memories_fts MATCH ? " + filter_sql + " LIMIT ?"
+                )
+                rows = conn.execute(fts_sql, (fts_query, *args, limit)).fetchall()
+            except _sqlite3.OperationalError:
+                rows = None  # FTS5 unavailable or table mismatch — use LIKE fallback
+
+        if rows is None:
+            like_where = ["content LIKE ?"] + [w.replace("m.", "", 1) for w in where]
+            like_sql = (
+                "SELECT id, content, agent_id, session_id, created_at, type "
+                "FROM memories WHERE " + " AND ".join(like_where) + " ORDER BY created_at DESC LIMIT ?"
+            )
+            rows = conn.execute(like_sql, (f"%{query}%", *args, limit)).fetchall()
+
         return [self._result(dict(r), layer) for r in rows]
 
     def _search_honcho(self, conn, query, agent_scope, session_scope, limit):

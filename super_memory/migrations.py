@@ -97,6 +97,47 @@ def _migrate_honcho_events(conn: sqlite3.Connection) -> list[str]:
     return changed
 
 
+
+
+def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
+    """Create or upgrade FTS5 virtual tables for fast full-text search.
+
+    Uses content-table form so the FTS index stays in sync with the base
+    table via DELETE/INSERT triggers or manual rebuild.
+
+    Falls back silently if FTS5 is not compiled into SQLite.
+    """
+    changed: list[str] = []
+    # Check if FTS5 is available
+    try:
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)")
+        conn.execute("DROP TABLE IF EXISTS _fts5_probe")
+    except sqlite3.OperationalError:
+        return []  # FTS5 not available in this SQLite build
+
+    # memories_fts: content-table form
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
+            "USING fts5(content, content=memories, content_rowid=rowid)"
+        )
+        changed.append("memories_fts")
+    except sqlite3.OperationalError:
+        pass  # may already exist as different schema
+
+    # honcho_events_fts: content-table form
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS honcho_events_fts "
+            "USING fts5(content, content=honcho_events, content_rowid=rowid)"
+        )
+        changed.append("honcho_events_fts")
+    except sqlite3.OperationalError:
+        pass
+
+    return changed
+
+
 def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]:
     config = config or load_config()
     db_path = sqlite_path(config)
@@ -123,8 +164,9 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                 changed2 = []
                 changed2.extend(_migrate_memories(conn))
                 changed2.extend(_migrate_honcho_events(conn))
-                conn.commit()
-            return {"ok": True, "db_path": str(db_path), "changed": changed+changed2, "change_count": len(changed)+len(changed2)}
+                fts5_changed = _migrate_fts5(conn)
+            conn.commit()
+            return {"ok": True, "db_path": str(db_path), "changed": changed+changed2+fts5_changed, "change_count": len(changed)+len(changed2)+len(fts5_changed)}
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
