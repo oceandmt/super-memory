@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import importlib.util as _importlib_util
 from typing import Any
-
-import structlog
 
 from . import code_index, cognitive, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
@@ -14,7 +13,13 @@ from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 
-logger = structlog.get_logger("super-memory.bridge")
+_HAS_STRUCTLOG = _importlib_util.find_spec("structlog") is not None
+if _HAS_STRUCTLOG:
+    import structlog as _structlog
+    logger = _structlog.get_logger("super-memory.bridge")
+else:
+    import logging as _logging
+    logger = _logging.getLogger("super-memory.bridge")
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
