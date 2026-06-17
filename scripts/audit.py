@@ -38,8 +38,8 @@ def audit():
     try:
         from super_memory.mempalace.tools import MEMPALACE_TOOLS
         desc_count = len(MEMPALACE_TOOLS)
-        if desc_count < 31:
-            issues.append(f"MCP descriptors: {desc_count} (expected >= 31)")
+        if desc_count < 36:
+            issues.append(f"MCP descriptors: {desc_count} (expected >= 36)")
     except Exception as e:
         issues.append(f"tools count check: FAIL ({e})")
 
@@ -68,7 +68,7 @@ def audit():
         return 1
     else:
         ok_count = len(modules) + len(core_modules)
-        print(f"[OK] super-memory audit passed ({ok_count} modules, 31 tools, all healthy)")
+        print(f"[OK] super-memory audit passed ({ok_count} modules, 36 tools, all healthy)")
         return 0
 
 

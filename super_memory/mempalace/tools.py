@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from ..config import SuperMemoryConfig
+from .collision_scan import CollisionError, assert_no_collisions as _assert_no_collisions, scan_existing as _scan_existing
 from .compressor import AAAKCompressor
+from .convo_miner import mine_conversation as _mine_conversation, mine_directory as _mine_directory
 from .dedup import deduplicate
 from .entity_detector import detect_and_register
 from .entity_registry import EntityRegistry
@@ -21,6 +23,7 @@ from .fact_checker import fact_check
 from .hallways import build_hallways as _build_hallways, find_path as _find_path, list_hallways as _list_hallways
 from .knowledge_graph import KnowledgeGraph
 from .loader import MemPalaceLoader
+from .onboarding import quick_setup as _quick_setup
 from .searcher import find_similar_drawers as _find_similar_drawers, search_sqlite as _search_sqlite
 from .spatial import SpatialNavigator
 from .spellcheck import spellcheck_with_registry
@@ -291,6 +294,51 @@ class MemPalaceTools:
         result = fact_check(text, kg=self.knowledge_graph, registry=self.entity_registry)
         return {"ok": True, **result}
 
+    # ── Phase 6: Collision Detection ────────────────────────────────────
+
+    def collision_scan(self, wing: str | None = None, max_results: int = 100) -> dict[str, Any]:
+        """Scan existing drawers for potential (source_file, chunk_index) duplicates."""
+        return {"ok": True, **_scan_existing(str(self.db_path), wing=wing, max_results=max_results)}
+
+    def collision_check(self, proposed: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+        """Check proposed batch for collisions before insert."""
+        try:
+            _assert_no_collisions(str(self.db_path), proposed)
+            return {"ok": True, "collisions": 0, "safe": True}
+        except CollisionError as e:
+            return {"ok": True, "collisions": 1, "safe": False, "error": str(e)}
+
+    # ── Phase 7: Onboarding ─────────────────────────────────────────────
+
+    def onboarding_quick(
+        self, mode: str = "combo",
+        people: list[dict[str, str]] | None = None,
+        projects: list[str] | None = None,
+        aliases: dict[str, str] | None = None,
+        wings: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Programmatic quick setup — seeds entity registry."""
+        registry = _quick_setup(
+            mode=mode, people=people, projects=projects,
+            aliases=aliases, wings=wings,
+            registry_path=str(self.workspace_root),
+        )
+        return {"ok": True, **registry.stats()}
+
+    # ── Phase 8: Conversation Mining ────────────────────────────────────
+
+    def convo_mine_file(
+        self, file_path: str, wing: str = "conversations", dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Mine a single conversation file into the palace."""
+        return {"ok": True, **_mine_conversation(str(self.db_path), file_path, wing=wing, dry_run=dry_run)}
+
+    def convo_mine_directory(
+        self, directory: str, wing: str = "conversations", recursive: bool = True, dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Mine all conversation files in a directory."""
+        return {"ok": True, **_mine_directory(str(self.db_path), directory, wing=wing, recursive=recursive, dry_run=dry_run)}
+
 
 # ── MCP tool descriptors ────────────────────────────────────────────────────
 MEMPALACE_TOOLS = [
@@ -480,6 +528,89 @@ MEMPALACE_TOOLS = [
             "type": "object",
             "properties": {"text": {"type": "string", "description": "Text to fact-check"}},
             "required": ["text"],
+        },
+    },
+
+    # ── Phase 6: Collision Detection ─────────────────────────────────────────
+    {
+        "name": "super_memory_collision_scan",
+        "description": "Scan existing drawers for potential (source_file, chunk_index) duplicate groups",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "wing": {"type": "string", "description": "Optional wing filter"},
+                "max_results": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "super_memory_collision_check",
+        "description": "Pre-check a proposed drawer batch for ID collisions before insertion",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "proposed": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": [
+                            {"type": "string", "description": "drawer_id"},
+                            {"type": "object", "properties": {"source_file": {"type": "string"}, "chunk_index": {"type": "integer"}}},
+                        ],
+                    },
+                    "description": "List of [drawer_id, metadata_dict] tuples",
+                },
+            },
+            "required": ["proposed"],
+        },
+    },
+
+    # ── Phase 7: Onboarding ──────────────────────────────────────────────────
+    {
+        "name": "super_memory_onboarding_quick",
+        "description": "Quick programmatic setup — seed entity registry with people, projects, aliases",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "mode": {"type": "string", "default": "combo", "description": "work, personal, or combo"},
+                "people": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "relationship": {"type": "string"}, "context": {"type": "string"}}}},
+                "projects": {"type": "array", "items": {"type": "string"}},
+                "aliases": {"type": "object", "description": "nickname → canonical_name map"},
+                "wings": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [],
+        },
+    },
+
+    # ── Phase 8: Conversation Mining ─────────────────────────────────────────
+    {
+        "name": "super_memory_convo_mine_file",
+        "description": "Mine a single conversation file (txt, json, jsonl) into the palace. Supports plain chat, ChatGPT/Claude exports, Slack.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Path to conversation file"},
+                "wing": {"type": "string", "default": "conversations"},
+                "dry_run": {"type": "boolean", "default": False, "description": "Preview only, no write"},
+            },
+            "required": ["file_path"],
+        },
+    },
+    {
+        "name": "super_memory_convo_mine_directory",
+        "description": "Mine all conversation files in a directory into the palace",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "directory": {"type": "string", "description": "Path to directory with conversation files"},
+                "wing": {"type": "string", "default": "conversations"},
+                "recursive": {"type": "boolean", "default": True},
+                "dry_run": {"type": "boolean", "default": False},
+            },
+            "required": ["directory"],
         },
     },
 ]
