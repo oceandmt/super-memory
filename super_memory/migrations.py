@@ -115,23 +115,56 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
     except sqlite3.OperationalError:
         return []  # FTS5 not available in this SQLite build
 
-    # memories_fts: content-table form
+    # memories_fts: content-table form (idempotent check)
     try:
+        exists_before = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories_fts'"
+        ).fetchone() is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
             "USING fts5(content, content=memories, content_rowid=rowid)"
         )
-        changed.append("memories_fts")
+        # FTS5 content-table form requires triggers to keep index in sync
+        conn.executescript("""
+            CREATE TRIGGER IF NOT EXISTS memories_fts_ai AFTER INSERT ON memories BEGIN
+                INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS memories_fts_ad AFTER DELETE ON memories BEGIN
+                INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS memories_fts_au AFTER UPDATE ON memories BEGIN
+                INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+                INSERT INTO memories_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+        """)
+        if not exists_before:
+            changed.append("memories_fts")
     except sqlite3.OperationalError:
-        pass  # may already exist as different schema
+        pass
 
-    # honcho_events_fts: content-table form
+    # honcho_events_fts: content-table form (idempotent check)
     try:
+        exists_before = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='honcho_events_fts'"
+        ).fetchone() is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS honcho_events_fts "
             "USING fts5(content, content=honcho_events, content_rowid=rowid)"
         )
-        changed.append("honcho_events_fts")
+        conn.executescript("""
+            CREATE TRIGGER IF NOT EXISTS honcho_events_fts_ai AFTER INSERT ON honcho_events BEGIN
+                INSERT INTO honcho_events_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS honcho_events_fts_ad AFTER DELETE ON honcho_events BEGIN
+                INSERT INTO honcho_events_fts(honcho_events_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS honcho_events_fts_au AFTER UPDATE ON honcho_events BEGIN
+                INSERT INTO honcho_events_fts(honcho_events_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+                INSERT INTO honcho_events_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+        """)
+        if not exists_before:
+            changed.append("honcho_events_fts")
     except sqlite3.OperationalError:
         pass
 
