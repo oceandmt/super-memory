@@ -8,7 +8,14 @@ from __future__ import annotations
 import fcntl
 import sqlite3
 from pathlib import Path
-from typing import Iterable
+
+try:
+    from alembic.config import Config as AlembicConfig
+
+    from alembic import command
+    _HAS_ALEMBIC = True
+except ImportError:
+    _HAS_ALEMBIC = False
 
 from .config import load_config
 from .models import SuperMemoryConfig
@@ -120,6 +127,26 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
             return {"ok": True, "db_path": str(db_path), "changed": changed+changed2, "change_count": len(changed)+len(changed2)}
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def run_alembic_migrations(config: SuperMemoryConfig | None = None, revision: str = "head") -> dict[str, object]:
+    """Run versioned Alembic migrations against the configured SQLite DB.
+
+    This complements the legacy idempotent schema runner.  It is intended for
+    reproducible CI/dev schema creation and future non-idempotent changes.
+    """
+    if not _HAS_ALEMBIC:
+        return {"ok": False, "error": "alembic is not installed"}
+    config = config or load_config()
+    db_path = sqlite_path(config)
+    project_root = Path(__file__).resolve().parents[1]
+    alembic_ini = project_root / "alembic.ini"
+    if not alembic_ini.exists():
+        return {"ok": False, "error": f"missing alembic.ini: {alembic_ini}"}
+    alembic_cfg = AlembicConfig(str(alembic_ini))
+    alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    command.upgrade(alembic_cfg, revision)
+    return {"ok": True, "db_path": str(db_path), "revision": revision, "runner": "alembic"}
 
 
 def main() -> None:

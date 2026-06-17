@@ -1,8 +1,10 @@
 """Document extractors for super_memory train pipeline."""
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from typing import Any
+
 
 def extract_pdf(path: Path) -> str | None:
     """Extract text from PDF using PyPDF2."""
@@ -161,39 +163,12 @@ def extract_text(path: Path) -> str | None:
 
 def available_extractors() -> dict[str, bool]:
     """Check which extractors are available."""
-    availability = {}
-    
-    try:
-        import PyPDF2
-        availability["pdf"] = True
-    except ImportError:
-        availability["pdf"] = False
-    
-    try:
-        import docx
-        availability["docx"] = True
-    except ImportError:
-        availability["docx"] = False
-    
-    try:
-        import pptx
-        availability["pptx"] = True
-    except ImportError:
-        availability["pptx"] = False
-    
-    try:
-        from bs4 import BeautifulSoup
-        availability["html"] = True
-    except ImportError:
-        availability["html"] = False
-    
-    try:
-        import openpyxl
-        availability["xlsx"] = True
-    except ImportError:
-        availability["xlsx"] = False
-    
-    availability["csv"] = True  # stdlib
-    availability["text"] = True  # builtin
-    
-    return availability
+    return {
+        "pdf": importlib.util.find_spec("PyPDF2") is not None,
+        "docx": importlib.util.find_spec("docx") is not None,
+        "pptx": importlib.util.find_spec("pptx") is not None,
+        "html": importlib.util.find_spec("bs4") is not None,
+        "xlsx": importlib.util.find_spec("openpyxl") is not None,
+        "csv": True,  # stdlib
+        "text": True,  # builtin
+    }

@@ -135,7 +135,8 @@ def test_concurrent_handoff_create_smoke(cfg):
 
 
 def test_sql_safety_script_passes():
-    import subprocess, sys
+    import subprocess
+    import sys
     root = Path(__file__).resolve().parents[1]
     res = subprocess.run([sys.executable, "scripts/check_sql_safety.py"], cwd=root, text=True, capture_output=True)
     assert res.returncode == 0, res.stdout + res.stderr
@@ -143,7 +144,8 @@ def test_sql_safety_script_passes():
 
 
 def test_tool_contract_script_passes():
-    import subprocess, sys
+    import subprocess
+    import sys
     root = Path(__file__).resolve().parents[1]
     res = subprocess.run([sys.executable, "scripts/check_tool_contracts.py"], cwd=root, text=True, capture_output=True)
     assert res.returncode == 0, res.stdout + res.stderr

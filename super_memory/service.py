@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from .hooks import TurnContext
 from .layers import MemoryBackend, SQLiteLayerBackend, WorkspaceMarkdownBackend
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType, SaveResult, SuperMemoryConfig
-from .hooks import TurnContext
+from .observability import traced
 from .storage import SuperMemoryStore
-
 
 SAVE_ORDER = [
     MemoryLayer.WORKSPACE_MARKDOWN,
@@ -38,26 +38,39 @@ class SuperMemoryService:
         results: list[SaveResult] = []
         markdown_ok = False
 
-        for layer in SAVE_ORDER:
-            if layer not in self.config.enabled_layers:
-                continue
-            if self.config.require_canonical_first and layer != MemoryLayer.WORKSPACE_MARKDOWN:
-                if not markdown_ok:
-                    # Markdown failed — save into SQLite with fallback flag
-                    result = self._fallback_save(layer, record)
-                    results.append(result)
+        def _extra() -> dict[str, object]:
+            return {
+                "memory_id": record.id,
+                "memory_type": record.type.value,
+                "scope": record.scope.value,
+                "agent_id": record.agent_id,
+                "project": record.project,
+                "layers": [r.layer.value for r in results],
+                "ok_layers": [r.layer.value for r in results if r.ok],
+                "failed_layers": [r.layer.value for r in results if not r.ok],
+            }
+
+        with traced("service.save", extra=_extra):
+            for layer in SAVE_ORDER:
+                if layer not in self.config.enabled_layers:
                     continue
-            try:
-                results.append(self.backends[layer].save(record))
-                if layer == MemoryLayer.WORKSPACE_MARKDOWN:
-                    markdown_ok = results[-1].ok
-            except Exception as exc:
-                result = SaveResult(layer=layer, ok=False, message=f"{type(exc).__name__}: {exc}")
-                if layer == MemoryLayer.WORKSPACE_MARKDOWN:
-                    markdown_ok = False
-                elif not markdown_ok and self.config.require_canonical_first:
-                    result.pending_canonical_sync = True
-                results.append(result)
+                if self.config.require_canonical_first and layer != MemoryLayer.WORKSPACE_MARKDOWN:
+                    if not markdown_ok:
+                        # Markdown failed — save into SQLite with fallback flag
+                        result = self._fallback_save(layer, record)
+                        results.append(result)
+                        continue
+                try:
+                    results.append(self.backends[layer].save(record))
+                    if layer == MemoryLayer.WORKSPACE_MARKDOWN:
+                        markdown_ok = results[-1].ok
+                except Exception as exc:
+                    result = SaveResult(layer=layer, ok=False, message=f"{type(exc).__name__}: {exc}")
+                    if layer == MemoryLayer.WORKSPACE_MARKDOWN:
+                        markdown_ok = False
+                    elif not markdown_ok and self.config.require_canonical_first:
+                        result.pending_canonical_sync = True
+                    results.append(result)
 
         return results
 
@@ -113,13 +126,23 @@ class SuperMemoryService:
 
     def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
-        for layer in SAVE_ORDER:
-            if layer not in self.config.enabled_layers:
-                continue
-            try:
-                out[layer] = self.backends[layer].recall(query, limit=limit)
-            except Exception:
-                out[layer] = []
+
+        def _extra() -> dict[str, object]:
+            return {
+                "query_chars": len(query),
+                "limit": limit,
+                "layers": [layer.value for layer in out],
+                "hit_count": sum(len(records) for records in out.values()),
+            }
+
+        with traced("service.recall", extra=_extra):
+            for layer in SAVE_ORDER:
+                if layer not in self.config.enabled_layers:
+                    continue
+                try:
+                    out[layer] = self.backends[layer].recall(query, limit=limit)
+                except Exception:
+                    out[layer] = []
         return out
 
     def sync_turn(self, context: TurnContext) -> list[SaveResult]:

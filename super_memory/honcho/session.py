@@ -5,12 +5,11 @@ Combines peer model, recent events, session summary into compact context.
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .peer import PeerModel, PeerStore
+from .peer import PeerStore
 
 
 class SessionContextBuilder:

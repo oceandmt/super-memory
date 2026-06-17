@@ -70,26 +70,39 @@ class SessionArchive(DBMixin):
         return {"ok": bool(row), "summary": self._decode(dict(row)) if row else None}
 
     def list_session_summaries(self, agent_id: str | None = None, limit: int = 20, offset: int = 0) -> dict[str, Any]:
-        self.ensure_tables(); args=[]
-        if agent_id: args.append(agent_id); where = "WHERE agent_id=?"
-        else: where = ""
+        self.ensure_tables()
+        args = []
+        if agent_id:
+            args.append(agent_id)
+            where = "WHERE agent_id=?"
+        else:
+            where = ""
         with self._conn() as conn:
             sql = "SELECT * FROM session_archives " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
             rows = [self._decode(dict(r)) for r in conn.execute(sql, (*args, limit, offset)).fetchall()]
         return {"ok": True, "summaries": rows, "count": len(rows), "limit": limit, "offset": offset}
 
     def search_session_archives(self, query: str, limit: int = 20, offset: int = 0) -> dict[str, Any]:
-        self.ensure_tables(); q=f"%{query}%"
+        self.ensure_tables()
+        q = f"%{query}%"
         with self._conn() as conn:
-            rows = [self._decode(dict(r)) for r in conn.execute("SELECT * FROM session_archives WHERE summary LIKE ? OR key_decisions_json LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?", (q,q,limit,offset)).fetchall()]
+            rows = [
+                self._decode(dict(r))
+                for r in conn.execute(
+                    "SELECT * FROM session_archives WHERE summary LIKE ? OR key_decisions_json LIKE ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                    (q, q, limit, offset),
+                ).fetchall()
+            ]
         return {"ok": True, "query": query, "results": rows, "count": len(rows), "limit": limit, "offset": offset}
 
     def session_timeline_view(self, session_id: str, mode: str = "summarized") -> dict[str, Any]:
         self.ensure_tables()
-        if mode == "summarized": return self.get_session_summary(session_id)
+        if mode == "summarized":
+            return self.get_session_summary(session_id)
         with self._conn() as conn:
             events = [dict(r) for r in conn.execute("SELECT id,content,created_at,source FROM honcho_events WHERE session_id=? ORDER BY created_at", (session_id,)).fetchall()]
-        if mode == "raw": return {"ok": True, "events": events, "count": len(events)}
+        if mode == "raw":
+            return {"ok": True, "events": events, "count": len(events)}
         terms = ["decision", "decided"] if mode == "decisions" else ["blocker", "blocked", "stuck"]
         filtered = [e for e in events if any(t in (e.get("content") or "").lower() for t in terms)]
         return {"ok": True, "mode": mode, "events": filtered, "count": len(filtered)}

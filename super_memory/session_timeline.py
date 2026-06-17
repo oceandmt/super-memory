@@ -1,9 +1,11 @@
 """Session timeline and evolution tools for Honcho events."""
 from __future__ import annotations
+
 import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+
 from .config import load_config
 
 

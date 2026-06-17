@@ -5,7 +5,6 @@ import re
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
-from uuid import uuid4
 
 from .config import load_config
 from .graph import project_memory

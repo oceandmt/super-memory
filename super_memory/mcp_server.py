@@ -5,22 +5,22 @@ import json
 import os
 import sys
 import traceback
-from typing import Any, Callable
+from typing import Any
 
 from . import bridge
+from .capture_hook import CAPTURE_HOOK_TOOLS, CaptureHook
+from .claim_extractor import CLAIM_EXTRACTOR_TOOLS, ClaimExtractor
 from .config import load_config
-from .mempalace.tools import MemPalaceTools, MEMPALACE_TOOLS
-from .honcho.tools import HonchoTools, HONCHO_TOOLS
-from .cross_agent import CrossAgentTools, CROSS_AGENT_TOOLS
-from .session_timeline import SessionTimelineTools, SESSION_TIMELINE_TOOLS
-from .capture_hook import CaptureHook, CAPTURE_HOOK_TOOLS
-from .handoff import HandoffTools, HANDOFF_TOOLS
-from .synthesis import SynthesisTools, SYNTHESIS_TOOLS
-from .hooks import HookManager, HOOKS_TOOLS
-from .hybrid_recall import HybridRecall, HYBRID_RECALL_TOOLS
-from .claim_extractor import ClaimExtractor, CLAIM_EXTRACTOR_TOOLS
-from .session_archive import SessionArchive, SESSION_ARCHIVE_TOOLS
-from .reports import Reports, REPORTS_TOOLS
+from .cross_agent import CROSS_AGENT_TOOLS, CrossAgentTools
+from .handoff import HANDOFF_TOOLS, HandoffTools
+from .honcho.tools import HONCHO_TOOLS, HonchoTools
+from .hooks import HOOKS_TOOLS, HookManager
+from .hybrid_recall import HYBRID_RECALL_TOOLS, HybridRecall
+from .mempalace.tools import MEMPALACE_TOOLS, MemPalaceTools
+from .reports import REPORTS_TOOLS, Reports
+from .session_archive import SESSION_ARCHIVE_TOOLS, SessionArchive
+from .session_timeline import SESSION_TIMELINE_TOOLS, SessionTimelineTools
+from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
 
 JSON = dict[str, Any]
 
@@ -430,16 +430,34 @@ for _name, _desc, _props, _required in [
 
 def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
+    try:
+        return _ALLOWED_CACHE[effective]
+    except KeyError:
+        pass
     if effective == "admin":
-        return ADMIN_TOOLS
-    if effective == "all":
-        return set(TOOLS)
-    return NORMAL_TOOLS
+        result = ADMIN_TOOLS
+    elif effective == "all":
+        result = set(TOOLS)
+    else:
+        result = NORMAL_TOOLS
+    _ALLOWED_CACHE[effective] = result
+    return result
+
+_ALLOWED_CACHE: dict[str, set[str]] = {}
 
 
 def _tool_descriptors(profile: str | None = None) -> list[JSON]:
+    effective = (profile or MCP_PROFILE or "normal").lower()
+    try:
+        return _DESCRIPTOR_CACHE[effective]
+    except KeyError:
+        pass
     allowed = _allowed_tools(profile)
-    return [{"name": name, **meta} for name, meta in TOOLS.items() if name in allowed]
+    result = [{"name": name, **meta} for name, meta in TOOLS.items() if name in allowed]
+    _DESCRIPTOR_CACHE[effective] = result
+    return result
+
+_DESCRIPTOR_CACHE: dict[str, list[JSON]] = {}
 
 
 def _call_tool(name: str, args: JSON) -> Any:

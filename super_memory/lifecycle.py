@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import load_config
-from .models import MemoryType
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 

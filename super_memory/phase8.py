@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import json
-import os
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from . import bridge
 from .config import load_config
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore
-from . import bridge
 
 
 def _now() -> str:

@@ -7,9 +7,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .config import load_config
 from .compat import memory_get_compatible, memory_search_compatible
-from .models import MemoryRecord, MemoryScope, MemoryType, SuperMemoryConfig
+from .config import load_config
+from .models import MemoryScope, MemoryType
 from .promote import PROMOTABLE_TYPES, promote_both
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore

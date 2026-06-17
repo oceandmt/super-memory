@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from . import bridge, graph
 from .config import load_config
 from .models import MemoryScope, MemoryType
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore
-from . import bridge, graph
 
 
 def _now() -> str:

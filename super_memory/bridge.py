@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import sqlite3
 from typing import Any
 
-from .config import load_config
+from . import code_index, cognitive, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
+from .config import load_config
 from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner
 
 
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:

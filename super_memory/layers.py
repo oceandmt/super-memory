@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
-import hashlib
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -270,24 +270,6 @@ class SQLiteLayerBackend(MemoryBackend):
                         metadata=json.loads(row["metadata_json"]),
                     )
                 )
-        return out
-        for row in rows:
-            out.append(
-                MemoryRecord(
-                    id=row["id"],
-                    content=row["content"],
-                    type=row["type"],
-                    scope=row["scope"],
-                    agent_id=row["agent_id"],
-                    session_id=row["session_id"],
-                    project=row["project"],
-                    tags=json.loads(row["tags_json"]),
-                    source=row["source"],
-                    trust_score=row["trust_score"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                    metadata=json.loads(row["metadata_json"]),
-                )
-            )
         return out
 
 

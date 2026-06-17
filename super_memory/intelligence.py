@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from .config import load_config
 from .consolidation import consolidate_real
-from .models import MemoryRecord, MemoryScope, MemoryType
-from .promote import promote_both
+from .models import MemoryRecord
 from .sanitize import normalize_memory_payload, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore
@@ -119,7 +117,7 @@ def situation(config_path: str | None = None) -> dict[str, Any]:
     svc = SuperMemoryService(cfg)
     status = {
         "recent": [r.model_dump(mode="json") for r in svc.prefetch("decision workflow blocker todo", limit=10)],
-        "health": {"canonical_first": cfg.require_canonical_first, "enabled_layers": [l.value for l in cfg.enabled_layers]},
+        "health": {"canonical_first": cfg.require_canonical_first, "enabled_layers": [layer.value for layer in cfg.enabled_layers]},
     }
     return {"ok": True, **status}
 

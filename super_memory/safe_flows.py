@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import bridge
 from .config import load_config
-from .extractors import extract_text, available_extractors
+from .extractors import available_extractors, extract_text
 from .models import MemoryScope, MemoryType
 from .sanitize import sanitize_prompt
 from .storage import SuperMemoryStore
-from . import bridge
 
 TEXT_EXTENSIONS = {".md", ".markdown", ".txt", ".rst"}
 RICH_EXTENSIONS = {".pdf", ".docx", ".pptx", ".html", ".htm", ".xlsx", ".csv"}
@@ -162,7 +162,6 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
                     saved_count += 1
                     file_item["saved"] += 1
                     _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
-                    _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])
         items.append(file_item)
     return {"ok": True, "enabled": True, "mode": "local_text_rich_documents", "path": str(target), "files": items, "saved_chunks": saved_count, "skipped_chunks": skipped_count, "extraction_failures": extraction_failures, "extractors": available_extractors(), "external_backends": "disabled"}
 
@@ -218,7 +217,6 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
                 if result["results"] and result["results"][0]["ok"]:
                     saved_count += 1
                     file_item["saved"] += 1
-                    _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=result["record"]["id"])
                     _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=result["record"]["id"])
         imported.append(file_item)
     return {"ok": True, "enabled": True, "mode": "local_import", "path": str(target), "files": imported, "saved_records": saved_count, "skipped_records": skipped_count, "external_backends": "disabled"}

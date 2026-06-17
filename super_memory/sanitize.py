@@ -49,10 +49,12 @@ _SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|authorization)\s*[:=]\s*([^\s,;]+)"),
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{12,}"),
     re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]{20,}"),
+    re.compile(r"AKIA[0-9A-Z]{16}"),
 ]
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WS = re.compile(r"[ \t]+")
-
 
 def sanitize_prompt(text: Any, *, max_chars: int = _MAX_PROMPT_CHARS) -> str:
     """Sanitize recall/prompt text without changing user-visible meaning.

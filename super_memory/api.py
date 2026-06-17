@@ -6,8 +6,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from . import bridge
-from . import mcp_server
+from . import bridge, mcp_server
 
 app = FastAPI(title="Super Memory API", version="0.1.0")
 

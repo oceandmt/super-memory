@@ -1,6 +1,6 @@
-from pathlib import Path
 import json
 import re
+from pathlib import Path
 
 
 def test_plugin_exclusive_memory_capability_is_disabled_by_default():

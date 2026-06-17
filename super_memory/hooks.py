@@ -1,10 +1,14 @@
 from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from typing import Any
+
 from .capture_hook import CaptureHook
-from .handoff import HandoffTools
 from .db import DBMixin
+from .handoff import HandoffTools
+from .observability import traced
+
 
 @dataclass
 class TurnContext:
@@ -28,15 +32,29 @@ class HookManager(DBMixin):
                 ended_at TEXT, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
 
     def post_turn_capture(self, user_message: str, assistant_message: str, session_id: str, agent_id: str, workspace: str) -> dict[str, Any]:
-        self.ensure_tables()
-        hook = CaptureHook(self.config)
-        meta = {"kind": "turn", "agent_id": agent_id}
-        user = hook.capture_event(user_message, session_id, agent_id, "boss", workspace, "post_turn_user", metadata=meta)
-        assistant = hook.capture_event(assistant_message, session_id, agent_id, agent_id, workspace, "post_turn_assistant", metadata=meta)
-        with self._conn() as conn:
-            conn.execute("INSERT OR IGNORE INTO sessions(id,agent_id,peer_id,status) VALUES(?,?,?,?)", (session_id, agent_id, "boss", "active"))
-            conn.execute("UPDATE sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (session_id,))
-        return {"ok": True, "events": [user, assistant]}
+        result: dict[str, Any] = {"ok": False, "events": []}
+
+        def _extra() -> dict[str, Any]:
+            return {
+                "session_id": session_id,
+                "agent_id": agent_id,
+                "workspace": workspace,
+                "user_chars": len(user_message),
+                "assistant_chars": len(assistant_message),
+                "event_count": len(result.get("events", [])),
+            }
+
+        with traced("hooks.post_turn_capture", extra=_extra):
+            self.ensure_tables()
+            hook = CaptureHook(self.config)
+            meta = {"kind": "turn", "agent_id": agent_id}
+            user = hook.capture_event(user_message, session_id, agent_id, "boss", workspace, "post_turn_user", metadata=meta)
+            assistant = hook.capture_event(assistant_message, session_id, agent_id, agent_id, workspace, "post_turn_assistant", metadata=meta)
+            with self._conn() as conn:
+                conn.execute("INSERT OR IGNORE INTO sessions(id,agent_id,peer_id,status) VALUES(?,?,?,?)", (session_id, agent_id, "boss", "active"))
+                conn.execute("UPDATE sessions SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (session_id,))
+            result = {"ok": True, "events": [user, assistant]}
+        return result
 
     def session_start_context(self, session_id: str, agent_id: str, peer_id: str, max_tokens: int = 800) -> dict[str, Any]:
         self.ensure_tables()

@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import math
 import re
 import time
 from typing import Any
+
 from .db import DBMixin, validate_agent_scope, validate_session_scope
+
 
 def _tokens(text: str) -> list[str]:
     return [t for t in re.split(r"[^a-zA-Z0-9_]+", (text or "").lower()) if len(t) > 1]
@@ -34,7 +37,8 @@ class HybridRecall(DBMixin):
         allowed_layers = {"all", "markdown", "honcho", "mempalace", "graph"}
         if any(layer not in allowed_layers for layer in layers):
             raise ValueError(f"invalid source_layers: {layers}")
-        if "all" in layers: layers = ["markdown", "honcho", "mempalace", "graph"]
+        if "all" in layers:
+            layers = ["markdown", "honcho", "mempalace", "graph"]
         candidate_limit = max(limit * 5, 50)
         results: list[dict[str, Any]] = []
         with self._conn() as conn:
@@ -54,10 +58,17 @@ class HybridRecall(DBMixin):
         where, args = ["content LIKE ?"], [f"%{query}%"]
         agent_kind, agent = validate_agent_scope(agent_scope)
         session_kind, sid = validate_session_scope(session_scope)
-        if agent_kind == "agent": where.append("agent_id=?"); args.append(agent)
-        elif agent_kind == "shared": where.append("scope=?"); args.append("shared")
-        if session_kind == "session": where.append("session_id=?"); args.append(sid)
-        if graph: where.append("id IN (SELECT source_memory_id FROM cognitive_neurons WHERE source_memory_id IS NOT NULL UNION SELECT source_memory_id FROM graph_edges UNION SELECT target_memory_id FROM graph_edges)")
+        if agent_kind == "agent":
+            where.append("agent_id=?")
+            args.append(agent)
+        elif agent_kind == "shared":
+            where.append("scope=?")
+            args.append("shared")
+        if session_kind == "session":
+            where.append("session_id=?")
+            args.append(sid)
+        if graph:
+            where.append("id IN (SELECT source_memory_id FROM cognitive_neurons WHERE source_memory_id IS NOT NULL UNION SELECT source_memory_id FROM graph_edges UNION SELECT target_memory_id FROM graph_edges)")
         sql = "SELECT id,content,agent_id,session_id,created_at,type FROM memories WHERE " + " AND ".join(where) + " ORDER BY created_at DESC LIMIT ?"
         rows = conn.execute(sql, (*args, limit)).fetchall()
         return [self._result(dict(r), layer) for r in rows]
@@ -66,8 +77,12 @@ class HybridRecall(DBMixin):
         where, args = ["content LIKE ?"], [f"%{query}%"]
         agent_kind, agent = validate_agent_scope(agent_scope)
         session_kind, sid = validate_session_scope(session_scope)
-        if agent_kind == "agent": where.append("observer_peer_id=?"); args.append(agent)
-        if session_kind == "session": where.append("session_id=?"); args.append(sid)
+        if agent_kind == "agent":
+            where.append("observer_peer_id=?")
+            args.append(agent)
+        if session_kind == "session":
+            where.append("session_id=?")
+            args.append(sid)
         sql = "SELECT id,content,observer_peer_id AS agent_id,session_id,created_at,source AS type FROM honcho_events WHERE " + " AND ".join(where) + " ORDER BY created_at DESC LIMIT ?"
         return [self._result(dict(r), "honcho") for r in conn.execute(sql, (*args, limit)).fetchall()]
 
@@ -80,14 +95,19 @@ class HybridRecall(DBMixin):
         return [self._result(dict(r), "mempalace") for r in conn.execute(sql, (f"%{query}%", limit)).fetchall()]
 
     def _result(self, row: dict[str, Any], layer: str) -> dict[str, Any]:
-        row.setdefault("agent_id", None); row.setdefault("session_id", None); row.setdefault("created_at", None)
+        row.setdefault("agent_id", None)
+        row.setdefault("session_id", None)
+        row.setdefault("created_at", None)
         return {"id": str(row.get("id")), "content": row.get("content") or "", "agent_id": row.get("agent_id"), "session_id": row.get("session_id"), "created_at": row.get("created_at"), "type": row.get("type"), "provenance": {"layer": layer, "id": str(row.get("id"))}}
 
     def _dedup(self, rows):
-        out, prefixes = [], set()
+        out = []
+        prefixes = set()
         for r in rows:
             key = " ".join((r["content"] or "").lower().split()[:12])
-            if key and key not in prefixes: prefixes.add(key); out.append(r)
+            if key and key not in prefixes:
+                prefixes.add(key)
+                out.append(r)
         return out
 
     def _score(self, r, query, agent_scope, session_scope):
@@ -97,7 +117,8 @@ class HybridRecall(DBMixin):
         recency = .5
         try:
             recency = max(.1, 1 - (time.time() - time.mktime(time.strptime((r.get("created_at") or "")[:19], "%Y-%m-%d %H:%M:%S"))) / 2592000)
-        except Exception: pass
+        except Exception:
+            pass
         return ((scope*sess) * 10 + recency * 5 + exact * 3) / 18
 
     def _truncate(self, rows, max_tokens):
@@ -105,14 +126,17 @@ class HybridRecall(DBMixin):
         # Use len//3.5 as slightly conservative estimate
         chars_per_token = 3.5
         budget = int(max_tokens * chars_per_token)
-        out=[]; used=0
+        out = []
+        used = 0
         for r in rows:
             content = r["content"] or ""
-            n=len(content)
-            if used+n > budget:
-                content=content[:max(0,budget-used)]
-            out.append({**r, "content": content}); used += len(content)
-            if used >= budget: break
+            n = len(content)
+            if used + n > budget:
+                content = content[:max(0, budget - used)]
+            out.append({**r, "content": content})
+            used += len(content)
+            if used >= budget:
+                break
         return out
 
 HYBRID_RECALL_TOOLS = [{"name":"super_memory_cross_scope_recall","description":"Hybrid recall across markdown, Honcho, MemPalace, and graph layers","inputSchema":{"type":"object","properties":{"query":{"type":"string"},"agent_scope":{"type":"string","default":"current"},"session_scope":{"type":"string","default":"recent"},"source_layers":{"type":"array","items":{"type":"string"}},"max_tokens":{"type":"integer","default":2000},"limit":{"type":"integer","default":10}},"required":["query"]}}]

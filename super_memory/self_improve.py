@@ -3,7 +3,6 @@ from __future__ import annotations
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .service import SuperMemoryService
 
-
 LESSON_TRIGGERS = ("fixed", "resolved", "learned", "blocker", "failure", "regression", "workflow")
 
 

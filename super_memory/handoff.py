@@ -1,9 +1,11 @@
 """Handoff bundle creation and retrieval tools."""
 from __future__ import annotations
+
 import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+
 from .config import load_config
 from .db import validate_status
 
@@ -144,7 +146,11 @@ class HandoffTools:
 
     def load_current_handoff(self, agent_id: str) -> dict[str, Any]:
         self.ensure_tables()
-        rows = self._rows("SELECT id FROM handoff_bundles WHERE to_agent=? AND status='open' ORDER BY created_at DESC LIMIT 1", (agent_id,))
+        rows = self._rows(
+            "SELECT id FROM handoff_bundles WHERE to_agent=? AND status='open'"
+            " ORDER BY created_at DESC LIMIT 1",
+            (agent_id,),
+        )
         if not rows:
             return {"ok": False, "error": "no_open_handoff", "agent_id": agent_id}
         out = self.get_handoff(rows[0]["id"])
@@ -155,14 +161,17 @@ class HandoffTools:
         self.ensure_tables()
         artifacts = created_artifacts_json
         if isinstance(artifacts, str):
-            try: artifacts = json.loads(artifacts)
-            except json.JSONDecodeError: artifacts = [artifacts]
+            try:
+                artifacts = json.loads(artifacts)
+            except json.JSONDecodeError:
+                artifacts = [artifacts]
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
             conn.row_factory = sqlite3.Row
             bundle = conn.execute("SELECT * FROM handoff_bundles WHERE id=?", (bundle_id,)).fetchone()
-            if not bundle: return {"ok": False, "error": "handoff_not_found", "bundle_id": bundle_id}
+            if not bundle:
+                return {"ok": False, "error": "handoff_not_found", "bundle_id": bundle_id}
             conn.execute("UPDATE handoff_bundles SET status='completed', completed_at=CURRENT_TIMESTAMP WHERE id=?", (bundle_id,))
             mem_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
             now = conn.execute("SELECT datetime('now')").fetchone()[0]

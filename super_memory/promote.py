@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime
 from pathlib import Path
 
 from .models import MemoryRecord, MemoryType, SuperMemoryConfig
-
 
 PROMOTABLE_TYPES = frozenset(
     {

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from super_memory import leitner
 from super_memory.config import load_config
 from super_memory.models import SuperMemoryConfig
-from super_memory import leitner
 
 
 @pytest.fixture()
@@ -132,7 +132,7 @@ def test_edit_nonexistent():
 
 def test_edit_no_fields():
     """edit with no update fields on existing memory returns error."""
-    from super_memory import bridge, storage, config
+    from super_memory import bridge, config, storage
     from super_memory.models import MemoryRecord
     # Use a real memory to get past the "not found" check
     r = bridge.edit("nonexistent-edit-id")

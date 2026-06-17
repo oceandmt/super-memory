@@ -8,7 +8,6 @@ import yaml
 
 from .models import SuperMemoryConfig
 
-
 DEFAULT_CONFIG_PATHS = [
     Path("super-memory.yaml"),
     Path("config/super-memory.yaml"),

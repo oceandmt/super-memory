@@ -1,10 +1,12 @@
 """Auto-capture hooks for Honcho events."""
 from __future__ import annotations
+
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from datetime import datetime, timezone
+
 from .config import load_config
 
 

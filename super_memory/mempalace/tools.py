@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from ..config import SuperMemoryConfig
+from .compressor import AAAKCompressor
 from .extractor import SpatialExtractor
 from .loader import MemPalaceLoader
-from .compressor import AAAKCompressor
 from .spatial import SpatialNavigator
 
 

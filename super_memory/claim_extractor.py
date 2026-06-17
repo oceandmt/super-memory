@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import re
 from typing import Any
+
 from .db import DBMixin
+
 
 class ClaimExtractor(DBMixin):
     STOP_SUBJECTS = {"it", "this", "that", "there", "they", "we", "you", "i"}
@@ -23,7 +26,8 @@ class ClaimExtractor(DBMixin):
         self.ensure_tables()
         with self._conn() as conn:
             row = conn.execute("SELECT id,content,agent_id FROM memories WHERE id=?", (memory_id,)).fetchone()
-            if not row: return {"ok": False, "error": "memory_not_found", "memory_id": memory_id}
+            if not row:
+                return {"ok": False, "error": "memory_not_found", "memory_id": memory_id}
             claims = self._extract(row["content"], row["agent_id"], memory_id)
             for c in claims:
                 cid = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
@@ -32,19 +36,21 @@ class ClaimExtractor(DBMixin):
         return {"ok": True, "memory_id": memory_id, "claims": claims, "count": len(claims)}
 
     def _extract(self, text: str, agent_id: str | None, memory_id: str) -> list[dict[str, Any]]:
-        claims=[]
-        seen=set()
+        claims = []
+        seen = set()
         for pat in self.PATTERNS:
             for m in pat.finditer(text or ""):
                 if len(m.groups()) == 1:
                     subj, pred, obj = "memory", "states", self._clean(m.group(1))
                 else:
-                    subj = self._clean(m.group(1)); pred = m.group(2).lower(); obj = self._clean(m.group(3))
+                    subj = self._clean(m.group(1))
+                    pred = m.group(2).lower()
+                    obj = self._clean(m.group(3))
                 if not self._valid_claim(subj, pred, obj):
                     continue
                 words = set((pred + " " + obj.lower()).split())
                 pol = "negative" if words & self.NEG or " not " in obj.lower() else "positive"
-                key=(subj.lower(), pred, obj.lower()[:80])
+                key = (subj.lower(), pred, obj.lower()[:80])
                 if key in seen:
                     continue
                 seen.add(key)
@@ -68,28 +74,36 @@ class ClaimExtractor(DBMixin):
         q = f"%{topic}%"
         with self._conn() as conn:
             rows = [dict(r) for r in conn.execute("SELECT * FROM cross_agent_claims WHERE status='active' AND (subject LIKE ? OR object LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?", (q,q,limit*4,offset)).fetchall()]
-        pairs=[]
-        for i,a in enumerate(rows):
+        pairs = []
+        for i, a in enumerate(rows):
             for b in rows[i+1:]:
-                if a["subject"].lower()==b["subject"].lower() and a["polarity"]!=b["polarity"] and a.get("agent_id")!=b.get("agent_id"):
+                if a["subject"].lower() == b["subject"].lower() and a["polarity"] != b["polarity"] and a.get("agent_id") != b.get("agent_id"):
                     pairs.append({"claim_a": a, "claim_b": b})
-                    if len(pairs)>=limit: break
-            if len(pairs)>=limit: break
+                    if len(pairs) >= limit:
+                        break
+            if len(pairs) >= limit:
+                break
         return {"ok": True, "topic": topic, "contradictions": pairs, "count": len(pairs)}
 
     def resolve_contradiction(self, claim_a_id: str, claim_b_id: str, resolution: str) -> dict[str, Any]:
         self.ensure_tables()
         valid = {"supersede_a", "supersede_b", "accept_both", "stale"}
-        if resolution not in valid: return {"ok": False, "error": "invalid_resolution"}
+        if resolution not in valid:
+            return {"ok": False, "error": "invalid_resolution"}
         with self._conn() as conn:
-            if resolution == "supersede_a": conn.execute("UPDATE cross_agent_claims SET status='superseded',resolution=? WHERE id=?", (resolution, claim_a_id))
-            elif resolution == "supersede_b": conn.execute("UPDATE cross_agent_claims SET status='superseded',resolution=? WHERE id=?", (resolution, claim_b_id))
-            elif resolution == "stale": conn.execute("UPDATE cross_agent_claims SET status='stale',resolution=? WHERE id IN (?,?)", (resolution, claim_a_id, claim_b_id))
-            else: conn.execute("UPDATE cross_agent_claims SET resolution=? WHERE id IN (?,?)", (resolution, claim_a_id, claim_b_id))
+            if resolution == "supersede_a":
+                conn.execute("UPDATE cross_agent_claims SET status='superseded',resolution=? WHERE id=?", (resolution, claim_a_id))
+            elif resolution == "supersede_b":
+                conn.execute("UPDATE cross_agent_claims SET status='superseded',resolution=? WHERE id=?", (resolution, claim_b_id))
+            elif resolution == "stale":
+                conn.execute("UPDATE cross_agent_claims SET status='stale',resolution=? WHERE id IN (?,?)", (resolution, claim_a_id, claim_b_id))
+            else:
+                conn.execute("UPDATE cross_agent_claims SET resolution=? WHERE id IN (?,?)", (resolution, claim_a_id, claim_b_id))
         return {"ok": True, "claim_a_id": claim_a_id, "claim_b_id": claim_b_id, "resolution": resolution}
 
     def agent_belief_report(self, agent_id: str, topic: str = "", limit: int = 100, offset: int = 0) -> dict[str, Any]:
-        self.ensure_tables(); q=f"%{topic}%"
+        self.ensure_tables()
+        q = f"%{topic}%"
         with self._conn() as conn:
             rows = [dict(r) for r in conn.execute("SELECT * FROM cross_agent_claims WHERE agent_id=? AND (subject LIKE ? OR object LIKE ?) ORDER BY created_at DESC LIMIT ? OFFSET ?", (agent_id,q,q,limit,offset)).fetchall()]
         return {"ok": True, "agent_id": agent_id, "topic": topic, "claims": rows, "count": len(rows), "limit": limit, "offset": offset}

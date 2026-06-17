@@ -4,10 +4,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from . import bridge
 from .config import load_config
 from .models import MemoryScope, MemoryType
 from .storage import SuperMemoryStore, row_to_memory
-from . import bridge
 
 WORKING_MEMORY_KEY = "default"
 

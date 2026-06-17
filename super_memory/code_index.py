@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from . import bridge
 from .config import load_config
 from .models import MemoryScope, MemoryType
 from .storage import SuperMemoryStore
-from . import bridge
 
 CODE_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".rs", ".java", ".kt", ".c", ".h", ".cpp", ".hpp", ".cc"}
 

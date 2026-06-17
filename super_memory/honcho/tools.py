@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from ..config import SuperMemoryConfig
-from .peer import PeerFact, PeerModel, PeerRole, PeerStore
 from .dialectic import DialecticEngine
-from .session import SessionContextBuilder
 from .insights import InsightGenerator
+from .peer import PeerFact, PeerRole, PeerStore
+from .session import SessionContextBuilder
 
 
 class HonchoTools:
