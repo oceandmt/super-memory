@@ -1,0 +1,43 @@
+[Unit]
+Description=Super Memory API Server (OpenClaw Memory Engine)
+Documentation=https://github.com/oceandmt/super-memory
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oceandmt
+Group=oceandmt
+WorkingDirectory=/home/oceandmt/.openclaw/workspace/projects/super-memory-github
+
+# ─── Environment ────────────────────────────────────────────────────────────
+EnvironmentFile=-/home/oceandmt/.openclaw/workspace/projects/super-memory-github/.env
+Environment=PATH=/home/oceandmt/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+# ─── Exec ───────────────────────────────────────────────────────────────────
+#
+# Choose ONE of the following ExecStart lines:
+#
+#   A) API server only (REST → OpenClaw plugin bridges via HTTP):
+ExecStart=/home/oceandmt/Documents/super-memory-github/.venv_test/bin/super-memory-api
+
+#   B) MCP server (stdio → OpenClaw MCP proxy):
+# ExecStart=/home/oceandmt/Documents/super-memory-github/.venv_test/bin/super-memory-mcp --stdio --profile normal
+
+# ─── Lifecycle ──────────────────────────────────────────────────────────────
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=10
+
+# Prevent restart loops
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+# ─── Logging ────────────────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=super-memory
+
+[Install]
+WantedBy=multi-user.target
