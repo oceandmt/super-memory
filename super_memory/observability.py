@@ -1,12 +1,29 @@
 from __future__ import annotations
 
+import importlib.util
+import json
+import logging
 import time
 from contextlib import contextmanager
 from typing import Any, Callable
 
-import structlog
+_HAS_STRUCTLOG = importlib.util.find_spec("structlog") is not None
 
-logger = structlog.get_logger("super-memory")
+if _HAS_STRUCTLOG:
+    import structlog
+    logger = structlog.get_logger("super-memory")
+else:
+    _fallback = logging.getLogger("super-memory")
+    _fallback.setLevel(logging.INFO)
+    if not _fallback.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            '{"timestamp": "%(asctime)s", "logger": "%(name)s", "level": "%(levelname)s", "message": %(message)s}',
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        _fallback.addHandler(_h)
+        _fallback.propagate = False
+    logger = _fallback
 
 # ── Counter registry (in-process, resets on restart) ──────────────────────────
 _counters: dict[str, int] = {}
@@ -39,7 +56,10 @@ def log_op(
     }
     if extra:
         payload.update(extra)
-    logger.info("memory_op", **payload)
+    if _HAS_STRUCTLOG:
+        logger.info("memory_op", **payload)
+    else:
+        logger.info(json.dumps(payload))
 
 
 @contextmanager
