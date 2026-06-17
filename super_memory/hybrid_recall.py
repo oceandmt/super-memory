@@ -5,7 +5,9 @@ import re
 import time
 from typing import Any
 
+from .config import load_config
 from .db import DBMixin, validate_agent_scope, validate_session_scope
+from .vector import rerank_by_embedding
 
 
 def _tokens(text: str) -> list[str]:
@@ -27,6 +29,34 @@ def _tfidf_like(query: str, content: str) -> float:
     coverage = sum(1 for t in set(q_terms) if t in counts) / max(1, len(set(q_terms)))
     phrase_boost = 0.5 if query.lower() in (content or "").lower() else 0.0
     return min(1.0, phrase_boost + coverage * 0.6 + score)
+
+def _query_to_pseudo_vector(query: str, dim: int = 128) -> list[float]:
+    """Convert a text query to a pseudo-embedding vector for reranking.
+
+    This is a lightweight deterministic fallback when no LLM embedding
+    is available. Uses character n-gram hashing to produce a sparse vector.
+    """
+    import hashlib
+    import math
+
+    query = (query or "").lower().strip()
+    if not query:
+        return [0.0] * dim
+
+    # Character trigram hashing into vector dimensions
+    vec = [0.0] * dim
+    for i in range(len(query) - 2):
+        trigram = query[i:i + 3]
+        h = int(hashlib.md5(trigram.encode()).hexdigest()[:8], 16)
+        idx = h % dim
+        vec[idx] += 1.0
+
+    # L2 normalize
+    norm = math.sqrt(sum(v * v for v in vec))
+    if norm > 0:
+        vec = [v / norm for v in vec]
+    return vec
+
 
 class HybridRecall(DBMixin):
 
@@ -52,6 +82,15 @@ class HybridRecall(DBMixin):
                 results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "graph", graph=True)
         merged = self._dedup(results)
         ranked = sorted(merged, key=lambda r: self._score(r, query, agent_scope, session_scope), reverse=True)
+
+        # P4#4: Vector embedding reranking (optional)
+        if self.config.vector_enabled:
+            try:
+                flat_vector = _query_to_pseudo_vector(query)
+                ranked = rerank_by_embedding(ranked, flat_vector, top_k=limit * 2, config=self.config)
+            except Exception:
+                pass  # Vector reranking is best-effort
+
         return {"ok": True, "query": query, "results": self._truncate(ranked[:limit], max_tokens), "count": min(len(ranked), limit)}
 
     def _search_memories(self, conn, query, agent_scope, session_scope, limit, layer, graph=False):
@@ -72,12 +111,20 @@ class HybridRecall(DBMixin):
             where.append("m.session_id=?")
             args.append(sid)
         if graph:
-            where.append(
-                "m.id IN (SELECT source_memory_id FROM cognitive_neurons "
-                "WHERE source_memory_id IS NOT NULL "
-                "UNION SELECT source_memory_id FROM graph_edges "
-                "UNION SELECT target_memory_id FROM graph_edges)"
-            )
+            # P4#1: V2 path — when legacy_graph_edges is False, skip graph_edges UNION
+            cfg = getattr(self, 'config', load_config())
+            if getattr(cfg, 'legacy_graph_edges', True):
+                where.append(
+                    "m.id IN (SELECT source_memory_id FROM cognitive_neurons "
+                    "WHERE source_memory_id IS NOT NULL "
+                    "UNION SELECT source_memory_id FROM graph_edges "
+                    "UNION SELECT target_memory_id FROM graph_edges)"
+                )
+            else:
+                where.append(
+                    "m.id IN (SELECT source_memory_id FROM cognitive_neurons "
+                    "WHERE source_memory_id IS NOT NULL)"
+                )
         filter_sql = (" AND " + " AND ".join(where)) if where else ""
 
         # Try FTS5 MATCH first; fall back to LIKE on OperationalError

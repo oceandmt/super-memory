@@ -685,6 +685,12 @@ def sync_status(config_path: str | None = None) -> dict[str, Any]:
 def store_status(config_path: str | None = None) -> dict[str, Any]:
     return bridge.store_status(config_path=config_path)
 
+def get_db() -> str:
+    """Return the configured database backend name."""
+    cfg = load_config(None)
+    return cfg.db_backend
+
+
 def main() -> None:
     uvicorn.run("super_memory.api:app", host="127.0.0.1", port=8765, reload=False)
 

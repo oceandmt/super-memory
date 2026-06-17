@@ -267,7 +267,8 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
     # Hard delete: cascade cleanup
     with store.connect() as conn:
         conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
-        conn.execute("DELETE FROM graph_edges WHERE source_memory_id = ? OR target_memory_id = ?", (memory_id, memory_id))
+        if cfg.legacy_graph_edges:
+            conn.execute("DELETE FROM graph_edges WHERE source_memory_id = ? OR target_memory_id = ?", (memory_id, memory_id))
         conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?) OR target_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?)", (memory_id, memory_id))
         conn.execute("DELETE FROM cognitive_neurons WHERE source_memory_id = ?", (memory_id,))
         conn.execute("DELETE FROM cognitive_fibers WHERE id = ?", (f"f:{memory_id}",))
@@ -317,7 +318,11 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     with store.connect() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
         layers = conn.execute("SELECT layer, COUNT(*) as c FROM memories GROUP BY layer").fetchall()
-        leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
+        # V2: when legacy_graph_edges is disabled, only count cognitive_synapses
+        if cfg.legacy_graph_edges:
+            leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
+        else:
+            leg_edges = 0
         # Unified graph: cognitive_synapses primary + graph_edges legacy, graceful fallback
         try:
             cog_syn = conn.execute("SELECT COUNT(*) as c FROM cognitive_synapses").fetchone()["c"]

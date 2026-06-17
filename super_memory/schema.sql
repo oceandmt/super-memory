@@ -180,7 +180,10 @@ CREATE TABLE IF NOT EXISTS cognitive_synapses (
     UNIQUE(source_neuron_id, target_neuron_id, relation)
 );
 
--- Legacy graph_edges kept for backward compatibility; new writes go to cognitive_synapses.
+-- DEPRECATED: graph_edges is superseded by cognitive_synapses as the primary graph store.
+-- New writes go to cognitive_synapses. This table is retained only for backward compatibility.
+-- Set config.legacy_graph_edges=False to stop writing here (v2 path).
+-- Migration plan: in v2, this table will be dropped entirely — see section below.
 CREATE TABLE IF NOT EXISTS graph_edges (
     id TEXT PRIMARY KEY,
     source_memory_id TEXT NOT NULL,
@@ -284,3 +287,25 @@ SELECT
 FROM sessions s
 LEFT JOIN honcho_events h ON h.session_id = s.id
 GROUP BY s.id, s.agent_id, s.status, s.started_at, s.updated_at;
+
+
+-- ============================================================================
+-- V2 MIGRATION GUIDE
+-- ============================================================================
+
+-- To migrate from legacy graph_edges to cognitive_synapses:
+--   1. Set legacy_graph_edges=False in your config (or SUPER_MEMORY_LEGACY_GRAPH_EDGES=0 env)
+--   2. Rebuild the cognitive graph: super-memory graph-rebuild --limit 2000
+--   3. Verify: super-memory status (check cognitive_synapses count > 0)
+--   4. Drop legacy table when ready:
+--      DROP TABLE IF EXISTS graph_edges;
+--   5. Remove legacy indexes:
+--      DROP INDEX IF EXISTS idx_graph_source;
+--      DROP INDEX IF EXISTS idx_graph_target;
+--      DROP INDEX IF EXISTS idx_graph_relation;
+--      DROP INDEX IF EXISTS idx_graph_weight;
+
+-- The cognitive_synapses table is the single source of truth for all
+-- graph operations in v2. All bridge functions (stats, forget, recall)
+-- support the legacy_graph_edges=False flag for clean operation without
+-- the deprecated table.

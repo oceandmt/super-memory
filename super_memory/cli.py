@@ -9,12 +9,27 @@ from rich.table import Table
 
 from .compat import memory_get_compatible, memory_search_compatible
 from .config import load_config
+from .grpc_server import run_sync as grpc_run_sync
 from .models import MemoryScope, MemoryType
 from .promote import PROMOTABLE_TYPES, promote_both
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore
 
 app = typer.Typer(help="Local multi-layer memory app for OpenClaw")
+
+
+@app.callback()
+def main_callback(
+    grpc: bool = typer.Option(False, "--grpc", help="Start gRPC server alongside the CLI"),
+    grpc_port: int = typer.Option(50051, "--grpc-port", help="gRPC port (default: 50051)"),
+):
+    """Super Memory CLI — optional gRPC server can be started alongside."""
+    if grpc:
+        import threading
+        t = threading.Thread(target=grpc_run_sync, args=(grpc_port,), daemon=True)
+        t.start()
+        from rich.console import Console
+        Console().print(f"[green]gRPC server started on 127.0.0.1:{grpc_port}[/green]")
 console = Console()
 
 
