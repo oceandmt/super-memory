@@ -1,6 +1,7 @@
 """MemPalace MCP tool definitions.
 
-Exposes spatial memory navigation and 4-layer progressive loading
+Exposes spatial memory navigation, 4-layer progressive loading,
+entity registry, entity detection, and spellcheck
 to OpenClaw MCP clients.
 """
 
@@ -11,9 +12,12 @@ from typing import Any
 
 from ..config import SuperMemoryConfig
 from .compressor import AAAKCompressor
+from .entity_detector import detect_and_register
+from .entity_registry import EntityRegistry
 from .extractor import SpatialExtractor
 from .loader import MemPalaceLoader
 from .spatial import SpatialNavigator
+from .spellcheck import spellcheck_with_registry
 
 
 class MemPalaceTools:
@@ -27,6 +31,15 @@ class MemPalaceTools:
         self.navigator = SpatialNavigator(self.db_path)
         self.extractor = SpatialExtractor()
         self.compressor = AAAKCompressor()
+        self._entity_registry: EntityRegistry | None = None
+
+    @property
+    def entity_registry(self) -> EntityRegistry:
+        if self._entity_registry is None:
+            self._entity_registry = EntityRegistry.load(
+                workspace_root=str(self.workspace_root)
+            )
+        return self._entity_registry
 
     def palace_search(
         self,
@@ -120,6 +133,44 @@ class MemPalaceTools:
         summary = self.navigator.summary()
         return {"ok": True, "summary": summary}
 
+    # ── Entity Registry Tools ────────────────────────────────────────────
+    
+    def entity_list(self, kind: str | None = None) -> dict[str, Any]:
+        """List all registered entities, optionally filtered by kind."""
+        entities = self.entity_registry.list_all(kind=kind)
+        return {"ok": True, "entities": entities, "count": len(entities)}
+
+    def entity_lookup(self, name: str, context: str = "") -> dict[str, Any]:
+        """Look up an entity by name with disambiguation."""
+        result = self.entity_registry.lookup(name, context=context)
+        return {"ok": True, "name": name, **result}
+
+    def entity_add(self, name: str, kind: str = "person", confidence: float = 1.0, aliases: list[str] | None = None) -> dict[str, Any]:
+        """Add an entity to the registry."""
+        self.entity_registry.add(name=name, kind=kind, source="onboarding", confidence=confidence, aliases=aliases)
+        self.entity_registry.save()
+        return {"ok": True, "added": name, "kind": kind, "confidence": confidence}
+
+    def entity_remove(self, name: str) -> dict[str, Any]:
+        """Remove an entity from the registry."""
+        removed = self.entity_registry.remove(name)
+        return {"ok": True, "removed": removed, "name": name}
+
+    def entity_stats(self) -> dict[str, Any]:
+        """Get entity registry statistics."""
+        return {"ok": True, **self.entity_registry.stats()}
+
+    def entity_detect(self, text: str) -> dict[str, Any]:
+        """Scan text and detect entities, auto-register high-confidence ones."""
+        result = detect_and_register(text, registry_path=str(self.workspace_root))
+        return {"ok": True, **result}
+
+    def spellcheck(self, text: str) -> dict[str, Any]:
+        """Spellcheck text, preserving technical terms and known entities."""
+        corrected = spellcheck_with_registry(text, registry_path=str(self.workspace_root))
+        changed = corrected != text
+        return {"ok": True, "corrected": corrected, "original": text, "changed": changed}
+    
     def palace_startup_context(self, max_tokens: int = 200) -> dict[str, Any]:
         """Generate minimal startup context (target ≤200 tokens)."""
         context = self.loader.startup_context(max_tokens=max_tokens)
@@ -248,6 +299,74 @@ MEMPALACE_TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {"text": {"type": "string", "description": "Text to analyze"}},
+            "required": ["text"],
+        },
+    },
+    # ── Phase 1: Entity Registry + Detection + Spellcheck ────────────────────
+    {
+        "name": "super_memory_entity_list",
+        "description": "List all registered entities (people, projects, agents) optionally filtered by kind",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"kind": {"type": "string", "description": "Filter: person, project, agent, concept"}},
+            "required": [],
+        },
+    },
+    {
+        "name": "super_memory_entity_lookup",
+        "description": "Look up an entity by name with person-vs-common-word disambiguation",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Entity name to look up"},
+                "context": {"type": "string", "description": "Optional context for disambiguation", "default": ""},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "super_memory_entity_add",
+        "description": "Register a new entity (person, project, agent) in the registry",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "kind": {"type": "string", "default": "person", "description": "person, project, agent, concept"},
+                "confidence": {"type": "number", "default": 1.0, "minimum": 0.0, "maximum": 1.0},
+                "aliases": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "super_memory_entity_remove",
+        "description": "Remove an entity from the registry",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "super_memory_entity_stats",
+        "description": "Get entity registry statistics (counts by kind and source)",
+        "inputSchema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "super_memory_entity_detect",
+        "description": "Scan text for entities and auto-register high-confidence detections",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "Text to scan for entities"}},
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "super_memory_spellcheck",
+        "description": "Spellcheck text, preserving technical terms, known entities, URLs, and code",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"text": {"type": "string", "description": "Text to spellcheck"}},
             "required": ["text"],
         },
     },
