@@ -15,10 +15,65 @@ Super Memory uses the Hermes-style idea of layered agent memory as the base, wit
 - No Docker required
 - Embedded LLM is optional, not required for baseline remember/recall
 
+## Install from GitHub
+
+Other OpenClaw instances can install the Super Memory CLI/API/MCP package directly from this repository:
+
+```bash
+pip install 'git+https://github.com/oceandmt/super-memory.git'
+super-memory --help
+```
+
+Recommended first-time setup for an OpenClaw workspace:
+
+```bash
+super-memory setup \
+  --workspace-root "$HOME/.openclaw/workspace" \
+  --output "$HOME/.openclaw/super-memory.yaml" \
+  --overwrite
+super-memory doctor --no-benchmark --json-out
+```
+
+Start the local API bridge used by the native OpenClaw plugin:
+
+```bash
+super-memory-api --host 127.0.0.1 --port 8765
+```
+
+The API binds to `127.0.0.1:8765` by default. **Do not expose it directly to a network** unless you add an authentication layer in front of it.
+
+## Native OpenClaw plugin install
+
+Clone the repository and install the native plugin wrapper:
+
+```bash
+git clone https://github.com/oceandmt/super-memory.git
+cd super-memory
+bash scripts/install-openclaw-plugin.sh --mode admin --no-restart
+```
+
+Recommended mode is `admin`, which keeps OpenClaw's existing memory slot intact while enabling Super Memory tools, turn capture, cross-agent/session workflows, and flush hooks.
+
+Available plugin modes:
+
+- `safe` — additive tools/corpus only; safest bootstrap mode.
+- `admin` — recommended default for cross-agent/cross-session operation without replacing `memory-core`.
+- `exclusive` — development/testing only; replaces the OpenClaw memory slot and may register legacy `memory_search`/`memory_get` shims.
+
+Verify the plugin install:
+
+```bash
+bash scripts/openclaw_plugin_doctor.sh
+super-memory doctor --no-benchmark --json-out
+curl -fsS http://127.0.0.1:8765/health
+```
+
+Full native plugin guide: [`docs/OPENCLAW_PLUGIN_INSTALL.md`](docs/OPENCLAW_PLUGIN_INSTALL.md).
+
 ## Install for local development
 
 ```bash
-git clone <repo-url> super-memory
+git clone https://github.com/oceandmt/super-memory.git super-memory
 cd super-memory
 python -m venv .venv
 . .venv/bin/activate
