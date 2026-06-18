@@ -62,7 +62,9 @@ Profiles:
 - `admin`: normal tools plus promotion
 - `all`: every implemented tool
 
-Admin/development profile also exposes the Phase 3 advanced intelligence tools, Phase 4 disabled-safe optional skeletons, Phase 6 cognitive orchestration tools, Phase 7 graph/reasoning/lifecycle/safe-flow tools, and Phase 8 diagnostics/contract/supervised-smoke tools. These stay out of the safe normal profile to avoid surprising operators.
+Admin/development profile also exposes the Phase 3 advanced intelligence tools, Phase 4 disabled-safe optional skeletons, Phase 6 cognitive orchestration tools, Phase 7 graph/reasoning/lifecycle/safe-flow tools, Phase 8 diagnostics/contract/supervised-smoke tools, and cross-agent/cross-session memory tools. These stay out of the safe normal profile to avoid surprising operators.
+
+For a concrete cross-agent/cross-session installation and operation guide, see `docs/CROSS_AGENT_SESSION_MEMORY_SETUP.md`.
 
 ### `super_memory_remember`
 

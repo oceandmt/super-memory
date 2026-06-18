@@ -44,7 +44,9 @@ Super Memory now includes a local stdio MCP server for MCP-compatible agents:
 super-memory-mcp --stdio --profile normal
 ```
 
-Default exposed tools include remember, remember-batch, show, context, todo, auto, stats, health, sanitize-prompt, sanitize-auto-capture, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, and status. Admin profile additionally exposes promotion.
+Default exposed tools include remember, remember-batch, show, context, todo, auto, stats, health, sanitize-prompt, sanitize-auto-capture, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, and status. Admin profile additionally exposes promotion and cross-agent/cross-session memory tools.
+
+For cross-agent/cross-session setup, run the MCP server with `--profile admin` and follow `docs/CROSS_AGENT_SESSION_MEMORY_SETUP.md`.
 
 Guardrail: this project can be developed as an OpenClaw memory-slot replacement candidate, but do not apply/register it into this machine's active OpenClaw config unless Boss explicitly instructs that later.
 
@@ -89,7 +91,8 @@ Implemented now:
 - Phase 6 cognitive orchestration baseline: working memory, attention scoring, memory routing, parallel save, recall arbitration, consolidation cycle, conflict resolution, promotion candidates, and feedback outcome recording
 - Phase 7 Layer 4 completion baseline: derived neuron/synapse/fiber graph projection, deterministic hypothesis/evidence/prediction/verify workflow, lifecycle review/cache/tier/compression/reflex status, and workspace-only local train/import/watch scan/sync/store status flows
 - Phase 8 live-readiness baseline: diagnostics dashboard, memory-slot contract smoke, MCP contract check, local supervised no-live-config runtime smoke, graph incremental rebuild/orphan cleanup, reasoning confidence/provenance history, prediction expiry, and train/import/watch dedup manifests
-- Tests for save order, recall, OpenClaw compatibility, MCP, and guardrails
+- Cross-agent/cross-session memory: agent-scoped recall, Honcho session timelines, session archives, cross-scope recall, handoff bundles, and reporting tools
+- Tests for save order, recall, OpenClaw compatibility, MCP, cross-agent/session flows, and guardrails
 
 ## OpenClaw Workspace Templates
 
