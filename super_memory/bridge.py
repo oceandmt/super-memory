@@ -99,7 +99,18 @@ def context(query: str = "", limit: int = 10, config_path: str | None = None) ->
     if query:
         records = svc.prefetch(query, limit=limit)
     else:
-        rows = svc.store.list_memory_rows(limit=limit)
+        # Canonical-first default: workspace_markdown SQLite mirror, fallback mempalace
+        store = svc.store
+        with store.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE layer = 'workspace_markdown' ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            if not rows:
+                rows = conn.execute(
+                    "SELECT * FROM memories WHERE layer = 'mempalace' ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
         records = [row_to_memory(row) for row in rows]
     return {"records": [r.model_dump(mode="json") for r in records]}
 
@@ -416,6 +427,11 @@ def spreading_activation_recall(query: str, depth: int = 2, top_k: int = 20, see
     return graph.spreading_activation(query, depth=depth, top_k=top_k, seed_limit=seed_limit, config_path=config_path)
 
 def graph_rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    """Rebuild Layer 4 cognitive graph (incremental by default). Use graph_rebuild_destructive() for full rebuild."""
+    return graph.rebuild_incremental(limit=limit, config_path=config_path)
+
+def graph_rebuild_destructive(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    """Destructive full rebuild — drops and recreates all cognitive projections."""
     return graph.rebuild(limit=limit, config_path=config_path)
 
 def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
