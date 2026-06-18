@@ -1,7 +1,15 @@
 module.exports = function superMemoryPlugin(api) {
   const cfg = api.config || {};
+  const childProcess = require('child_process');
   const baseUrl = cfg.apiBaseUrl || 'http://127.0.0.1:8765';
+  const mode = cfg.mode || 'safe';
+  const effectiveAutoSyncTurns = cfg.autoSyncTurns === true || mode === 'admin' || mode === 'exclusive';
+  const effectiveAutoFlush = cfg.autoFlush === true || mode === 'admin' || mode === 'exclusive';
+  const effectiveAutoContext = cfg.autoContext === true || mode === 'exclusive';
+  const effectiveExclusiveMemory = cfg.registerExclusiveMemoryCapability === true || mode === 'exclusive';
+  const effectiveLegacyMemoryShims = cfg.registerLegacyMemoryShims === true || mode === 'exclusive';
   const registeredTools = [];
+  let managedApiProcess = null;
 
 
   function registerTool(def) {
@@ -77,6 +85,34 @@ module.exports = function superMemoryPlugin(api) {
     return res.json();
   }
 
+  function apiStartHint() {
+    const command = cfg.apiCommand || 'super-memory-api --host 127.0.0.1 --port 8765';
+    return `Start it with: ${command}`;
+  }
+
+  function startManagedApiService() {
+    if (cfg.manageApiService !== true || managedApiProcess) return;
+    const command = cfg.apiCommand || 'super-memory-api --host 127.0.0.1 --port 8765';
+    managedApiProcess = childProcess.spawn(command, {
+      shell: true,
+      stdio: 'ignore',
+      detached: false,
+      env: process.env
+    });
+    managedApiProcess.on('exit', (code, signal) => {
+      api.logger?.warn?.(`Super Memory managed API process exited code=${code} signal=${signal}`);
+      managedApiProcess = null;
+    });
+    api.logger?.info?.(`Super Memory managed API process started: ${command}`);
+  }
+
+  function stopManagedApiService() {
+    if (!managedApiProcess) return;
+    try { managedApiProcess.kill('SIGTERM'); }
+    catch (err) { api.logger?.warn?.(`Super Memory managed API stop failed: ${err.message}`); }
+    managedApiProcess = null;
+  }
+
   function createSearchManager() {
     return {
       async search(query, opts = {}) {
@@ -135,7 +171,7 @@ module.exports = function superMemoryPlugin(api) {
     };
   }
 
-  if (cfg.registerExclusiveMemoryCapability === true) {
+  if (effectiveExclusiveMemory === true) {
     api.logger?.warn?.('Super Memory running in EXCLUSIVE memory slot mode — canonical markdown may diverge from memory-core');
     if (typeof api.registerMemoryCapability === 'function') {
       api.registerMemoryCapability({
@@ -173,21 +209,22 @@ module.exports = function superMemoryPlugin(api) {
     api.registerService({
       id: 'super-memory-api',
       async start() {
+        startManagedApiService();
         try {
           await get('/health');
           api.logger?.info?.('Super Memory API reachable in service.start()');
         } catch (err) {
-          api.logger?.warn?.(`Super Memory API health check failed: ${err.message}`);
+          api.logger?.warn?.(`Super Memory API health check failed: ${err.message}. ${apiStartHint()}`);
         }
       },
-      async stop() {}
+      async stop() { stopManagedApiService(); }
     });
   }
 
   if (typeof api.on === 'function') {
     api.on('before_prompt_build', async (event = {}) => {
       const result = { systemPrompt: buildToolInstructions() };
-      if (cfg.autoContext === true) {
+      if (effectiveAutoContext === true) {
         try {
           const query = cleanText(event.prompt || event.query || '');
           if (query) {
@@ -202,7 +239,7 @@ module.exports = function superMemoryPlugin(api) {
       return result;
     }, { priority: 10 });
 
-    if (cfg.autoSyncTurns === true) {
+    if (effectiveAutoSyncTurns === true) {
       api.on('agent_end', async (event = {}) => {
         if (event.success === false) return;
         try {
@@ -225,14 +262,14 @@ module.exports = function superMemoryPlugin(api) {
     }
 
     api.on('before_compaction', async () => {
-      if (cfg.autoFlush === true) {
+      if (effectiveAutoFlush === true) {
         try { await post('/auto', { text: '[pre-compact emergency flush]', save: true }); }
         catch (err) { api.logger?.warn?.(`Super Memory pre-compact flush failed: ${err.message}`); }
       }
     }, { priority: 5 });
 
     api.on('before_reset', async () => {
-      if (cfg.autoFlush === true) {
+      if (effectiveAutoFlush === true) {
         try { await post('/auto', { text: '[session boundary — reset]', save: true }); }
         catch (err) { api.logger?.warn?.(`Super Memory reset flush failed: ${err.message}`); }
       }
@@ -308,7 +345,7 @@ module.exports = function superMemoryPlugin(api) {
     ]);
   }
 
-  if ((cfg.registerLegacyMemoryShims === true || cfg.registerExclusiveMemoryCapability === true) && typeof api.registerTool === 'function') {
+  if ((effectiveLegacyMemoryShims === true || effectiveExclusiveMemory === true) && typeof api.registerTool === 'function') {
     registerTool({
       name: 'memory_search',
       description: 'Legacy OpenClaw memory_search shim backed by Super Memory. Enable only when Super Memory owns the exclusive memory slot.',

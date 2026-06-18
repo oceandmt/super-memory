@@ -101,6 +101,54 @@ plugin({{
     assert result["debug"]["effectiveMode"] == "super-memory"
     assert result["status"]["provider"] == "super-memory"
 
+def test_plugin_admin_mode_enables_capture_without_exclusive_slot():
+    script = f"""
+const plugin = require({json.dumps(str(PLUGIN))});
+const calls = {{ capabilities: 0, tools: [], hooks: [] }};
+global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
+plugin({{
+  config: {{ apiBaseUrl: 'http://super-memory.test', mode: 'admin' }},
+  registerMemoryCapability() {{ calls.capabilities += 1; }},
+  registerTool(tool) {{ calls.tools.push(tool.name); }},
+  registerMemoryCorpusSupplement() {{}},
+  registerMemoryPromptSupplement() {{}},
+  registerService() {{}},
+  on(name) {{ calls.hooks.push(name); }},
+  logger: {{ info: () => {{}}, warn: () => {{}} }}
+}});
+console.log(JSON.stringify(calls));
+"""
+    result = _run_node(script)
+    assert result["capabilities"] == 0
+    assert "memory_search" not in result["tools"]
+    assert "memory_get" not in result["tools"]
+    assert "agent_end" in result["hooks"]
+    assert "super_memory_remember" in result["tools"]
+
+
+def test_plugin_exclusive_mode_enables_memory_slot_and_legacy_shims():
+    script = f"""
+const plugin = require({json.dumps(str(PLUGIN))});
+const calls = {{ capabilities: 0, tools: [] }};
+global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
+plugin({{
+  config: {{ apiBaseUrl: 'http://super-memory.test', mode: 'exclusive' }},
+  registerMemoryCapability() {{ calls.capabilities += 1; }},
+  registerTool(tool) {{ calls.tools.push(tool.name); }},
+  registerMemoryCorpusSupplement() {{}},
+  registerMemoryPromptSupplement() {{}},
+  registerService() {{}},
+  on() {{}},
+  logger: {{ info: () => {{}}, warn: () => {{}} }}
+}});
+console.log(JSON.stringify(calls));
+"""
+    result = _run_node(script)
+    assert result["capabilities"] == 1
+    assert "memory_search" in result["tools"]
+    assert "memory_get" in result["tools"]
+
+
 def test_plugin_manifest_and_registration_parity():
     """Verify manifest kind:memory and all tools register successfully."""
     import json

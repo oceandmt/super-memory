@@ -8,9 +8,34 @@
     "jsonSchema": {
       "type": "object",
       "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "admin",
+            "exclusive"
+          ],
+          "default": "safe",
+          "description": "Install/activation profile hint. safe=additive tools only; admin=additive plus capture/context hooks; exclusive=development memory-slot replacement."
+        },
         "apiBaseUrl": {
           "type": "string",
           "default": "http://127.0.0.1:8765"
+        },
+        "manageApiService": {
+          "type": "boolean",
+          "default": false,
+          "description": "Experimental: allow the plugin wrapper to start/stop super-memory-api when OpenClaw exposes a service lifecycle."
+        },
+        "apiCommand": {
+          "type": "string",
+          "default": "super-memory-api --host 127.0.0.1 --port 8765",
+          "description": "Command used when manageApiService=true."
+        },
+        "apiHealthTimeoutMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Health-check timeout budget for Super Memory API reachability checks."
         },
         "autoSyncTurns": {
           "type": "boolean",
@@ -75,7 +100,7 @@
     "uiHints": {
       "_setup": {
         "label": "Optional exclusive memory slot",
-        "help": "For exclusive replacement testing set plugins.slots.memory = \"super-memory\". Otherwise Super Memory tools/corpus can remain additive."
+        "help": "Recommended default: mode=safe or mode=admin as additive plugin. Use mode=exclusive only for explicit memory-slot replacement testing."
       }
     }
   },

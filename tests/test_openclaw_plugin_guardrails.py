@@ -14,12 +14,20 @@ def test_plugin_exclusive_memory_capability_is_disabled_by_default():
 
 def test_plugin_contains_development_only_exclusive_capability_guard():
     source = Path("openclaw-plugin/super-memory/index.js").read_text()
-    assert "cfg.registerExclusiveMemoryCapability === true" in source
-    assert "cfg.registerLegacyMemoryShims === true" in source
+    assert "effectiveExclusiveMemory === true" in source
+    assert "effectiveLegacyMemoryShims === true" in source
     assert "api.registerMemoryCapability" in source
     assert "api.registerMemoryCorpusSupplement" in source
     assert "name: 'memory_search'" in source
     assert "name: 'memory_get'" in source
+
+def test_plugin_declares_safe_admin_exclusive_modes():
+    manifest = json.loads(Path("openclaw-plugin/super-memory/openclaw.plugin.json").read_text())
+    props = manifest["configSchema"]["jsonSchema"]["properties"]
+    assert props["mode"]["default"] == "safe"
+    assert props["mode"]["enum"] == ["safe", "admin", "exclusive"]
+    assert props["manageApiService"]["default"] is False
+    assert props["apiCommand"]["default"].startswith("super-memory-api")
 
 def test_plugin_register_function_is_synchronous_for_openclaw_loader():
     source = Path("openclaw-plugin/super-memory/index.js").read_text()
