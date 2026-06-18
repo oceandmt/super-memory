@@ -36,8 +36,8 @@ def test_api_remember_status_prefetch_promote(tmp_path: Path):
 
         status = client.get("/status")
         assert status.status_code == 200
-        # SQLite status covers the three derived layers; canonical Markdown is file-backed.
-        assert status.json()["total_memories"] == 3
+        # SQLite status now covers all 4 layers (workspace_markdown + 3 derived).
+        assert status.json()["total_memories"] == 4
 
         prefetch = client.post("/prefetch", json={"query": "promotion", "limit": 5})
         assert prefetch.status_code == 200
