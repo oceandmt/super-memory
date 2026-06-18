@@ -1,7 +1,7 @@
 {
   "version": "0.1.0",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 135,
+  "total_tools": 137,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -221,6 +221,44 @@
       "inputSchema": {
         "type": "object",
         "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_cross_layer_health",
+      "category": "other",
+      "description": "Audit cross-layer consistency: canonical markdown rows, projection orphans, content drift, and pending sync.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_backfill_markdown_sqlite",
+      "category": "other",
+      "description": "Admin repair: backfill missing workspace_markdown SQLite rows from existing derived-layer records.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 2000
+          },
           "config_path": {
             "type": "string"
           }
