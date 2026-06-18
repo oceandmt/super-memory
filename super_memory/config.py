@@ -24,4 +24,6 @@ def load_config(path: str | Path | None = None) -> SuperMemoryConfig:
             break
     if env_root := os.getenv("SUPER_MEMORY_WORKSPACE_ROOT"):
         data["workspace_root"] = env_root
+    if env_sqlite := os.getenv("SUPER_MEMORY_SQLITE_PATH"):
+        data["sqlite_path"] = env_sqlite
     return SuperMemoryConfig(**data)

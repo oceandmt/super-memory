@@ -775,7 +775,28 @@ def handle(request: JSON) -> JSON | None:
     return _error(request_id, -32601, f"method not found: {method}")
 
 
+class _StdoutToStderr:
+    """Redirect accidental library logs/prints away from MCP stdout.
+
+    MCP stdio stdout is a JSON-RPC transport and must never contain human logs.
+    This proxy lets the server write protocol frames through _ORIGINAL_STDOUT
+    while third-party logging/print calls are safely sent to stderr.
+    """
+
+    def write(self, data: str) -> int:
+        return sys.stderr.write(data)
+
+    def flush(self) -> None:
+        sys.stderr.flush()
+
+
+_ORIGINAL_STDOUT = sys.stdout
+
+def _prepare_stdio_transport() -> None:
+    sys.stdout = _StdoutToStderr()  # type: ignore[assignment]
+
 def serve() -> None:
+    _prepare_stdio_transport()
     DEBUG = os.environ.get("SUPER_MEMORY_MCP_DEBUG", "0") in ("1", "true", "yes")
     for line in sys.stdin:
         line = line.strip()
@@ -788,8 +809,8 @@ def serve() -> None:
             data = traceback.format_exc() if DEBUG else f"{type(exc).__name__}: {exc}"
             response = _error(None, -32000, str(exc), data)
         if response is not None:
-            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
+            _ORIGINAL_STDOUT.write(json.dumps(response, ensure_ascii=False) + "\n")
+            _ORIGINAL_STDOUT.flush()
 
 
 def main(argv: list[str] | None = None) -> None:

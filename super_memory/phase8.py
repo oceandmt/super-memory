@@ -63,6 +63,7 @@ def diagnostics(config_path: str | None = None) -> dict[str, Any]:
         "generated_at": _now(),
         "workspace_root": str(cfg.workspace_root),
         "sqlite_path": str(store.path),
+        "project_local_default": str(cfg.workspace_root) != str(Path.home() / ".openclaw" / "workspace") if config_path is None else True,
         "status": status,
         "health": health,
         "graph": graph,

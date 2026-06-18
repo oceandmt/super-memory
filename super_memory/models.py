@@ -78,7 +78,10 @@ class SaveResult(BaseModel):
 
 
 class SuperMemoryConfig(BaseModel):
-    workspace_root: Path = Path.home() / ".openclaw" / "workspace"
+    # Fresh installs must not silently attach to a live OpenClaw workspace.
+    # Operators can still opt in explicitly with SUPER_MEMORY_WORKSPACE_ROOT
+    # or a concrete config file.
+    workspace_root: Path = Field(default_factory=Path.cwd)
     daily_memory_dir: str = "memory"
     long_term_file: str = "MEMORY.md"
     registers_dir: str = "memory/registers"
