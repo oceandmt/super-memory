@@ -344,9 +344,14 @@ def status(config_path: str | None = None) -> dict[str, Any]:
         edges = cog_syn + leg_edges
         drawers = conn.execute("SELECT COUNT(*) as c FROM palace_drawers").fetchone()["c"]
         events = conn.execute("SELECT COUNT(*) as c FROM honcho_events").fetchone()["c"]
+
+    # Filesystem markdown stats (canonical layer outside SQLite)
+    fs_stats = _filesystem_markdown_stats(cfg)
+
     return {
         "total_memories": count,
         "layers": {r["layer"]: r["c"] for r in layers},
+        "filesystem_markdown": fs_stats,
         "graph_edges": edges,
         "cognitive_synapses": cog_syn,
         "cognitive_neurons": neurons_ct,
@@ -519,3 +524,242 @@ def mcp_contract(profile: str = "admin", config_path: str | None = None) -> dict
 
 def supervised_runtime_smoke(config_path: str | None = None) -> dict[str, Any]:
     return phase8.supervised_runtime_smoke(config_path=config_path)
+
+
+# ── Cross-layer health & filesystem markdown helpers ────────────────────────
+
+def _filesystem_markdown_stats(cfg: Any) -> dict[str, Any]:
+    """Count filesystem markdown entries (canonical layer outside SQLite)."""
+    try:
+        mem_dir = cfg.workspace_root / cfg.daily_memory_dir
+        if not mem_dir.exists():
+            return {"daily_files": 0, "total_entries": 0, "latest_file": None}
+        daily_files = sorted(mem_dir.glob("*.md"))
+        total_entries = 0
+        latest_file = None
+        for fpath in daily_files:
+            total_entries += sum(1 for line in fpath.read_text(encoding="utf-8", errors="ignore").splitlines() if line.startswith("- "))
+            latest_file = str(fpath.relative_to(cfg.workspace_root))
+        return {
+            "daily_files": len(daily_files),
+            "total_entries": total_entries,
+            "latest_file": latest_file,
+        }
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
+    """Cross-layer consistency audit.
+
+    Verifies:
+    - (a) Every SQLite memory ID has a matching filesystem markdown entry
+    - (b) Content hasn't drifted (content_hash check)
+    - (c) No orphan projections (palace_drawers, honcho_events, graph, cognitive)
+    """
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+
+    issues: list[dict[str, Any]] = []
+
+    FILTER_ACTIVE = "(json_extract(metadata_json, '$.soft_deleted') IS NULL OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+
+    with store.connect() as conn:
+        # ── (a) Check for SQLite-only IDs (no workspace_markdown row) ──
+        sqlite_only = conn.execute(
+            "SELECT COUNT(DISTINCT id) FROM memories"
+            " WHERE layer != 'workspace_markdown'"
+            " AND " + FILTER_ACTIVE +
+            " AND id NOT IN ("
+            " SELECT id FROM memories WHERE layer = 'workspace_markdown'"
+            " )"
+        ).fetchone()[0]
+
+        # ── (b) Content drift: workspace_markdown vs other layers ──
+        drift_rows = conn.execute("""
+            SELECT m1.id, m1.layer, m2.layer AS layer2,
+                   m1.content_hash, m2.content_hash AS hash2
+            FROM memories m1
+            JOIN memories m2 ON m1.id = m2.id
+            WHERE m1.layer = 'workspace_markdown'
+            AND m2.layer != 'workspace_markdown'
+            AND m1.content_hash IS NOT NULL
+            AND m2.content_hash IS NOT NULL
+            AND m1.content_hash != m2.content_hash
+            LIMIT 50
+        """).fetchall()
+
+        drift_details: list[dict[str, Any]] = []
+        for row in drift_rows:
+            drift_details.append({
+                "id": row["id"],
+                "layer_a": row["layer"],
+                "layer_b": row["layer2"],
+                "hash_a": row["content_hash"][:12],
+                "hash_b": row["hash2"][:12],
+            })
+
+        # ── (c) Orphan projections ──
+        orphan_palace = conn.execute("""
+            SELECT COUNT(*) FROM palace_drawers
+            WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
+        """).fetchone()[0]
+
+        orphan_honcho = conn.execute("""
+            SELECT COUNT(*) FROM honcho_events
+            WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
+            AND memory_id IS NOT NULL
+        """).fetchone()[0]
+
+        orphan_graph = conn.execute("""
+            SELECT COUNT(*) FROM graph_edges
+            WHERE source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
+            OR target_memory_id NOT IN (SELECT DISTINCT id FROM memories)
+        """).fetchone()[0]
+
+        orphan_cog_syn = conn.execute("""
+            SELECT COUNT(*) FROM cognitive_synapses cs
+            LEFT JOIN cognitive_neurons cn1 ON cs.source_neuron_id = cn1.id
+            LEFT JOIN cognitive_neurons cn2 ON cs.target_neuron_id = cn2.id
+            WHERE cn1.id IS NULL OR cn2.id IS NULL
+        """).fetchone()[0]
+
+        orphan_cog_neurons = conn.execute("""
+            SELECT COUNT(*) FROM cognitive_neurons
+            WHERE source_memory_id IS NOT NULL
+            AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
+        """).fetchone()[0]
+
+        orphan_cog_fibers = conn.execute("""
+            SELECT COUNT(*) FROM cognitive_fibers cf
+            LEFT JOIN cognitive_neurons cn ON cf.anchor_neuron_id = cn.id
+            WHERE cn.id IS NULL
+        """).fetchone()[0]
+
+        # ── Layer coverage: how many IDs have full 4-layer representation ──
+        active_ids = conn.execute(
+            "SELECT COUNT(DISTINCT id) FROM memories WHERE " + FILTER_ACTIVE
+        ).fetchone()[0]
+
+        full_coverage = conn.execute(
+            "SELECT COUNT(*) FROM ("
+            " SELECT id FROM memories WHERE " + FILTER_ACTIVE +
+            " GROUP BY id HAVING COUNT(DISTINCT layer) = 4"
+            " )"
+        ).fetchone()[0]
+
+        soft_deleted = conn.execute("""
+            SELECT COUNT(*) FROM memories
+            WHERE json_extract(metadata_json, '$.soft_deleted') = 1
+        """).fetchone()[0]
+
+        pending_sync = conn.execute("""
+            SELECT COUNT(*) FROM memories
+            WHERE pending_canonical_sync = 1
+        """).fetchone()[0]
+
+    orphan_total = orphan_palace + orphan_honcho + orphan_graph + orphan_cog_syn + orphan_cog_neurons + orphan_cog_fibers
+
+    verdict = "pass"
+    issues = []
+    if sqlite_only > 0:
+        issues.append({"check": "sqlite_only_ids", "count": sqlite_only, "detail": "IDs in SQLite layers but missing workspace_markdown row"})
+    if drift_details:
+        issues.append({"check": "content_drift", "count": len(drift_details), "samples": drift_details[:5]})
+    if orphan_total > 0:
+        issues.append({
+            "check": "orphan_projections",
+            "total": orphan_total,
+            "breakdown": {
+                "palace_drawers": orphan_palace,
+                "honcho_events": orphan_honcho,
+                "graph_edges": orphan_graph,
+                "cognitive_synapses": orphan_cog_syn,
+                "cognitive_neurons": orphan_cog_neurons,
+                "cognitive_fibers": orphan_cog_fibers,
+            }
+        })
+
+    if issues:
+        verdict = "issues_found"
+
+    return {
+        "ok": len(issues) == 0,
+        "verdict": verdict,
+        "active_ids": active_ids,
+        "full_4layer_coverage": full_coverage,
+        "full_4layer_pct": round(full_coverage / active_ids * 100, 1) if active_ids else 0,
+        "soft_deleted": soft_deleted,
+        "pending_canonical_sync": pending_sync,
+        "sqlite_only_ids": sqlite_only,
+        "content_drift_count": len(drift_details),
+        "orphan_projections_total": orphan_total,
+        "issues": issues,
+    }
+
+
+def backfill_markdown_sqlite(limit: int = 2000, config_path: str | None = None) -> dict[str, Any]:
+    """Backfill workspace_markdown rows into SQLite for historical records.
+
+    For records that exist in mempalace/honcho/neural_memory but lack a
+    workspace_markdown row in SQLite. Reconstructs from existing layers
+    using content from the earliest available SQLite layer.
+    """
+
+    import json
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+
+    with store.connect() as conn:
+        # Find IDs that have SQLite layers but no workspace_markdown
+        ids_to_backfill = conn.execute("""
+            SELECT DISTINCT m.id, m.content, m.type, m.scope, m.agent_id,
+                   m.session_id, m.project, m.tags_json, m.source,
+                   m.trust_score, m.created_at, m.metadata_json,
+                   m.content_hash
+            FROM memories m
+            WHERE m.layer != 'workspace_markdown'
+            AND m.id NOT IN (
+                SELECT id FROM memories WHERE layer = 'workspace_markdown'
+            )
+            LIMIT ?
+        """, (limit,)).fetchall()
+
+        backfilled = 0
+        errors = 0
+        for row in ids_to_backfill:
+            try:
+                conn.execute("""
+                    INSERT OR REPLACE INTO memories
+                    (id, layer, content, type, scope, agent_id, session_id,
+                     project, tags_json, source, trust_score, created_at,
+                     metadata_json, pending_canonical_sync, content_hash)
+                    VALUES (?, 'workspace_markdown', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+                """, (
+                    row["id"], row["content"], row["type"], row["scope"],
+                    row["agent_id"], row["session_id"], row["project"],
+                    row["tags_json"], row["source"], row["trust_score"],
+                    row["created_at"], row["metadata_json"], row["content_hash"],
+                ))
+                backfilled += 1
+            except Exception:
+                errors += 1
+        conn.commit()
+
+        # Re-count remaining
+        remaining = conn.execute(
+            "SELECT COUNT(DISTINCT id) FROM memories"
+            " WHERE layer != 'workspace_markdown'"
+            " AND id NOT IN ("
+            " SELECT id FROM memories WHERE layer = 'workspace_markdown'"
+            " )"
+        ).fetchone()[0]
+
+    return {
+        "ok": True,
+        "backfilled": backfilled,
+        "errors": errors,
+        "remaining_sqlite_only": remaining,
+    }

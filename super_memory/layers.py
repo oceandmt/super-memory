@@ -123,12 +123,15 @@ class SQLiteLayerBackend(MemoryBackend):
     def save(self, record: MemoryRecord) -> SaveResult:
         tags = record.normalized_tags()
         pending_sync = record.metadata.get("pending_canonical_sync", False)
+        content_hash = record.metadata.get("content_hash")
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memories
-                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, pending_canonical_sync)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, layer, content, type, scope, agent_id, session_id, project,
+                 tags_json, source, trust_score, created_at, metadata_json,
+                 pending_canonical_sync, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -145,6 +148,7 @@ class SQLiteLayerBackend(MemoryBackend):
                     record.created_at.isoformat(),
                     json.dumps(record.metadata, ensure_ascii=False),
                     1 if pending_sync else 0,
+                    content_hash,
                 ),
             )
             if self.layer == MemoryLayer.MEMPALACE:

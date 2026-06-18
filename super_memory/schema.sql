@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS memories (
     next_review TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     metadata_json TEXT NOT NULL DEFAULT '{}',
+    content_hash TEXT,
     PRIMARY KEY (id, layer)
 );
 

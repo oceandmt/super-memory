@@ -698,6 +698,12 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+
+@app.get("/cross-layer-health")
+@app.post("/cross-layer-health")
+def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
+    return bridge.cross_layer_health(config_path=config_path)
+
 @app.post("/diagnostics")
 def diagnostics(req: Phase8Request) -> dict[str, Any]:
     return bridge.diagnostics(config_path=req.config_path)

@@ -72,6 +72,9 @@ def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
     # Preserve pending_canonical_sync flag in metadata if present
     if "pending_canonical_sync" in row.keys() and row["pending_canonical_sync"]:
         metadata["pending_canonical_sync"] = True
+    # Preserve content_hash in metadata for drift detection
+    if "content_hash" in row.keys() and row["content_hash"]:
+        metadata["content_hash"] = row["content_hash"]
     raw_type = row["type"]
     # Gracefully map legacy/invalid type values to a safe fallback so
     # consolidation and other bulk-read paths do not break on old data.

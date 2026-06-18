@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import importlib.util as _importlib_util
+
 from .hooks import TurnContext
 from .layers import MemoryBackend, SQLiteLayerBackend, WorkspaceMarkdownBackend
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType, SaveResult, SuperMemoryConfig
 from .observability import traced
 from .storage import SuperMemoryStore
+
+_HAS_STRUCTLOG = _importlib_util.find_spec("structlog") is not None
+if _HAS_STRUCTLOG:
+    import structlog as _structlog
+    logger = _structlog.get_logger("super-memory.service")
+else:
+    import logging as _logging
+    logger = _logging.getLogger("super-memory.service")
 
 SAVE_ORDER = [
     MemoryLayer.WORKSPACE_MARKDOWN,
@@ -33,10 +43,20 @@ class SuperMemoryService:
         - Results from SQLite layers carry `pending_canonical_sync=True`.
         - Call `flush_pending()` to replay those records into Markdown when the
           workspace path becomes available.
+
+        After filesystem markdown save succeeds, also write a workspace_markdown
+        row into the shared SQLite memories table so all 4 layers are visible
+        through a single SQL-based pane of glass.
         """
+
+        import hashlib
 
         results: list[SaveResult] = []
         markdown_ok = False
+
+        # Compute content hash for cross-layer drift detection
+        content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
+        record.metadata["content_hash"] = content_hash
 
         def _extra() -> dict[str, object]:
             return {
@@ -64,6 +84,17 @@ class SuperMemoryService:
                     results.append(self.backends[layer].save(record))
                     if layer == MemoryLayer.WORKSPACE_MARKDOWN:
                         markdown_ok = results[-1].ok
+                        # ALSO write workspace_markdown row into shared SQLite table
+                        # so all 4 layers are visible in a single SQL query.
+                        if markdown_ok:
+                            try:
+                                self._save_markdown_to_sqlite(record)
+                            except Exception as exc:
+                                logger.warning(
+                                    "workspace_markdown sqlite mirror failed (non-fatal)",
+                                    memory_id=record.id,
+                                    error=f"{type(exc).__name__}: {exc}",
+                                )
                 except Exception as exc:
                     result = SaveResult(layer=layer, ok=False, message=f"{type(exc).__name__}: {exc}")
                     if layer == MemoryLayer.WORKSPACE_MARKDOWN:
@@ -73,6 +104,46 @@ class SuperMemoryService:
                     results.append(result)
 
         return results
+
+    def _save_markdown_to_sqlite(self, record: MemoryRecord) -> None:
+        """Mirror the workspace_markdown layer into the shared SQLite memories table.
+
+        This is a derived (non-canonical) write for visibility only.
+        The canonical source remains the filesystem markdown file.
+        """
+
+        import json
+
+        tags = record.normalized_tags()
+        pending_sync = record.metadata.get("pending_canonical_sync", False)
+        with self.store.connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO memories
+                (id, layer, content, type, scope, agent_id, session_id, project,
+                 tags_json, source, trust_score, created_at, metadata_json,
+                 pending_canonical_sync, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    MemoryLayer.WORKSPACE_MARKDOWN.value,
+                    record.content,
+                    record.type.value,
+                    record.scope.value,
+                    record.agent_id,
+                    record.session_id,
+                    record.project,
+                    json.dumps(tags, ensure_ascii=False),
+                    record.source,
+                    record.trust_score,
+                    record.created_at.isoformat(),
+                    json.dumps(record.metadata, ensure_ascii=False),
+                    1 if pending_sync else 0,
+                    record.metadata.get("content_hash"),
+                ),
+            )
+            conn.commit()
 
     def _fallback_save(self, layer: MemoryLayer, record: MemoryRecord) -> SaveResult:
         """Save into a non-canonical layer when Markdown failed."""
