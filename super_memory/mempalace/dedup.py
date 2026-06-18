@@ -154,7 +154,7 @@ def deduplicate(
         deleted = 0
         if not dry_run and to_delete:
             placeholders = ",".join("?" for _ in to_delete)
-            conn.execute(f"DELETE FROM palace_drawers WHERE id IN ({placeholders})", list(to_delete))
+            conn.execute("DELETE FROM palace_drawers WHERE id IN (" + placeholders + ")", list(to_delete))
             # Also clean up associated metadata
             for dup_id in to_delete:
                 conn.execute("DELETE FROM palace_metadata WHERE drawer_id = ?", (dup_id,))

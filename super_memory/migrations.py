@@ -115,11 +115,22 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
     except sqlite3.OperationalError:
         return []  # FTS5 not available in this SQLite build
 
-    # memories_fts: content-table form (idempotent check)
+    # memories_fts: content-table form (idempotent check + auto-heal stale format)
     try:
-        exists_before = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories_fts'"
-        ).fetchone() is not None
+        existing_fts = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_fts'"
+        ).fetchone()
+        needs_recreate = (
+            existing_fts is not None
+            and existing_fts[0] is not None
+            and 'content=memories' not in existing_fts[0]
+        )
+        if needs_recreate:
+            conn.execute('DROP TRIGGER IF EXISTS memories_fts_ai')
+            conn.execute('DROP TRIGGER IF EXISTS memories_fts_ad')
+            conn.execute('DROP TRIGGER IF EXISTS memories_fts_au')
+            conn.execute('DROP TABLE IF EXISTS memories_fts')
+        exists_before = not needs_recreate and existing_fts is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
             "USING fts5(content, content=memories, content_rowid=rowid)"
@@ -142,11 +153,22 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
     except sqlite3.OperationalError:
         pass
 
-    # honcho_events_fts: content-table form (idempotent check)
+    # honcho_events_fts: content-table form (idempotent check + auto-heal)
     try:
-        exists_before = conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='honcho_events_fts'"
-        ).fetchone() is not None
+        existing_fts = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='honcho_events_fts'"
+        ).fetchone()
+        needs_recreate = (
+            existing_fts is not None
+            and existing_fts[0] is not None
+            and 'content=honcho_events' not in existing_fts[0]
+        )
+        if needs_recreate:
+            conn.execute('DROP TRIGGER IF EXISTS honcho_events_fts_ai')
+            conn.execute('DROP TRIGGER IF EXISTS honcho_events_fts_ad')
+            conn.execute('DROP TRIGGER IF EXISTS honcho_events_fts_au')
+            conn.execute('DROP TABLE IF EXISTS honcho_events_fts')
+        exists_before = not needs_recreate and existing_fts is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS honcho_events_fts "
             "USING fts5(content, content=honcho_events, content_rowid=rowid)"

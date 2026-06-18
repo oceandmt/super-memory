@@ -16,9 +16,11 @@ def audit():
 
     # 1. Check all mempalace modules import cleanly
     modules = [
-        "compressor", "dedup", "entity_detector", "entity_registry",
-        "extractor", "fact_checker", "hallways", "knowledge_graph",
-        "loader", "searcher", "spatial", "spellcheck", "tools",
+        "collision_scan", "compressor", "convo_miner", "dedup",
+        "entity_detector", "entity_registry", "extractor",
+        "fact_checker", "hallways", "knowledge_graph",
+        "loader", "onboarding", "searcher", "spatial",
+        "spellcheck", "tools",
     ]
     for mod in modules:
         try:
@@ -59,6 +61,23 @@ def audit():
             issues.append("EntityRegistry lookup: FAIL")
     except Exception as e:
         issues.append(f"integration test: FAIL ({e})")
+
+    # 5. Check FTS5 health (stale format auto-heal)
+    try:
+        import sqlite3
+        from super_memory.config import load_config as _load_cfg
+        cfg = _load_cfg()
+        db_path = str(Path(cfg.workspace_root) / cfg.sqlite_path)
+        conn = sqlite3.connect(db_path, timeout=5)
+        for tbl in ("memories_fts", "honcho_events_fts"):
+            row = conn.execute(
+                f"SELECT sql FROM sqlite_master WHERE type='table' AND name='{tbl}'"
+            ).fetchone()
+            if row and row[0] and "content=" not in row[0]:
+                issues.append(f"FTS5 stale format: {tbl} (needs migration — run 'python -m super_memory.migrations')")
+        conn.close()
+    except Exception as e:
+        issues.append(f"FTS5 health check: FAIL ({e})")
 
     # Print & exit
     if issues:

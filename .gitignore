@@ -50,6 +50,7 @@ htmlcov/
 # Project-specific
 data/*.sqlite3
 data/*.sqlite3-*
+data/*.json
 .phase5-backtest-result.json
 .phase5-work/
 .openclaw/

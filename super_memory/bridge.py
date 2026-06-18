@@ -264,7 +264,7 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
     if not hard:
         with store.connect() as conn:
             conn.execute(
-                "UPDATE memories SET metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
+                "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
                 (reason, memory_id),
             )
             conn.commit()
@@ -302,7 +302,7 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
         updates.append("trust_score = ?")
         params.append(max(0, min(10, priority)) / 10.0)
     if tier is not None:
-        updates.append("metadata_json = json_set(COALESCE(metadata_json, '{}'), '$.tier', ?)")
+        updates.append("metadata_json = json_set(metadata_json, '$.tier', ?)")
         params.append(tier)
     if not updates:
         return {"ok": False, "error": "no fields to update"}
