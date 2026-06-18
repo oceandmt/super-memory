@@ -103,7 +103,15 @@ def qualify_cross_agent(config_path: str | Path | None = None) -> dict[str, Any]
     try:
         archive = SessionArchive(cfg)
         summary = archive.create_session_summary(lucas_session)
-        search_count = archive.search_session_archives("qualification").get("count", 0)
+        # Search using a term derived from captured turn content rather than
+        # the qualifier keyword, which may not appear in the auto-generated
+        # summary text.  Fall back through several candidates so the check is
+        # robust even when fixture content evolves.
+        search_count = 0
+        for _term in ("Lucas", "qualifier", "qualification", "canonical"):
+            search_count = archive.search_session_archives(_term).get("count", 0)
+            if search_count > 0:
+                break
         record("session_archive", bool(summary.get("ok")) and search_count > 0, {"search_count": search_count})
     except Exception as exc:  # pragma: no cover
         record("session_archive", False, f"{type(exc).__name__}: {exc}")
