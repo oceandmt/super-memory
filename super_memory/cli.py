@@ -199,7 +199,7 @@ def setup_cmd(
     payload = build_setup_config(workspace_root, sqlite_path=sqlite_path, agents=agents or None)
     path = write_setup_config(payload, output, overwrite=overwrite)
     if json_out:
-        console.print(json.dumps({"ok": True, "config_path": str(path), "config": payload}, ensure_ascii=False, indent=2))
+        print(json.dumps({"ok": True, "config_path": str(path), "config": payload}, ensure_ascii=False, indent=2))
         return
     console.print(setup_instructions(path))
 
@@ -212,7 +212,7 @@ def qualify_cross_agent_cmd(config: Optional[str] = None, json_out: bool = False
     if json_out:
         with redirect_stdout(sys.stderr):
             result = qualify_cross_agent(config)
-        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     result = qualify_cross_agent(config)
     table = Table(title=f"Cross-agent/session qualification: {result['verdict']}")
@@ -234,7 +234,7 @@ def benchmark_cross_agent_cmd(config: Optional[str] = None, limit: int = 5, json
     if json_out:
         with redirect_stdout(sys.stderr):
             result = benchmark_cross_agent(config, limit=limit)
-        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     result = benchmark_cross_agent(config, limit=limit)
     table = Table(title="Cross-agent/session benchmark")
@@ -245,6 +245,60 @@ def benchmark_cross_agent_cmd(config: Optional[str] = None, limit: int = 5, json
         table.add_row(row["kind"], str(row["count"]), str(row["latency_ms"]))
     console.print(table)
     console.print(f"avg_latency_ms={result['avg_latency_ms']} cross_layer={result['cross_layer_verdict']}")
+
+
+@app.command("doctor")
+def doctor_cmd(config: Optional[str] = None, no_benchmark: bool = False, json_out: bool = False):
+    """Run full health/contract/cross-agent diagnostics."""
+    from .doctor import doctor
+
+    if json_out:
+        with redirect_stdout(sys.stderr):
+            result = doctor(config, run_benchmark=not no_benchmark)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    result = doctor(config, run_benchmark=not no_benchmark)
+    table = Table(title=f"Super Memory doctor: {result['verdict']}")
+    table.add_column("Check")
+    table.add_column("OK")
+    table.add_column("Severity")
+    for check in result["checks"]:
+        table.add_row(check["name"], "yes" if check["ok"] else "no", check["severity"])
+    console.print(table)
+    if result["verdict"] == "fail":
+        raise typer.Exit(1)
+
+
+@app.command("migrate-status")
+def migrate_status_cmd(config: Optional[str] = None, json_out: bool = False):
+    """Show expected SQLite table/migration status."""
+    from .doctor import migration_status
+
+    result = migration_status(config)
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(result)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@app.command("entity-upsert")
+def entity_upsert_cmd(kind: str, canonical_name: str, alias: list[str] = typer.Option([], "--alias"), config: Optional[str] = None, json_out: bool = False):
+    """Upsert a canonical entity/alias for identity resolution."""
+    from .entity_registry import upsert_entity
+
+    result = upsert_entity(kind, canonical_name, alias, config_path=config)
+    console.print(json.dumps(result, ensure_ascii=False, indent=2) if json_out else str(result))
+
+
+@app.command("entity-resolve")
+def entity_resolve_cmd(name: str, kind: Optional[str] = None, config: Optional[str] = None, json_out: bool = False):
+    """Resolve an alias/canonical entity name."""
+    from .entity_registry import resolve_entity
+
+    result = resolve_entity(name, kind, config_path=config)
+    console.print(json.dumps(result, ensure_ascii=False, indent=2) if json_out else str(result))
 
 
 @app.command("status")

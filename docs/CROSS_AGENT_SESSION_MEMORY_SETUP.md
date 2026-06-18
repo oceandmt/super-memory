@@ -367,7 +367,11 @@ Expected results:
 - `mcp_contract(profile='admin')` reports all admin tools
 - `cross_layer_health()` reports no SQLite-only IDs, no content drift, and no orphan projections
 
-## 11. Current caveats
+## 11. Operations playbook
+
+For daily health, identity registry, migration status, Prometheus scraping, lifecycle hooks, scheduled jobs, and troubleshooting, see `docs/OPERATIONS.md`.
+
+## 12. Current caveats
 
 - Runtime auto-capture depends on OpenClaw/plugin hook configuration; manual MCP capture tools are the reliable baseline.
 - Cross-agent recall currently uses deterministic SQLite filtering/LIKE, not full semantic embedding ranking.

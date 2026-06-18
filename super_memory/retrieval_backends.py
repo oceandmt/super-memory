@@ -78,6 +78,39 @@ class SQLiteExactBackend:
         return hits
 
 
+class ChromaBackend:
+    """Optional Chroma backend facade.
+
+    This skeleton keeps the interface stable. If chromadb is unavailable, it
+    raises a clear RuntimeError and callers can fall back to sqlite_exact.
+    """
+
+    name = "chroma"
+
+    def __init__(self, config: SuperMemoryConfig):
+        try:
+            import chromadb  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError("chromadb is not installed; use sqlite_exact or install chromadb") from exc
+        self.config = config
+        self.client = chromadb.PersistentClient(path=str(config.workspace_root / ".super-memory-chroma"))
+        self.collection = self.client.get_or_create_collection("super_memory")
+        self.fallback = SQLiteExactBackend(config)
+
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+    ) -> list[RetrievalHit]:
+        # Initial skeleton: keep filter semantics correct through sqlite_exact
+        # until indexing is wired into the save lifecycle.
+        return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+
+
 class DisabledVectorBackend:
     name = "disabled"
 
@@ -92,6 +125,8 @@ def get_retrieval_backend(name: str | None, config: SuperMemoryConfig) -> Retrie
     backend = (name or "sqlite_exact").strip().lower()
     if backend in {"sqlite", "sqlite_exact", "exact"}:
         return SQLiteExactBackend(config)
+    if backend == "chroma":
+        return ChromaBackend(config)
     if backend in {"disabled", "none"}:
         return DisabledVectorBackend(config)
     raise ValueError(f"unsupported retrieval backend: {name}")
