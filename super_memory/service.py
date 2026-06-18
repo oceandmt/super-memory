@@ -148,11 +148,12 @@ class SuperMemoryService:
     def _fallback_save(self, layer: MemoryLayer, record: MemoryRecord) -> SaveResult:
         """Save into a non-canonical layer when Markdown failed."""
 
-        # Mark record as needing canonical sync
-        record.metadata["pending_canonical_sync"] = True
+        # Mark a clone as needing canonical sync without mutating the caller's record.
+        pending_record = record.model_copy(deep=True)
+        pending_record.metadata["pending_canonical_sync"] = True
 
         try:
-            result = self.backends[layer].save(record)
+            result = self.backends[layer].save(pending_record)
             result.pending_canonical_sync = True
             return result
         except Exception as exc:
@@ -184,6 +185,7 @@ class SuperMemoryService:
                 try:
                     result = self.backends[MemoryLayer.WORKSPACE_MARKDOWN].save(rec)
                     if result.ok:
+                        self._save_markdown_to_sqlite(rec)
                         for pending_layer in pending_layers:
                             self.store.clear_pending_sync(rec.id, pending_layer)
                 except Exception as exc:

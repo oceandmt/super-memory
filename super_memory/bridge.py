@@ -581,7 +581,31 @@ def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
 
     FILTER_ACTIVE = "(json_extract(metadata_json, '$.soft_deleted') IS NULL OR json_extract(metadata_json, '$.soft_deleted') != 1)"
 
+    def _has_table(conn, table: str) -> bool:
+        return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
     with store.connect() as conn:
+        has_memories = _has_table(conn, "memories")
+        has_palace = _has_table(conn, "palace_drawers")
+        has_honcho = _has_table(conn, "honcho_events")
+        has_graph_edges = _has_table(conn, "graph_edges")
+        has_cognitive_neurons = _has_table(conn, "cognitive_neurons")
+        has_cognitive_synapses = _has_table(conn, "cognitive_synapses")
+        has_cognitive_fibers = _has_table(conn, "cognitive_fibers")
+        if not has_memories:
+            return {
+                "ok": True,
+                "verdict": "pass",
+                "active_ids": 0,
+                "full_4layer_coverage": 0,
+                "full_4layer_pct": 0,
+                "soft_deleted": 0,
+                "pending_canonical_sync": 0,
+                "sqlite_only_ids": 0,
+                "content_drift_count": 0,
+                "orphan_projections_total": 0,
+                "issues": [],
+            }
         # ── (a) Check for SQLite-only IDs (no workspace_markdown row) ──
         sqlite_only = conn.execute(
             "SELECT COUNT(DISTINCT id) FROM memories"
@@ -620,38 +644,38 @@ def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
         orphan_palace = conn.execute("""
             SELECT COUNT(*) FROM palace_drawers
             WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0]
+        """).fetchone()[0] if has_palace else 0
 
         orphan_honcho = conn.execute("""
             SELECT COUNT(*) FROM honcho_events
             WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
             AND memory_id IS NOT NULL
-        """).fetchone()[0]
+        """).fetchone()[0] if has_honcho else 0
 
         orphan_graph = conn.execute("""
             SELECT COUNT(*) FROM graph_edges
             WHERE source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
             OR target_memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0]
+        """).fetchone()[0] if has_graph_edges else 0
 
         orphan_cog_syn = conn.execute("""
             SELECT COUNT(*) FROM cognitive_synapses cs
             LEFT JOIN cognitive_neurons cn1 ON cs.source_neuron_id = cn1.id
             LEFT JOIN cognitive_neurons cn2 ON cs.target_neuron_id = cn2.id
             WHERE cn1.id IS NULL OR cn2.id IS NULL
-        """).fetchone()[0]
+        """).fetchone()[0] if has_cognitive_synapses and has_cognitive_neurons else 0
 
         orphan_cog_neurons = conn.execute("""
             SELECT COUNT(*) FROM cognitive_neurons
             WHERE source_memory_id IS NOT NULL
             AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0]
+        """).fetchone()[0] if has_cognitive_neurons else 0
 
         orphan_cog_fibers = conn.execute("""
             SELECT COUNT(*) FROM cognitive_fibers cf
             LEFT JOIN cognitive_neurons cn ON cf.anchor_neuron_id = cn.id
             WHERE cn.id IS NULL
-        """).fetchone()[0]
+        """).fetchone()[0] if has_cognitive_fibers and has_cognitive_neurons else 0
 
         # ── Layer coverage: how many IDs have full 4-layer representation ──
         active_ids = conn.execute(

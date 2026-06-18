@@ -26,6 +26,9 @@ super-memory --help
 
 Recommended first-time setup for an OpenClaw workspace:
 
+Fresh-install data isolation: without a config file or `SUPER_MEMORY_WORKSPACE_ROOT`, Super Memory stores data relative to the current working directory. Attaching it to a real OpenClaw workspace is an explicit opt-in via `super-memory setup --workspace-root ...`, YAML config, or environment variables.
+
+
 ```bash
 super-memory setup \
   --workspace-root "$HOME/.openclaw/workspace" \
@@ -37,7 +40,7 @@ super-memory doctor --no-benchmark --json-out
 Start the local API bridge used by the native OpenClaw plugin:
 
 ```bash
-super-memory-api --host 127.0.0.1 --port 8765
+super-memory-api
 ```
 
 The API binds to `127.0.0.1:8765` by default. **Do not expose it directly to a network** unless you add an authentication layer in front of it.

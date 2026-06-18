@@ -125,6 +125,8 @@ ADVANCED_TOOLS = {
     "super_memory_sync_archive_to_honcho",
     "super_memory_store_status",
     "super_memory_diagnostics",
+    "super_memory_cross_layer_health",
+    "super_memory_backfill_markdown_sqlite",
     "super_memory_memory_slot_contract",
     "super_memory_mcp_contract",
     "super_memory_supervised_runtime_smoke",
@@ -257,6 +259,14 @@ TOOLS: dict[str, JSON] = {
     "super_memory_diagnostics": {
         "description": "Phase 8 diagnostics dashboard for canonical-first, sqlite, graph, lifecycle, and safe optional states.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_cross_layer_health": {
+        "description": "Audit cross-layer consistency: canonical markdown rows, projection orphans, content drift, and pending sync.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_backfill_markdown_sqlite": {
+        "description": "Admin repair: backfill missing workspace_markdown SQLite rows from existing derived-layer records.",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "config_path": {"type": "string"}}),
     },
     "super_memory_memory_slot_contract": {
         "description": "Run Phase 8 memory-slot replacement contract: save/search/get/show/graph projection.",
@@ -484,6 +494,10 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.stats(config_path=args.get("config_path"))
     if name == "super_memory_diagnostics":
         return bridge.diagnostics(config_path=args.get("config_path"))
+    if name == "super_memory_cross_layer_health":
+        return bridge.cross_layer_health(config_path=args.get("config_path"))
+    if name == "super_memory_backfill_markdown_sqlite":
+        return bridge.backfill_markdown_sqlite(limit=args.get("limit", 2000), config_path=args.get("config_path"))
     if name == "super_memory_memory_slot_contract":
         return bridge.memory_slot_contract(config_path=args.get("config_path"))
     if name == "super_memory_mcp_contract":

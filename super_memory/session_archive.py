@@ -50,7 +50,7 @@ class SessionArchive(DBMixin):
         with self._conn() as conn:
             events = [dict(r) for r in conn.execute("SELECT * FROM honcho_events WHERE session_id=? ORDER BY created_at DESC LIMIT ?", (session_id,max_events)).fetchall()]
             mems = [dict(r) for r in conn.execute("SELECT * FROM memories WHERE session_id=? ORDER BY created_at DESC LIMIT ?", (session_id,max_events)).fetchall()] if self._has(conn,"memories") else []
-            rows = list(reversed(events)) + list(reversed(mems))
+            rows = self._dedup_rows(list(reversed(events)) + list(reversed(mems)))
             agent = (rows[-1].get("agent_id") or rows[-1].get("observer_peer_id")) if rows else None
             decisions = self._pick_semantic(rows, "decision")
             blockers = self._pick_semantic(rows, "blocker")
@@ -62,6 +62,19 @@ class SessionArchive(DBMixin):
                 (id,session_id,agent_id,summary,event_count,key_decisions_json,open_blockers_json)
                 VALUES(?,?,?,?,?,?,?)""", (aid,session_id,agent,summary,len(rows),json.dumps(decisions),json.dumps(blockers)))
         return {"ok": True, "session_id": session_id, "summary": summary, "event_count": len(rows), "key_decisions": decisions, "open_blockers": blockers}
+
+    def _dedup_rows(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for row in rows:
+            key = row.get("memory_id") or row.get("id")
+            if not key:
+                key = "content:" + " ".join((row.get("content") or "").lower().split()[:24])
+            if key in seen:
+                continue
+            seen.add(str(key))
+            out.append(row)
+        return out
 
     def get_session_summary(self, session_id: str) -> dict[str, Any]:
         self.ensure_tables()

@@ -26,4 +26,6 @@ def load_config(path: str | Path | None = None) -> SuperMemoryConfig:
         data["workspace_root"] = env_root
     if env_sqlite := os.getenv("SUPER_MEMORY_SQLITE_PATH"):
         data["sqlite_path"] = env_sqlite
+    if env_token := (os.getenv("SUPER_MEMORY_API_TOKEN") or os.getenv("API_TOKEN")):
+        data["api_token"] = env_token
     return SuperMemoryConfig(**data)

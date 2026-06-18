@@ -51,7 +51,10 @@ class CaptureHook:
         metadata = metadata or {}
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             event_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
-            memory_id = memory_id or event_id
+            # Standalone Honcho captures are not layer projections. Keep memory_id
+            # NULL unless the caller explicitly links this event to a canonical
+            # memory row; otherwise cross-layer health will treat successful
+            # captures as false orphan projections.
             created_at = datetime.now(timezone.utc).isoformat()
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")

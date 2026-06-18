@@ -54,6 +54,9 @@ Use `cp -n` to avoid overwriting an existing operator workspace. If you want to 
 
 ## Recommended OpenClaw Config
 
+Default rollout should use `safe` or `admin` additive mode. Use `exclusive` memory-slot cutover only after qualification passes and rollback is understood.
+
+
 ```json
 {
   "tools": {

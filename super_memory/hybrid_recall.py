@@ -110,7 +110,10 @@ class HybridRecall(DBMixin):
         if session_kind == "session":
             where.append("m.session_id=?")
             args.append(sid)
-        if graph:
+        if layer == "markdown":
+            where.append("m.layer=?")
+            args.append("workspace_markdown")
+        elif graph:
             # P4#1: V2 path — when legacy_graph_edges is False, skip graph_edges UNION
             cfg = getattr(self, 'config', load_config())
             if getattr(cfg, 'legacy_graph_edges', True):

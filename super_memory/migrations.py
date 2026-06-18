@@ -66,6 +66,7 @@ def _migrate_memories(conn: sqlite3.Connection) -> list[str]:
         "trust_score": "REAL",
         "created_at": "TEXT",
         "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
+        "pending_canonical_sync": "INTEGER DEFAULT 0",
         "content_hash": "TEXT",
     }
     for col, ddl in additions.items():

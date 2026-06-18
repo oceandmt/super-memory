@@ -29,7 +29,7 @@ super-memory doctor --no-benchmark --json-out
 Start the API service:
 
 ```bash
-super-memory-api --host 127.0.0.1 --port 8765
+super-memory-api
 ```
 
 For production, run that command under systemd, pm2, supervisord, or the host service manager.
@@ -128,10 +128,13 @@ PLUGIN_DOCTOR_OK
 
 ## 5. Troubleshooting
 
+Bearer auth is disabled by default. If `api_token` is set in YAML, callers must send `Authorization: Bearer <token>`.
+
+
 If the plugin loads but API calls fail:
 
 ```bash
-super-memory-api --host 127.0.0.1 --port 8765
+super-memory-api
 curl -fsS http://127.0.0.1:8765/health
 ```
 

@@ -39,7 +39,7 @@ class CrossAgentTools:
                 SELECT id, layer, content, type, scope, agent_id, session_id, project,
                        tags_json, source, trust_score, created_at, metadata_json
                 FROM memories
-                WHERE agent_id = ? AND content LIKE ?
+                WHERE agent_id = ? AND content LIKE ? AND layer = 'workspace_markdown'
                 ORDER BY created_at DESC LIMIT ?
             """, (agent_id, like, limit))
         memories = [_decode(r) for r in rows]
@@ -67,9 +67,10 @@ class CrossAgentTools:
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
+            layer_clause = " AND layer = 'workspace_markdown'" if where else "WHERE layer = 'workspace_markdown'"
             mems = _rows(conn, f"""
-                SELECT agent_id, COUNT(*) AS memory_count, MAX(created_at) AS recent_activity
-                FROM memories {where} GROUP BY agent_id ORDER BY recent_activity DESC
+                SELECT agent_id, COUNT(DISTINCT id) AS memory_count, MAX(created_at) AS recent_activity
+                FROM memories {where} {layer_clause} GROUP BY agent_id ORDER BY recent_activity DESC
             """, args)
             evs = _rows(conn, """
                 SELECT observer_peer_id AS agent_id, COUNT(*) AS honcho_event_count,
