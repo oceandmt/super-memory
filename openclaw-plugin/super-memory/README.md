@@ -1,10 +1,10 @@
 # Super Memory OpenClaw Native Plugin
 
-This directory is the native OpenClaw plugin wrapper for Super Memory. It is intentionally safe by default: it runs as an additive tools/corpus plugin unless you explicitly opt into exclusive memory-slot replacement.
+This directory is the native OpenClaw plugin wrapper for Super Memory. Super Memory is intended to be able to run as OpenClaw's memory slot, but the wrapper is intentionally safe by default: it runs as an additive tools/corpus plugin unless you explicitly opt into `exclusive` memory-slot mode.
 
 ## Recommended install mode
 
-Use **admin additive mode** for other OpenClaw installations first. It enables Super Memory tools, turn capture, optional context, and flush hooks without replacing `memory-core`.
+Use **admin additive/capture mode** for other OpenClaw installations first. It enables Super Memory tools, turn capture, optional context, and flush hooks without replacing `memory-core`. Promote to `exclusive` only after qualification when you want Super Memory to own the OpenClaw memory slot.
 
 ## Prerequisites
 
@@ -74,7 +74,7 @@ Recommended cross-agent/cross-session mode. Keeps memory-core intact.
 
 ### exclusive
 
-Development/testing only. Replaces OpenClaw's memory slot and can register legacy `memory_search`/`memory_get` shims.
+OpenClaw memory-slot cutover mode. Replaces OpenClaw's memory slot and can register legacy `memory_search`/`memory_get` shims. Use after staged qualification, not as the first install smoke test.
 
 ```json
 {

@@ -42,6 +42,13 @@ super-memory-api --host 127.0.0.1 --port 8765
 
 The API binds to `127.0.0.1:8765` by default. **Do not expose it directly to a network** unless you add an authentication layer in front of it.
 
+## Integration surfaces
+
+Super Memory has two integration surfaces:
+
+1. **OpenClaw native plugin / memory-slot integration** — for OpenClaw. The long-term target is to run Super Memory as OpenClaw's memory slot. Use additive modes first for qualification, then promote to memory-slot mode when ready.
+2. **MCP server** — for AI agents that are not OpenClaw but can speak MCP. These agents use MCP profiles (`normal` or `admin`), not OpenClaw plugin modes.
+
 ## Native OpenClaw plugin install
 
 Clone the repository and install the native plugin wrapper:
@@ -52,13 +59,11 @@ cd super-memory
 bash scripts/install-openclaw-plugin.sh --mode admin --no-restart
 ```
 
-Recommended mode is `admin`, which keeps OpenClaw's existing memory slot intact while enabling Super Memory tools, turn capture, cross-agent/session workflows, and flush hooks.
+Recommended rollout for OpenClaw is staged:
 
-Available plugin modes:
-
-- `safe` — additive tools/corpus only; safest bootstrap mode.
-- `admin` — recommended default for cross-agent/cross-session operation without replacing `memory-core`.
-- `exclusive` — development/testing only; replaces the OpenClaw memory slot and may register legacy `memory_search`/`memory_get` shims.
+1. `safe` — additive tools/corpus only; fastest install/load smoke test.
+2. `admin` — additive admin/capture mode; recommended qualification mode for cross-agent/cross-session operation while keeping `memory-core` intact.
+3. `exclusive` — **OpenClaw memory-slot mode**; replaces the OpenClaw memory slot and may register legacy `memory_search`/`memory_get` shims. This is the target mode for OpenClaw memory-slot cutover after qualification passes.
 
 Verify the plugin install:
 
@@ -93,13 +98,13 @@ super-memory memory-get memory/2026-06-13.md --from-line 1 --lines 20
 
 ## MCP server
 
-Super Memory now includes a local stdio MCP server for MCP-compatible agents:
+Super Memory also includes a local stdio MCP server for MCP-compatible agents that are not OpenClaw. MCP users do not use `safe/admin/exclusive`; they choose an MCP profile:
 
 ```bash
 super-memory-mcp --stdio --profile normal
 ```
 
-Default exposed tools include remember, remember-batch, show, context, todo, auto, stats, health, sanitize-prompt, sanitize-auto-capture, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, and status. Admin profile additionally exposes promotion and cross-agent/cross-session memory tools.
+`normal` exposes daily-safe tools such as remember, remember-batch, show, context, todo, auto, stats, health, sanitize-prompt, sanitize-auto-capture, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, and status. `admin` additionally exposes promotion and cross-agent/cross-session memory tools.
 
 For cross-agent/cross-session setup, run the MCP server with `--profile admin` and follow `docs/CROSS_AGENT_SESSION_MEMORY_SETUP.md`.
 

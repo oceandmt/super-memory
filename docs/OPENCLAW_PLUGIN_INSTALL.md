@@ -4,9 +4,16 @@ This guide installs the native OpenClaw wrapper in `openclaw-plugin/super-memory
 
 ## Install strategy
 
-Default recommendation: **admin additive mode**.
+Super Memory is designed for two surfaces:
 
-Admin additive mode keeps the existing OpenClaw memory slot intact while enabling Super Memory tools, turn capture, session/cross-agent workflows, and optional context/flush hooks. Use exclusive mode only for explicit replacement testing.
+1. **OpenClaw native plugin / memory-slot integration.** The long-term OpenClaw target is `exclusive` memory-slot mode, where Super Memory owns the OpenClaw memory slot.
+2. **MCP server for non-OpenClaw agents.** MCP agents use `super-memory-mcp --profile normal|admin`; they do not use OpenClaw plugin modes.
+
+For OpenClaw, use a staged rollout:
+
+1. `safe` — additive install/load smoke test.
+2. `admin` — additive admin/capture qualification mode; keeps `memory-core` intact while enabling Super Memory tools, turn capture, session/cross-agent workflows, and optional context/flush hooks.
+3. `exclusive` — OpenClaw memory-slot cutover mode; use after qualification passes and rollback is understood.
 
 ## 1. Install Super Memory CLI/API/MCP
 
@@ -62,7 +69,7 @@ Additive tools/corpus only.
 }
 ```
 
-### Admin mode — recommended
+### Admin additive/capture mode — recommended qualification mode
 
 ```json
 {
@@ -83,7 +90,7 @@ Additive tools/corpus only.
 }
 ```
 
-### Exclusive memory-slot mode — test only
+### Exclusive memory-slot mode — OpenClaw cutover target
 
 ```json
 {
@@ -136,7 +143,7 @@ super-memory benchmark-cross-agent --json-out
 super-memory doctor --json-out
 ```
 
-If the native plugin should not replace `memory-core`, confirm these remain false:
+If the native plugin is still in `safe` or `admin` qualification mode and should not replace `memory-core`, confirm these remain false:
 
 ```json
 {
