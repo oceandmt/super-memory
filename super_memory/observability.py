@@ -83,3 +83,13 @@ def metrics() -> dict[str, Any]:
     return {
         "counters": _snapshot_counters(),
     }
+
+
+def prometheus_metrics() -> str:
+    """Return in-process counters in Prometheus text exposition format."""
+    lines: list[str] = []
+    for name, value in sorted(_snapshot_counters().items()):
+        metric = "super_memory_" + name.replace(".", "_").replace("-", "_")
+        lines.append(f"# TYPE {metric} counter")
+        lines.append(f"{metric} {value}")
+    return "\n".join(lines) + ("\n" if lines else "")

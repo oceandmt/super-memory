@@ -5,13 +5,13 @@ from typing import Any
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from . import bridge, mcp_server
 from .config import load_config
-from .observability import metrics as _metrics_snapshot
+from .observability import metrics as _metrics_snapshot, prometheus_metrics as _prometheus_metrics
 
 app = FastAPI(title="Super Memory API", version="0.1.0")
 
@@ -327,6 +327,10 @@ def metrics() -> dict[str, Any]:
     m = _metrics_snapshot()
     stats_snapshot = bridge.status()
     return {**m, "service": stats_snapshot}
+
+@app.get("/metrics/prometheus", response_class=PlainTextResponse)
+def metrics_prometheus() -> str:
+    return _prometheus_metrics()
 
 
 @app.get("/memory-health")

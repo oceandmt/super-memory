@@ -33,6 +33,15 @@ pytest tests/test_mcp_server.py tests/test_multi_agent_graph.py tests/test_phase
 
 The minimum setup is a workspace root and a SQLite path.
 
+Quick wizard:
+
+```bash
+super-memory setup \
+  --workspace-root /home/oceandmt/.openclaw/workspace \
+  --output super-memory.yaml \
+  --overwrite
+```
+
 Environment variables:
 
 ```bash
@@ -320,6 +329,8 @@ Supported filters:
 Run these before treating cross-agent/session memory as operational:
 
 ```bash
+super-memory qualify-cross-agent --config super-memory.yaml
+super-memory benchmark-cross-agent --config super-memory.yaml
 python scripts/check_tool_contracts.py
 python scripts/check_sql_safety.py
 python -m pytest \

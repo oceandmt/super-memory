@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import sys
+from contextlib import redirect_stdout
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -179,6 +182,69 @@ def promote(
         return
     console.print(f"[green]MEMORY.md[/green] {'✅ created' if mem_path else '⏭️ skipped (already present)'}")
     console.print(f"[green]Register[/green] {'✅ created' if reg_path else '⏭️ skipped (already present)'}")
+
+
+@app.command("setup")
+def setup_cmd(
+    workspace_root: str = typer.Option(str(Path.home() / ".openclaw" / "workspace"), "--workspace-root"),
+    output: str = typer.Option("super-memory.yaml", "--output", "-o"),
+    sqlite_path: str = typer.Option("data/super-memory.sqlite3", "--sqlite-path"),
+    agents: list[str] = typer.Option([], "--agent", help="Default agent id; repeatable"),
+    overwrite: bool = typer.Option(False, "--overwrite"),
+    json_out: bool = False,
+):
+    """Generate a concrete cross-agent/session setup config."""
+    from .setup_wizard import build_setup_config, setup_instructions, write_setup_config
+
+    payload = build_setup_config(workspace_root, sqlite_path=sqlite_path, agents=agents or None)
+    path = write_setup_config(payload, output, overwrite=overwrite)
+    if json_out:
+        console.print(json.dumps({"ok": True, "config_path": str(path), "config": payload}, ensure_ascii=False, indent=2))
+        return
+    console.print(setup_instructions(path))
+
+
+@app.command("qualify-cross-agent")
+def qualify_cross_agent_cmd(config: Optional[str] = None, json_out: bool = False):
+    """Run the cross-agent/cross-session end-to-end qualification harness."""
+    from .qualify import qualify_cross_agent
+
+    if json_out:
+        with redirect_stdout(sys.stderr):
+            result = qualify_cross_agent(config)
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    result = qualify_cross_agent(config)
+    table = Table(title=f"Cross-agent/session qualification: {result['verdict']}")
+    table.add_column("Check")
+    table.add_column("OK")
+    table.add_column("Details")
+    for check in result["checks"]:
+        table.add_row(check["name"], "yes" if check["ok"] else "no", json.dumps(check.get("details"), ensure_ascii=False)[:120])
+    console.print(table)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@app.command("benchmark-cross-agent")
+def benchmark_cross_agent_cmd(config: Optional[str] = None, limit: int = 5, json_out: bool = False):
+    """Run a small deterministic cross-agent/session recall benchmark."""
+    from .benchmark import benchmark_cross_agent
+
+    if json_out:
+        with redirect_stdout(sys.stderr):
+            result = benchmark_cross_agent(config, limit=limit)
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    result = benchmark_cross_agent(config, limit=limit)
+    table = Table(title="Cross-agent/session benchmark")
+    table.add_column("Kind")
+    table.add_column("Count")
+    table.add_column("Latency ms")
+    for row in result["results"]:
+        table.add_row(row["kind"], str(row["count"]), str(row["latency_ms"]))
+    console.print(table)
+    console.print(f"avg_latency_ms={result['avg_latency_ms']} cross_layer={result['cross_layer_verdict']}")
 
 
 @app.command("status")
