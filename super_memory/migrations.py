@@ -79,8 +79,54 @@ def _migrate_memories(conn: sqlite3.Connection) -> list[str]:
 
 def _migrate_honcho_events(conn: sqlite3.Connection) -> list[str]:
     changed: list[str] = []
-    if not _table_columns(conn, "honcho_events"):
+    cols = _table_columns(conn, "honcho_events")
+    if not cols:
         return changed
+    # Older builds created honcho_events.memory_id as NOT NULL, which breaks
+    # standalone Honcho capture events that intentionally have no canonical
+    # memory projection. SQLite cannot drop NOT NULL in place, so rebuild the
+    # table into the schema.sql shape when that legacy constraint is detected.
+    info = conn.execute("PRAGMA table_info(honcho_events)").fetchall()
+    memory_col = next((row for row in info if row[1] == "memory_id"), None)
+    if memory_col is not None and int(memory_col[3] or 0) == 1:
+        conn.execute("ALTER TABLE honcho_events RENAME TO honcho_events_legacy_notnull")
+        conn.execute("""
+            CREATE TABLE honcho_events (
+                id TEXT PRIMARY KEY,
+                memory_id TEXT,
+                workspace TEXT NOT NULL DEFAULT 'openclaw',
+                session_id TEXT,
+                observer_peer_id TEXT NOT NULL DEFAULT 'lucas',
+                observed_peer_id TEXT,
+                content TEXT NOT NULL,
+                source TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        legacy_cols = _table_columns(conn, "honcho_events_legacy_notnull")
+        select_exprs = []
+        for col, default in [
+            ("id", "lower(hex(randomblob(16)))"),
+            ("memory_id", "NULL"),
+            ("workspace", "'openclaw'"),
+            ("session_id", "NULL"),
+            ("observer_peer_id", "'lucas'"),
+            ("observed_peer_id", "NULL"),
+            ("content", "''"),
+            ("source", "NULL"),
+            ("metadata_json", "'{}'"),
+            ("created_at", "datetime('now')"),
+        ]:
+            select_exprs.append(col if col in legacy_cols else default)
+        conn.execute(
+            "INSERT INTO honcho_events (id, memory_id, workspace, session_id, observer_peer_id, observed_peer_id, content, source, metadata_json, created_at) SELECT "
+            + ", ".join(select_exprs)
+            + " FROM honcho_events_legacy_notnull"
+        )
+        conn.execute("DROP TABLE honcho_events_legacy_notnull")
+        changed.append("honcho_events.memory_id_nullable")
+        cols = _table_columns(conn, "honcho_events")
     additions = {
         "memory_id": "TEXT",
         "workspace": "TEXT DEFAULT 'openclaw'",
