@@ -19,6 +19,8 @@ from .service import SuperMemoryService
 from .storage import SuperMemoryStore
 
 app = typer.Typer(help="Local multi-layer memory app for OpenClaw")
+semantic_app = typer.Typer(help="Semantic sqlite-vec/Ollama setup, indexing, and verification")
+app.add_typer(semantic_app, name="semantic")
 
 
 @app.callback()
@@ -351,6 +353,70 @@ def entity_resolve_cmd(name: str, kind: Optional[str] = None, config: Optional[s
 
     result = resolve_entity(name, kind, config_path=config)
     console.print(json.dumps(result, ensure_ascii=False, indent=2) if json_out else str(result))
+
+
+@semantic_app.command("doctor")
+def semantic_doctor_cmd(
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    query: str = typer.Option("semantic recall smoke test", "--query"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Check semantic-mode prerequisites: config, sqlite-vec, Ollama, and vector DB."""
+    from .semantic import semantic_doctor
+
+    result = semantic_doctor(config, query=query)
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    table = Table(title=f"Semantic doctor: {result['verdict']}")
+    table.add_column("Check")
+    table.add_column("OK")
+    table.add_column("Severity")
+    table.add_column("Detail")
+    for check in result["checks"]:
+        table.add_row(check["name"], "yes" if check["ok"] else "no", check["severity"], json.dumps(check.get("detail"), ensure_ascii=False)[:80])
+    console.print(table)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
+
+@semantic_app.command("index")
+def semantic_index_cmd(
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Drop/recreate vector index before indexing"),
+    batch_size: int = typer.Option(8, "--batch-size", min=1, max=128),
+    limit: Optional[int] = typer.Option(None, "--limit", help="Index only the first N memories for smoke tests"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Build/update data/vectors.sqlite3 from workspace_markdown memories."""
+    from .semantic import semantic_index
+
+    result = semantic_index(config, rebuild=rebuild, batch_size=batch_size, limit=limit)
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(result)
+    if not result.get("ok", False):
+        raise typer.Exit(1)
+
+
+@semantic_app.command("verify")
+def semantic_verify_cmd(
+    query: str = typer.Argument("semantic recall smoke test"),
+    config: Optional[str] = typer.Option(None, "--config", "-c"),
+    limit: int = typer.Option(5, "--limit"),
+    json_out: bool = typer.Option(False, "--json"),
+):
+    """Run a semantic KNN query and hydrate results from the memory DB."""
+    from .semantic import semantic_verify
+
+    result = semantic_verify(config, query=query, limit=limit)
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(result)
+    if not result.get("ok", False):
+        raise typer.Exit(1)
 
 
 @app.command("status")

@@ -24,6 +24,18 @@ pip install 'git+https://github.com/oceandmt/super-memory.git'
 super-memory --help
 ```
 
+Semantic sqlite-vec/Ollama mode can be installed from a release tag with the semantic extra:
+
+```bash
+pip install "super-memory[semantic] @ git+https://github.com/oceandmt/super-memory.git@v1.1.2"
+ollama pull nomic-embed-text
+super-memory semantic doctor --config .openclaw/super-memory.yaml
+super-memory semantic index --config .openclaw/super-memory.yaml
+super-memory semantic verify "semantic recall smoke test" --config .openclaw/super-memory.yaml
+```
+
+Full semantic setup guide: [`docs/semantic-mode.md`](docs/semantic-mode.md).
+
 Recommended first-time setup for an OpenClaw workspace:
 
 Fresh-install data isolation: without a config file or `SUPER_MEMORY_WORKSPACE_ROOT`, Super Memory stores data relative to the current working directory. Attaching it to a real OpenClaw workspace is an explicit opt-in via `super-memory setup --workspace-root ...`, YAML config, or environment variables.

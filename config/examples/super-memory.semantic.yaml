@@ -1,0 +1,51 @@
+# Super Memory semantic mode example for OpenClaw workspaces.
+# Copy to .openclaw/super-memory.yaml and adjust workspace_root.
+
+workspace_root: /path/to/openclaw/workspace
+sqlite_path: data/super-memory.sqlite3
+
+daily_memory_dir: memory
+long_term_file: MEMORY.md
+registers_dir: memory/registers
+require_canonical_first: true
+
+enabled_layers:
+  - workspace_markdown
+  - mempalace
+  - honcho
+  - neural_memory
+
+default_agents:
+  - lucas
+  - alex
+  - max
+  - isol
+
+mcp_profile: admin
+vector_backend: sqlite_vec
+vector_enabled: true
+embedding_provider: ollama
+embedding_model: nomic-embed-text
+embedding_endpoint: http://127.0.0.1:11434/api/embed
+embedding_dimension: 768
+legacy_graph_edges: false
+
+cross_agent_memory:
+  enabled: true
+  required_fields:
+    - agent_id
+    - session_id
+    - scope
+  shared_scopes:
+    - shared
+    - project
+    - cross-agent
+
+cross_session_memory:
+  enabled: true
+  capture_tools:
+    - super_memory_capture_event
+    - super_memory_capture_turn
+  archive_tools:
+    - super_memory_create_session_summary
+    - super_memory_search_session_archives
