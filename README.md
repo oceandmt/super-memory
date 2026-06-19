@@ -36,6 +36,10 @@ super-memory semantic verify "semantic recall smoke test" --config .openclaw/sup
 
 Full semantic setup guide: [`docs/semantic-mode.md`](docs/semantic-mode.md).
 
+📘 **Technical overview** (architecture, layers, data flow): [`docs/technical-overview.md`](docs/technical-overview.md).
+
+🗺️ **Development roadmap** (planned phases): [`docs/roadmap.md`](docs/roadmap.md).
+
 Recommended first-time setup for an OpenClaw workspace:
 
 Fresh-install data isolation: without a config file or `SUPER_MEMORY_WORKSPACE_ROOT`, Super Memory stores data relative to the current working directory. Attaching it to a real OpenClaw workspace is an explicit opt-in via `super-memory setup --workspace-root ...`, YAML config, or environment variables.
