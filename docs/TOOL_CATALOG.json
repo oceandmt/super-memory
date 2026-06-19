@@ -1,7 +1,7 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 137,
+  "total_tools": 138,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -333,6 +333,33 @@
         "properties": {
           "config_path": {
             "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_cleanup",
+      "category": "other",
+      "description": "Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "vacuum": {
+            "type": "boolean",
+            "default": false
+          },
+          "integrity_check": {
+            "type": "boolean",
+            "default": true
           }
         },
         "required": []

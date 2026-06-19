@@ -83,7 +83,7 @@ def get_profile_visibility(name: str, all_profiles: dict) -> list[str]:
 def export_json(tools: list[dict], output: Path):
     """Export tools as JSON."""
     catalog = {
-        "version": "0.1.0",
+        "version": "0.1.1",
         "generated_at": "2026-06-15T11:00:00Z",
         "total_tools": len(tools),
         "tools": tools
@@ -98,7 +98,7 @@ def export_markdown(tools: list[dict], output: Path):
         "",
         f"**Total Tools:** {len(tools)}",
         "**Generated:** 2026-06-15",
-        "**Version:** 0.1.0",
+        "**Version:** 0.1.1",
         "",
         "## Tools by Category",
         ""

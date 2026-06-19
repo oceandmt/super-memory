@@ -24,7 +24,7 @@ from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "0.1.0"}
+SERVER_INFO = {"name": "super-memory", "version": "0.1.1"}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
@@ -37,6 +37,7 @@ NORMAL_TOOLS = {
     "super_memory_auto",
     "super_memory_stats",
     "super_memory_health",
+    "super_memory_cleanup",
     "super_memory_sanitize_prompt",
     "super_memory_sanitize_auto_capture",
     "super_memory_normalize_memory",
@@ -284,6 +285,16 @@ TOOLS: dict[str, JSON] = {
         "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
+    "super_memory_cleanup": {
+        "description": "Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.",
+        "inputSchema": _schema(
+            {
+                "config_path": {"type": "string"},
+                "vacuum": {"type": "boolean", "default": False},
+                "integrity_check": {"type": "boolean", "default": True},
+            }
+        ),
+    },
     "super_memory_sanitize_prompt": {
         "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
         "inputSchema": _schema({"text": {"type": "string"}}, ["text"]),
@@ -506,6 +517,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.supervised_runtime_smoke(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
+    if name == "super_memory_cleanup":
+        return bridge.cleanup(
+            config_path=args.get("config_path"),
+            vacuum=args.get("vacuum", False),
+            integrity_check=args.get("integrity_check", True),
+        )
     if name == "super_memory_sanitize_prompt":
         return {"text": bridge.sanitize_prompt(args["text"])}
     if name == "super_memory_sanitize_auto_capture":

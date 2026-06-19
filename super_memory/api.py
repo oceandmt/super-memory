@@ -13,7 +13,7 @@ from . import bridge, mcp_server
 from .config import load_config
 from .observability import metrics as _metrics_snapshot, prometheus_metrics as _prometheus_metrics
 
-app = FastAPI(title="Super Memory API", version="0.1.0")
+app = FastAPI(title="Super Memory API", version="0.1.1")
 
 # ── In-memory rate limiter ──────────────────────────────────────────────────
 _RATE_LIMIT_WINDOW_S = 60

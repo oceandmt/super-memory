@@ -7,9 +7,9 @@ from pathlib import Path
 
 import super_memory.mcp_server as mcp_server
 
-EXPECTED_ADMIN_COUNT = 137
-EXPECTED_USER_COUNT = 17
-EXPECTED_READONLY_COUNT = 17
+EXPECTED_ADMIN_COUNT = 138
+EXPECTED_USER_COUNT = 18
+EXPECTED_READONLY_COUNT = 18
 EXPECTED_P0_P5 = {
     "super_memory_post_turn_capture",
     "super_memory_session_start_context",

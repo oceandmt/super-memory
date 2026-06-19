@@ -269,6 +269,24 @@ def doctor_cmd(config: Optional[str] = None, no_benchmark: bool = False, json_ou
         raise typer.Exit(1)
 
 
+@app.command("cleanup")
+def cleanup_cmd(
+    config: Optional[str] = None,
+    vacuum: bool = typer.Option(False, "--vacuum", help="Run VACUUM after transactional cleanup"),
+    no_integrity_check: bool = typer.Option(False, "--no-integrity-check", help="Skip PRAGMA quick_check"),
+    json_out: bool = False,
+):
+    """Run safe SQLite cleanup: migrations, views, FTS rebuilds, optional VACUUM."""
+    from .cleanup import cleanup
+
+    result = cleanup(config_path=config, vacuum=vacuum, integrity_check=not no_integrity_check)
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(result)
+    if not result["ok"]:
+        raise typer.Exit(1)
+
 @app.command("migrate-status")
 def migrate_status_cmd(config: Optional[str] = None, json_out: bool = False):
     """Show expected SQLite table/migration status."""

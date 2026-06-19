@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util as _importlib_util
 from typing import Any
 
+from . import cleanup as cleanup_mod
 from . import code_index, cognitive, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
 from .config import load_config
@@ -439,6 +440,10 @@ def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) 
 
 def graph_cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
     return graph.cleanup_orphans(config_path=config_path)
+
+
+def cleanup(config_path: str | None = None, vacuum: bool = False, integrity_check: bool = True) -> dict[str, Any]:
+    return cleanup_mod.cleanup(config_path=config_path, vacuum=vacuum, integrity_check=integrity_check)
 
 # Phase 7 / P2 lifecycle
 def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:

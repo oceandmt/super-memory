@@ -1,8 +1,8 @@
 # Super-Memory Tool Catalog
 
-**Total Tools:** 132
+**Total Tools:** 138
 **Generated:** 2026-06-15
-**Version:** 0.1.0
+**Version:** 0.1.1
 
 ## Tools by Category
 
@@ -708,7 +708,7 @@
 
 ---
 
-### Knowledge Mgmt (27 tools)
+### Knowledge Mgmt (28 tools)
 
 #### `super_memory_boundaries`
 
@@ -951,6 +951,18 @@
 
 ---
 
+#### `super_memory_sync_archive_to_honcho`
+
+**Description:** Sync a session archive's decisions/blockers as Honcho conclusions
+
+**Profiles:** admin
+
+**Parameters:**
+- ✅ `session_id` (string): 
+- ⚪ `observer_peer_id` (string): 
+
+---
+
 #### `super_memory_sync_status`
 
 **Description:** Show sync status only; cloud disabled.
@@ -1129,7 +1141,7 @@
 **Profiles:** admin
 
 **Parameters:**
-- ✅ `text` (string): Text to analyze
+- ✅ `text` (string): 
 
 ---
 
@@ -1152,11 +1164,11 @@
 **Profiles:** admin
 
 **Parameters:**
-- ✅ `layer` (integer): Layer number 1-4
-- ⚪ `query` (string): Query for layers 2 and 4
-- ⚪ `wing` (string): Wing filter for layer 3
-- ⚪ `room` (string): Room filter for layer 3
-- ⚪ `hall` (string): Hall filter for layer 3
+- ✅ `layer` (integer): 
+- ⚪ `query` (string): 
+- ⚪ `wing` (string): 
+- ⚪ `room` (string): 
+- ⚪ `hall` (string): 
 - ⚪ `limit` (integer): 
 
 ---
@@ -1168,7 +1180,7 @@
 **Profiles:** admin
 
 **Parameters:**
-- ⚪ `wing` (string): Filter by wing
+- ⚪ `wing` (string): 
 
 ---
 
@@ -1180,9 +1192,9 @@
 
 **Parameters:**
 - ✅ `query` (string): Search query
-- ⚪ `wing` (string): Filter by palace wing (e.g. project name)
-- ⚪ `room` (string): Filter by room (e.g. session or type)
-- ⚪ `hall` (string): Filter by hall (facts, events, decisions, etc.)
+- ⚪ `wing` (string): Filter by palace wing
+- ⚪ `room` (string): Filter by room
+- ⚪ `hall` (string): Filter by hall
 - ⚪ `limit` (integer): 
 
 ---
@@ -1231,7 +1243,32 @@
 
 ---
 
-### Other (9 tools)
+### Other (14 tools)
+
+#### `super_memory_backfill_markdown_sqlite`
+
+**Description:** Admin repair: backfill missing workspace_markdown SQLite rows from existing derived-layer records.
+
+**Profiles:** admin
+
+**Parameters:**
+- ⚪ `limit` (integer): 
+- ⚪ `config_path` (string): 
+
+---
+
+#### `super_memory_cleanup`
+
+**Description:** Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.
+
+**Profiles:** user, admin, readonly
+
+**Parameters:**
+- ⚪ `config_path` (string): 
+- ⚪ `vacuum` (boolean): 
+- ⚪ `integrity_check` (boolean): 
+
+---
 
 #### `super_memory_complete_handoff_with_outcome`
 
@@ -1265,6 +1302,17 @@
 
 ---
 
+#### `super_memory_cross_layer_health`
+
+**Description:** Audit cross-layer consistency: canonical markdown rows, projection orphans, content drift, and pending sync.
+
+**Profiles:** admin
+
+**Parameters:**
+- ⚪ `config_path` (string): 
+
+---
+
 #### `super_memory_get_handoff`
 
 **Description:** Retrieve a handoff bundle
@@ -1273,6 +1321,33 @@
 
 **Parameters:**
 - ✅ `bundle_id` (string): 
+
+---
+
+#### `super_memory_leitner`
+
+**Description:** Leitner 5-box: queue|mark|schedule|stats|auto_seed.
+
+**Profiles:** admin
+
+**Parameters:**
+- ⚪ `action` (string): 
+- ⚪ `memory_id` (string): 
+- ⚪ `success` (boolean): 
+- ⚪ `box` (integer): 
+- ⚪ `limit` (integer): 
+- ⚪ `config_path` (string): 
+
+---
+
+#### `super_memory_leitner_due`
+
+**Description:** Return count of Leitner-due memories without loading full queue.
+
+**Profiles:** admin
+
+**Parameters:**
+- ⚪ `config_path` (string): 
 
 ---
 

@@ -147,6 +147,35 @@ def _migrate_honcho_events(conn: sqlite3.Connection) -> list[str]:
 
 
 
+def _migrate_views(conn: sqlite3.Connection) -> list[str]:
+    changed: list[str] = []
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='view' AND name='v_session_health'"
+    ).fetchone()
+    current = row[0] if row and row[0] else ""
+    if (
+        not current
+        or "honcho_events_legacy_notnull" in current
+        or "LEFT JOIN honcho_events h" not in current
+    ):
+        conn.execute("DROP VIEW IF EXISTS v_session_health")
+        conn.execute("""
+            CREATE VIEW v_session_health AS
+            SELECT
+                s.id AS session_id,
+                s.agent_id,
+                s.status,
+                s.started_at,
+                s.updated_at,
+                COUNT(h.id) AS event_count
+            FROM sessions s
+            LEFT JOIN honcho_events h ON h.session_id = s.id
+            GROUP BY s.id, s.agent_id, s.status, s.started_at, s.updated_at
+        """)
+        changed.append("v_session_health")
+    return changed
+
+
 def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
     """Create or upgrade FTS5 virtual tables for fast full-text search.
 
@@ -267,9 +296,11 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                 changed2 = []
                 changed2.extend(_migrate_memories(conn))
                 changed2.extend(_migrate_honcho_events(conn))
+                view_changed = _migrate_views(conn)
                 fts5_changed = _migrate_fts5(conn)
             conn.commit()
-            return {"ok": True, "db_path": str(db_path), "changed": changed+changed2+fts5_changed, "change_count": len(changed)+len(changed2)+len(fts5_changed)}
+            all_changed = changed + changed2 + view_changed + fts5_changed
+            return {"ok": True, "db_path": str(db_path), "changed": all_changed, "change_count": len(all_changed)}
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
