@@ -39,6 +39,18 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         trust_score=payload.get("trust_score"),
         metadata=payload.get("metadata", {}),
     )
+    # Dedup check: skip save when an active record with the same content_hash
+    # already exists. This prevents duplicate test, contract, and benchmark
+    # memories from accumulating across sessions.
+    dedup = svc.dedup_check(record)
+    if dedup["skipped"]:
+        logger.debug("remember dedup hit — skipping save", memory_id=record.id, matched_id=dedup["matched_id"])
+        return {
+            "record": record.model_dump(mode="json"),
+            "dedup": dedup,
+            "results": [],
+            "graph_projection": None,
+        }
     results = svc.save(record)
     graph_projection = None
     try:
@@ -444,6 +456,15 @@ def graph_cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
 
 def cleanup(config_path: str | None = None, vacuum: bool = False, integrity_check: bool = True) -> dict[str, Any]:
     return cleanup_mod.cleanup(config_path=config_path, vacuum=vacuum, integrity_check=integrity_check)
+
+
+def prune(config_path: str | None = None, dry_run: bool = True, source_prefixes: list[str] | None = None, max_days: int | None = None) -> dict[str, Any]:
+    """Prune memories matching retention policy criteria.
+
+    Safe by default (dry_run=True). Use dry_run=False to actually delete.
+    See cleanup_mod.prune for details.
+    """
+    return cleanup_mod.prune(config_path=config_path, dry_run=dry_run, source_prefixes=source_prefixes, max_days=max_days)
 
 # Phase 7 / P2 lifecycle
 def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:

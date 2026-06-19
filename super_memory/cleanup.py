@@ -59,6 +59,193 @@ def _rebuild_fts_table(conn: sqlite3.Connection, table: str) -> bool:
     return True
 
 
+def _prune_candidate_ids(conn: sqlite3.Connection, dry_run: bool = True, source_prefixes: list[str] | None = None, max_days: int | None = None) -> dict[str, Any]:
+    """Find and optionally soft-delete memories matching retention policy criteria.
+
+    Built-in criteria:
+    1. Empty openclaw.turn events (source='openclaw.turn', content='')
+    2. Explicit test/benchmark/contract sources via source_prefixes filter
+    3. Very old memories (created_at < max_days) when max_days is set
+
+    Returns a report of what was found and what was pruned.
+    """
+    FILTER_ACTIVE = (
+        "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
+        "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+    )
+
+    conditions: list[str] = []
+    params: list[object] = []
+    labels: list[str] = []
+
+    # Criterion 1: empty openclaw.turn events
+    conditions.append("(content = '' AND source = 'openclaw.turn')")
+    labels.append("empty_openclaw_turn")
+
+    # Criterion 2: source_prefixes filter
+    if source_prefixes:
+        prefix_clauses = []
+        for pfx in source_prefixes:
+            prefix_clauses.append("source LIKE ?")
+            params.append(pfx + "%")
+        conditions.append("(" + " OR ".join(prefix_clauses) + ")")
+        labels.append(f"sources_starting_with:{':'.join(source_prefixes)}")
+
+    # Criterion 3: max_days age
+    if max_days is not None:
+        conditions.append(f"created_at < datetime('now', '-{max_days} days')")
+        labels.append(f"older_than_{max_days}d")
+
+    if not conditions:
+        return {"skipped": True, "reason": "no criteria active"}
+
+    # Criteria are OR'd — a memory matching ANY criterion is a prune candidate.
+    # This means "content='' AND source='openclaw.turn'" OR "source LIKE 'test.%'"
+    # will catch empty turn events AND test-prefixed memories independently.
+    where_clause = " OR ".join(f"({c})" for c in conditions)
+    full_where = f"({where_clause}) AND {FILTER_ACTIVE}"
+
+    # Count candidates (distinct IDs, not layer rows)
+    total_ids = conn.execute(
+        f"SELECT COUNT(DISTINCT id) FROM memories WHERE {full_where}",
+        params,
+    ).fetchone()[0]
+    total_rows = conn.execute(
+        f"SELECT COUNT(*) FROM memories WHERE {full_where}",
+        params,
+    ).fetchone()[0]
+
+    # Sample IDs for reporting
+    sample_ids = [
+        r["id"]
+        for r in conn.execute(
+            f"SELECT DISTINCT id FROM memories WHERE {full_where} LIMIT 20",
+            params,
+        ).fetchall()
+    ]
+
+    report: dict[str, Any] = {
+        "criteria_labels": labels,
+        "candidate_ids": total_ids,
+        "candidate_layer_rows": total_rows,
+        "sample_ids": sample_ids[:5],
+        "dry_run": dry_run,
+        "pruned": None,
+    }
+
+    if dry_run:
+        return report
+
+    # Collect all IDs first
+    ids = [
+        r["id"]
+        for r in conn.execute(
+            f"SELECT DISTINCT id FROM memories WHERE {full_where}",
+            params,
+        ).fetchall()
+    ]
+    if not ids:
+        report["pruned"] = {"ids": 0, "rows": 0}
+        return report
+
+    q = ",".join("?" for _ in ids)
+    fiber_ids = ["f:" + i for i in ids]
+    fq = ",".join("?" for _ in fiber_ids)
+
+    deleted: dict[str, int] = {}
+
+    def _del(table: str, where: str, p: list[object]) -> None:
+        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+            return
+        cur = conn.execute(f"DELETE FROM {table} WHERE {where}", p)
+        deleted[table] = deleted.get(table, 0) + cur.rowcount
+
+    _del("honcho_events", f"memory_id IN ({q})", ids)
+    _del("palace_drawers", f"memory_id IN ({q})", ids)
+    _del("graph_edges", f"source_memory_id IN ({q}) OR target_memory_id IN ({q})", ids + ids)
+
+    # Cognitive neurons/synapses (gracefully skip if cognitive tables don't exist)
+    cog_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_neurons'").fetchone()
+    if cog_table:
+        neuron_ids = [
+            r["id"]
+            for r in conn.execute(
+                f"SELECT id FROM cognitive_neurons WHERE source_memory_id IN ({q})",
+                ids,
+            ).fetchall()
+        ]
+        if neuron_ids:
+            nq = ",".join("?" for _ in neuron_ids)
+            _del("cognitive_synapses", f"source_neuron_id IN ({nq}) OR target_neuron_id IN ({nq})", neuron_ids + neuron_ids)
+            _del("cognitive_neurons", f"id IN ({nq})", neuron_ids)
+    _del("cognitive_fibers", f"id IN ({fq})", fiber_ids)
+    _del("memories", f"id IN ({q})", ids)
+
+    report["pruned"] = {"ids": len(ids), "rows": deleted.get("memories", 0), "deleted_tables": deleted}
+    return report
+
+
+def prune(
+    *,
+    config_path: str | None = None,
+    dry_run: bool = True,
+    source_prefixes: list[str] | None = None,
+    max_days: int | None = None,
+) -> dict[str, Any]:
+    """Prune memories matching retention policy criteria.
+
+    Safe by default (dry_run=True). Use dry_run=False to actually delete.
+
+    Built-in always-active criteria:
+    - Empty openclaw.turn events (source='openclaw.turn', content='')
+
+    Optional criteria:
+    - source_prefixes: prune sources starting with these prefixes
+      (e.g. ['test.', 'benchmark', 'super-memory.phase8.contract'])
+    - max_days: prune memories older than N days
+    """
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    actions: list[str] = []
+    report: dict[str, Any] = {"ok": True, "db_path": str(store.path)}
+
+    with store.connect() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            result = _prune_candidate_ids(
+                conn,
+                dry_run=dry_run,
+                source_prefixes=source_prefixes,
+                max_days=max_days,
+            )
+            report["result"] = result
+            if result.get("candidate_ids", 0) > 0:
+                actions.append(f"{'dry_run' if dry_run else 'pruned'}:{result['candidate_ids']}_ids")
+            actions.append(f"criteria:{':'.join(result.get('criteria_labels', ['none']))}")
+
+            # Rebuild FTS after prune if not dry_run
+            if not dry_run and result.get("pruned") and result["pruned"]["ids"] > 0:
+                for table in ("memories_fts", "honcho_events_fts"):
+                    try:
+                        if _rebuild_fts_table(conn, table):
+                            actions.append(f"rebuilt_fts:{table}")
+                    except sqlite3.OperationalError as exc:
+                        actions.append(f"skipped_fts:{table}:{exc}")
+
+            quick = conn.execute("PRAGMA quick_check").fetchone()[0]
+            report["quick_check"] = quick
+            if quick != "ok":
+                raise sqlite3.DatabaseError(f"PRAGMA quick_check failed: {quick}")
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    report["actions"] = actions
+    return report
+
+
 def cleanup(
     *,
     config_path: str | None = None,

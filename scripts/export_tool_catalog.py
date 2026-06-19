@@ -14,6 +14,10 @@ from pathlib import Path
 
 # Add super_memory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+# Force the project root before site-packages so the local source shadows
+# any pre-installed super-memory distribution.
+import __main__ as _bm
+_bm.__file__ = str(Path(__file__).parent.parent / "__init__.py")
 
 import super_memory.mcp_server as mcp
 

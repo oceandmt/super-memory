@@ -287,6 +287,40 @@ def cleanup_cmd(
     if not result["ok"]:
         raise typer.Exit(1)
 
+@app.command("prune")
+def prune_cmd(
+    config: Optional[str] = None,
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Dry-run by default; use --no-dry-run to actually delete"),
+    source_prefixes: list[str] = typer.Option([], "--source-prefix", help="Prune sources starting with prefix (repeatable)"),
+    max_days: Optional[int] = typer.Option(None, "--max-days", help="Prune memories older than N days"),
+    json_out: bool = False,
+):
+    """Prune memories matching retention policy criteria.
+
+    Built-in always-active criteria:
+    - Empty openclaw.turn events (source='openclaw.turn', content='')
+
+    Optional:
+    --source-prefix: prune sources starting with these prefixes (repeatable)
+      e.g. --source-prefix test. --source-prefix benchmark
+    --max-days: prune memories older than N days
+    --no-dry-run: actually delete (safe default is dry-run)
+    """
+    from .cleanup import prune
+    result = prune(
+        config_path=config,
+        dry_run=dry_run,
+        source_prefixes=source_prefixes if source_prefixes else None,
+        max_days=max_days,
+    )
+    if json_out:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(result)
+    if not result.get("ok", False):
+        raise typer.Exit(1)
+
+
 @app.command("migrate-status")
 def migrate_status_cmd(config: Optional[str] = None, json_out: bool = False):
     """Show expected SQLite table/migration status."""

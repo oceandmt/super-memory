@@ -105,6 +105,33 @@ class SuperMemoryService:
 
         return results
 
+    def dedup_check(self, record: MemoryRecord) -> dict[str, object]:
+        """Check if an active record with the same content_hash already exists.
+
+        Returns {"skipped": True, "matched_id": "..."} when a duplicate is found,
+        or {"skipped": False} if the content is unique.
+        """
+        import hashlib
+
+        content_hash = record.metadata.get("content_hash")
+        if not content_hash:
+            content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
+        FILTER_ACTIVE = (
+            "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
+            "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+        )
+        with self.store.connect() as conn:
+            row = conn.execute(
+                "SELECT id, content, type, created_at FROM memories "
+                "WHERE content_hash = ? AND layer = 'workspace_markdown' AND "
+                + FILTER_ACTIVE +
+                " ORDER BY created_at DESC LIMIT 1",
+                (content_hash,),
+            ).fetchone()
+        if row is not None:
+            return {"skipped": True, "matched_id": row["id"], "matched_content": row["content"][:200], "matched_type": row["type"]}
+        return {"skipped": False}
+
     def _save_markdown_to_sqlite(self, record: MemoryRecord) -> None:
         """Mirror the workspace_markdown layer into the shared SQLite memories table.
 
@@ -223,6 +250,9 @@ class SuperMemoryService:
 
         OpenClaw plugins can call this after a durable Boss-facing turn.
         It intentionally stores a compact event, not raw full transcripts.
+
+        Skips save entirely when the combined content is empty (no user or
+        assistant message). This prevents creating empty openclaw.turn events.
         """
 
         parts = []
@@ -231,6 +261,9 @@ class SuperMemoryService:
         if context.assistant_message:
             parts.append(f"assistant: {context.assistant_message}")
         content = "\n".join(parts).strip()
+        if not content:
+            logger.debug("sync_turn skipped — empty content (no user or assistant message)")
+            return []
         record = MemoryRecord(
             content=content,
             type=MemoryType.EVENT,
@@ -239,7 +272,7 @@ class SuperMemoryService:
             session_id=context.session_id,
             project=context.project,
             source="openclaw.turn",
-            metadata=context.metadata,
+            metadata=context.metadata or {},
             tags=["turn", "openclaw"],
         )
         return self.save(record)

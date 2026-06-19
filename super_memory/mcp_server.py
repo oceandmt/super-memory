@@ -295,6 +295,17 @@ TOOLS: dict[str, JSON] = {
             }
         ),
     },
+    "super_memory_prune": {
+        "description": "Prune memories matching retention policy criteria. Safe by default (dry_run=True). Built-in: empty openclaw.turn events + optional source_prefixes/max_days filter.",
+        "inputSchema": _schema(
+            {
+                "config_path": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": True},
+                "source_prefixes": {"type": "array", "items": {"type": "string"}},
+                "max_days": {"type": "integer"},
+            }
+        ),
+    },
     "super_memory_sanitize_prompt": {
         "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
         "inputSchema": _schema({"text": {"type": "string"}}, ["text"]),
@@ -522,6 +533,13 @@ def _call_tool(name: str, args: JSON) -> Any:
             config_path=args.get("config_path"),
             vacuum=args.get("vacuum", False),
             integrity_check=args.get("integrity_check", True),
+        )
+    if name == "super_memory_prune":
+        return bridge.prune(
+            config_path=args.get("config_path"),
+            dry_run=args.get("dry_run", True),
+            source_prefixes=args.get("source_prefixes"),
+            max_days=args.get("max_days"),
         )
     if name == "super_memory_sanitize_prompt":
         return {"text": bridge.sanitize_prompt(args["text"])}
