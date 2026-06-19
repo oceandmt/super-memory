@@ -11,6 +11,7 @@ import importlib.util
 import json
 import logging
 import math
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -55,12 +56,13 @@ class VectorStore:
             conn = sqlite3.connect(str(self.db_path))
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
+            dim = int(getattr(self.config, "embedding_dimension", 768) or 768)
             conn.execute(
-                """
+                f"""
                 CREATE VIRTUAL TABLE IF NOT EXISTS embeddings
                 USING vec0(
                     memory_id TEXT PRIMARY KEY,
-                    embedding FLOAT[1536]
+                    embedding FLOAT[{dim}]
                 )
                 """
             )
@@ -88,7 +90,6 @@ class VectorStore:
             conn = sqlite3.connect(str(self.db_path))
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
-            # Serialize vector as JSON for storage
             vec_json = json.dumps(vector)
             conn.execute(
                 """
@@ -125,25 +126,24 @@ class VectorStore:
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
             rows = conn.execute(
-                "SELECT memory_id, embedding FROM embeddings"
+                "SELECT memory_id, distance FROM embeddings WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
+                (json.dumps(vector), top_k),
             ).fetchall()
             conn.close()
 
-            # Compute cosine similarity in Python
-            scored: list[tuple[str, float]] = []
-            for memory_id, emb_json in rows:
-                try:
-                    emb = json.loads(emb_json)
-                    sim = _cosine_similarity(vector, emb)
-                    scored.append((memory_id, sim))
-                except (json.JSONDecodeError, TypeError, ValueError):
-                    continue
-
-            scored.sort(key=lambda x: x[1], reverse=True)
-            return scored[:top_k]
+            # sqlite-vec returns distance where lower is better. Convert to
+            # similarity-like score so callers can sort descending.
+            return [(str(memory_id), 1.0 / (1.0 + float(distance))) for memory_id, distance in rows]
         except Exception as exc:
             logger.warning("Vector search failed: %s", exc)
             return []
+
+    def search_text(self, text: str, top_k: int = 5) -> list[tuple[str, float]]:
+        """Embed text and search sqlite-vec for nearest memories."""
+        vector = embed_text(text, config=self.config)
+        if vector is None:
+            return []
+        return self.search_similar(vector, top_k=top_k)
 
     def delete_embedding(self, memory_id: str) -> bool:
         """Remove an embedding for a memory.
@@ -187,9 +187,38 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def embed_text(text: str, config=None) -> list[float] | None:
+    """Embed text using the configured provider.
+
+    Currently supports Ollama's /api/embed endpoint. Returns None when
+    embeddings are disabled or unavailable.
+    """
+    cfg = config or load_config()
+    provider = (getattr(cfg, "embedding_provider", "ollama") or "ollama").lower()
+    if provider in {"disabled", "none"}:
+        return None
+    if provider != "ollama":
+        logger.warning("Unsupported embedding provider: %s", provider)
+        return None
+    endpoint = getattr(cfg, "embedding_endpoint", "http://127.0.0.1:11434/api/embed")
+    model = getattr(cfg, "embedding_model", "nomic-embed-text")
+    try:
+        payload = json.dumps({"model": model, "input": [text or ""]}).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+        embeddings = data.get("embeddings") or []
+        if not embeddings:
+            return None
+        return list(embeddings[0])
+    except Exception as exc:
+        logger.warning("Embedding request failed: %s", exc)
+        return None
+
+
 def rerank_by_embedding(
     candidates: list[dict[str, Any]],
-    query_vector: list[float],
+    query_vector: list[float] | str,
     top_k: int = 10,
     config=None,
 ) -> list[dict[str, Any]]:
@@ -211,24 +240,21 @@ def rerank_by_embedding(
     if not store.available:
         return candidates[:top_k]
 
-    # Score each candidate by cosine similarity
-    scored: list[tuple[float, dict[str, Any]]] = []
-    for cand in candidates:
-        cand_id = str(cand.get("id", ""))
-        results = store.search_similar(query_vector, top_k=1)
-        # Check if this candidate has a stored embedding
-        sim = 0.0
-        for eid, similarity in results:
-            if eid == cand_id:
-                sim = similarity
-                break
-        # Fallback: use zero-vector comparison (candidate text embedding
-        # wasn't stored, so use the query vector similarity scoring from
-        # the store's index). If no stored embedding, keep original rank.
-        if sim == 0.0:
-            scored.append((float(len(scored)), cand))
-        else:
-            scored.append((sim, cand))
+    if isinstance(query_vector, str):
+        vector = embed_text(query_vector, config=config)
+        if vector is None:
+            return candidates[:top_k]
+    else:
+        vector = query_vector
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    return [cand for _, cand in scored[:top_k]]
+    semantic = store.search_similar(vector, top_k=max(top_k * 5, len(candidates)))
+    score_by_id = {memory_id: score for memory_id, score in semantic}
+
+    scored: list[tuple[float, int, dict[str, Any]]] = []
+    for idx, cand in enumerate(candidates):
+        cand_id = str(cand.get("id", ""))
+        # Preserve lexical order when candidate has no vector hit.
+        scored.append((score_by_id.get(cand_id, -idx / 1_000_000), -idx, cand))
+
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [cand for _, _, cand in scored[:top_k]]

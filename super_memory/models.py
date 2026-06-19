@@ -99,4 +99,8 @@ class SuperMemoryConfig(BaseModel):
     api_token: str = ""  # Bearer token for REST API auth; empty = no auth (backward compat)
     db_backend: str = "sqlite"  # Database backend: "sqlite" (default) or "postgres" (experimental)
     vector_enabled: bool = False  # Enable vector embedding recall (requires sqlite-vec)
+    embedding_provider: str = "ollama"  # ollama|disabled
+    embedding_model: str = "nomic-embed-text"
+    embedding_endpoint: str = "http://127.0.0.1:11434/api/embed"
+    embedding_dimension: int = 768
     legacy_graph_edges: bool = True  # dual-write to graph_edges for backward compat; set False to disable

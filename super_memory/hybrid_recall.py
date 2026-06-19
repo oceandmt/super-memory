@@ -7,7 +7,7 @@ from typing import Any
 
 from .config import load_config
 from .db import DBMixin, validate_agent_scope, validate_session_scope
-from .vector import rerank_by_embedding
+from .vector import VectorStore, rerank_by_embedding
 
 
 def _tokens(text: str) -> list[str]:
@@ -74,6 +74,8 @@ class HybridRecall(DBMixin):
         with self._conn() as conn:
             if "markdown" in layers and self._has(conn, "memories"):
                 results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "markdown")
+                if self.config.vector_enabled:
+                    results += self._search_semantic_memories(conn, query, agent_scope, session_scope, candidate_limit)
             if "honcho" in layers and self._has(conn, "honcho_events"):
                 results += self._search_honcho(conn, query, agent_scope, session_scope, candidate_limit)
             if "mempalace" in layers and self._has(conn, "palace_drawers"):
@@ -83,15 +85,48 @@ class HybridRecall(DBMixin):
         merged = self._dedup(results)
         ranked = sorted(merged, key=lambda r: self._score(r, query, agent_scope, session_scope), reverse=True)
 
-        # P4#4: Vector embedding reranking (optional)
+        # Native sqlite-vec semantic reranking (optional). Query text is embedded
+        # with the configured provider, then matched against the sqlite-vec index.
         if self.config.vector_enabled:
             try:
-                flat_vector = _query_to_pseudo_vector(query)
-                ranked = rerank_by_embedding(ranked, flat_vector, top_k=limit * 2, config=self.config)
+                ranked = rerank_by_embedding(ranked, query, top_k=limit * 2, config=self.config)
             except Exception:
                 pass  # Vector reranking is best-effort
 
         return {"ok": True, "query": query, "results": self._truncate(ranked[:limit], max_tokens), "count": min(len(ranked), limit)}
+
+    def _search_semantic_memories(self, conn, query, agent_scope, session_scope, limit):
+        """Search memories through sqlite-vec semantic index, then hydrate rows."""
+        store = VectorStore(self.config)
+        if not store.available:
+            return []
+        semantic = store.search_text(query, top_k=limit)
+        if not semantic:
+            return []
+        agent_kind, agent = validate_agent_scope(agent_scope)
+        session_kind, sid = validate_session_scope(session_scope)
+        out = []
+        for memory_id, score in semantic:
+            where = ["id=?", "layer=?"]
+            args = [memory_id, "workspace_markdown"]
+            if agent_kind == "agent":
+                where.append("agent_id=?")
+                args.append(agent)
+            elif agent_kind == "shared":
+                where.append("scope=?")
+                args.append("shared")
+            if session_kind == "session":
+                where.append("session_id=?")
+                args.append(sid)
+            row = conn.execute(
+                "SELECT id, content, agent_id, session_id, created_at, type FROM memories WHERE " + " AND ".join(where),
+                args,
+            ).fetchone()
+            if row:
+                item = self._result(dict(row), "semantic")
+                item["semantic_score"] = score
+                out.append(item)
+        return out
 
     def _search_memories(self, conn, query, agent_scope, session_scope, limit, layer, graph=False):
         import sqlite3 as _sqlite3
