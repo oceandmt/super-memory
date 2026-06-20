@@ -35,9 +35,12 @@ def _init_tables(store: SuperMemoryStore) -> None:
         )
 
 
-def _rows(store: SuperMemoryStore, limit: int = 500) -> list[Any]:
+def _rows(store: SuperMemoryStore, limit: int = 500, include_soft_deleted: bool = False) -> list[Any]:
+    active_sql = ""
+    if not include_soft_deleted:
+        active_sql = "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL OR json_extract(metadata_json, '$.soft_deleted') != 1)"
     with store.connect() as conn:
-        return conn.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return conn.execute(f"SELECT * FROM memories {active_sql} ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
 
 
 def _load_state(store: SuperMemoryStore, key: str) -> dict[str, Any] | None:
@@ -88,7 +91,7 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
         tier_counts[_classify_tier(rec)] += 1
         type_counts[rec.type.value] = type_counts.get(rec.type.value, 0) + 1
         layer_counts[row["layer"]] = layer_counts.get(row["layer"], 0) + 1
-        norm = " ".join(rec.content.lower().split())
+        norm = rec.metadata.get("content_hash") or " ".join(rec.content.lower().split())
         content_seen.setdefault(norm, []).append(rec.id)
         if len(rec.content) > 1200:
             compression_candidates.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "reason": "long content"})
@@ -96,7 +99,7 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
     # here means a derived SQLite id has no sqlite canonical twin, not necessarily
     # that the append-only markdown line is absent.
     missing_canonical_ids = all_ids - canonical_ids if canonical_ids else set()
-    duplicates = [{"ids": sorted(set(ids)), "count": len(ids)} for ids in content_seen.values() if len(set(ids)) > 1]
+    duplicates = [{"ids": sorted(set(ids)), "count": len(set(ids))} for ids in content_seen.values() if len(set(ids)) > 1]
     cache = _load_state(store, "activation_cache")
     return {
         "ok": True,

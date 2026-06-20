@@ -211,6 +211,7 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
 
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
+    fallback_terms: list[str] = []
     for layer, records in layered.items():
         for idx, rec in enumerate(records):
             key = rec.get("id") or rec.get("content")
@@ -218,6 +219,30 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
                 continue
             seen.add(str(key))
             candidates.append({"layer": layer, "rank": idx, "score": round(layer_weights.get(layer, 0.5) - idx * 0.03, 3), "record": rec})
+    if not candidates:
+        # FTS5 MATCH is strict for long multi-term queries. Fall back to bounded
+        # term-wise recall so arbitration can still surface the same memories that
+        # normal focused recall/qualification can find.
+        import re
+        stop = {"the", "and", "for", "with", "from", "that", "this", "super", "memory"}
+        fallback_terms = [t for t in re.split(r"[^a-zA-Z0-9_]+", q) if len(t) > 3 and t not in stop][:8]
+        for term in fallback_terms:
+            term_hits = bridge.recall(term, limit=limit, config_path=config_path)
+            for layer, records in term_hits.items():
+                layered.setdefault(layer, [])
+                for rec in records:
+                    key = rec.get("id") or rec.get("content")
+                    if key in seen:
+                        continue
+                    seen.add(str(key))
+                    layered[layer].append(rec)
+                    candidates.append({"layer": layer, "rank": len(candidates), "score": round(layer_weights.get(layer, 0.5) * 0.85, 3), "record": rec, "fallback_term": term})
+                    if len(candidates) >= limit:
+                        break
+                if len(candidates) >= limit:
+                    break
+            if len(candidates) >= limit:
+                break
     candidates.sort(key=lambda item: item["score"], reverse=True)
     winner_policy = candidates[0]["layer"] if candidates else "none"
     confidence = candidates[0]["score"] if candidates else 0.0
@@ -225,6 +250,7 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
         "query": query,
         "answer_context": candidates[:limit],
         "layer_votes": {layer: len(records) for layer, records in layered.items()},
+        "fallback_terms": fallback_terms,
         "conflicts": [],
         "winner_policy": winner_policy,
         "confidence": confidence,
