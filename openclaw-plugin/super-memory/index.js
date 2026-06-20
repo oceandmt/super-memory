@@ -272,15 +272,20 @@ module.exports = function superMemoryPlugin(api) {
               return String(c || '');
             })
             .join('\n').slice(-6000);
-          const assistantMessage = messages
-            .filter((m) => m && m.role === 'assistant')
-            .map((m) => {
-              const c = m.content;
-              if (typeof c === 'string') return c;
-              if (Array.isArray(c)) return c.map((b) => { if (typeof b === 'string') return b; if (b && typeof b === 'object') return b.text || b.content || b.value || JSON.stringify(b); return String(b); }).filter(Boolean).join('\n');
-              return String(c || '');
-            })
-            .join('\n').slice(-6000);
+          const assistantMessage = (() => {
+            const assistantMessages = messages.filter((m) => m && m.role === 'assistant');
+            // Take the LAST assistant message (final text reply), skip intermediate tool calls
+            const lastAssistant = assistantMessages[assistantMessages.length - 1];
+            if (!lastAssistant) return '';
+            const c = lastAssistant.content;
+            let text = '';
+            if (typeof c === 'string') text = c;
+            else if (Array.isArray(c)) text = c.map((b) => { if (typeof b === 'string') return b; if (b && typeof b === 'object') return b.text || b.content || b.value || JSON.stringify(b); return String(b); }).filter(Boolean).join('\n');
+            else text = String(c || '');
+            // Strip leading tool call JSON blocks from the last message
+            const lines = text.split('\n').filter(l => !l.trim().startsWith('{'));
+            return lines.join('\n').trim().slice(-6000);
+          })();
           if (userMessage || assistantMessage) {
             await post('/sync-turn', {
               agent_id: effectiveAgentId,
