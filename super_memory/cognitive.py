@@ -224,6 +224,10 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
             pass
         if rec.get("type") == "event" and not any(w in q for w in ["audit", "raw", "verbatim", "session", "transcript"]):
             boost -= 0.2
+        if rec.get("metadata", {}).get("compression_candidate"):
+            boost -= 0.35
+        if rec.get("type") == "context" and rec.get("scope") == "session" and (rec.get("content") or "").strip().lower() == q.strip():
+            boost -= 0.45
         if fallback:
             boost -= 0.08
         return boost
@@ -239,11 +243,9 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
             seen.add(str(key))
             score = layer_weights.get(layer, 0.5) - idx * 0.03 + _record_boost(rec)
             candidates.append({"layer": layer, "rank": idx, "score": round(score, 3), "record": rec})
-    needs_fallback = not candidates or (
-        len(candidates) < limit
-        and any(w in q for w in ["durable", "pack", "openclaw", "agent", "role", "recall", "policy"])
-        and not any(c["record"].get("source") == "super-memory.durable-pack" for c in candidates)
-    )
+    durable_query = any(w in q for w in ["durable", "pack", "openclaw", "agent", "role", "recall", "policy"])
+    has_durable_source = any(c["record"].get("source") == "super-memory.durable-pack" for c in candidates)
+    needs_fallback = not candidates or (durable_query and not has_durable_source) or (len(candidates) < limit and durable_query)
     if needs_fallback:
         # FTS5 MATCH is strict for long multi-term queries. Fall back to bounded
         # term-wise recall so arbitration can still surface the same memories that
