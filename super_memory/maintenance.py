@@ -17,7 +17,10 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     """
     report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "steps": {}}
     report["steps"]["embedding_doctor"] = memory_core.embedding_doctor(config_path=config_path)
-    report["steps"]["lifecycle_quality_cleanup"] = lifecycle.quality_cleanup(dry_run=dry_run, limit=limit, config_path=config_path)
+    try:
+        report["steps"]["lifecycle_quality_cleanup"] = lifecycle.quality_cleanup(dry_run=dry_run, limit=limit, config_path=config_path)
+    except Exception as exc:
+        report["steps"]["lifecycle_quality_cleanup"] = {"ok": False, "error": str(exc), "retryable": "locked" in str(exc).lower()}
 
     # Semantic indexing is safe and idempotent. Keep bounded to avoid long MCP turns.
     try:
@@ -36,11 +39,17 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
 
     # Promotion remains policy-gated and bounded.
     report["steps"]["short_term_audit"] = memory_core.short_term_audit(limit=limit, config_path=config_path)
-    report["steps"]["short_term_repair"] = memory_core.short_term_repair(limit=limit, dry_run=True if dry_run else False, config_path=config_path)
+    # Keep maintenance MCP-safe: audit and propose promotions here; run
+    # super_memory_short_term_repair(dry_run=false) explicitly for heavy promotion.
+    report["steps"]["short_term_repair"] = memory_core.short_term_repair(limit=limit, dry_run=True, config_path=config_path)
 
-    # Dreaming creates at most one compact artifact per run.
+    # Dreaming creates at most one compact artifact per run; skip if cleanup hit a
+    # lock to avoid extending a contention window.
     report["steps"]["dreaming_audit"] = memory_core.dreaming_audit(config_path=config_path)
-    report["steps"]["dreaming_run"] = memory_core.dreaming_run(limit=min(limit, 200), dry_run=dry_run, config_path=config_path)
+    if report["steps"].get("lifecycle_quality_cleanup", {}).get("retryable"):
+        report["steps"]["dreaming_run"] = {"ok": True, "skipped": True, "reason": "database lock contention; retry maintenance later"}
+    else:
+        report["steps"]["dreaming_run"] = memory_core.dreaming_run(limit=min(limit, 200), dry_run=dry_run, config_path=config_path)
 
     from . import bridge  # local import avoids circular import at module load
     report["steps"]["cross_layer_health"] = bridge.cross_layer_health(config_path=config_path)
