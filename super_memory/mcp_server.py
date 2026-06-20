@@ -96,6 +96,7 @@ ADVANCED_TOOLS = {
     "super_memory_prediction_list",
     "super_memory_verify_prediction",
     "super_memory_lifecycle_review",
+    "super_memory_lifecycle_quality_cleanup",
     "super_memory_lifecycle_cache",
     "super_memory_lifecycle_tier",
     "super_memory_lifecycle_compression",
@@ -485,6 +486,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_prediction_list", "List predictions.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
     ("super_memory_verify_prediction", "Verify a prediction as correct/wrong.", {"prediction_id": {"type": "string"}, "outcome": {"type": "string"}, "content": {"type": "string"}, "config_path": {"type": "string"}}, ["prediction_id", "outcome"]),
     ("super_memory_lifecycle_review", "Review lifecycle hygiene.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_lifecycle_quality_cleanup", "Soft-delete active duplicate memory IDs and mark long raw event transcripts for compression without hard deletion.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_cache", "Manage local activation cache status/save/load/clear.", {"action": {"type": "string", "default": "status"}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
@@ -713,6 +715,8 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.verify_prediction(args["prediction_id"], args["outcome"], content=args.get("content", ""), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_review":
         return bridge.lifecycle_review(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_lifecycle_quality_cleanup":
+        return bridge.lifecycle_quality_cleanup(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_cache":
         return bridge.lifecycle_cache(action=args.get("action", "status"), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_tier":

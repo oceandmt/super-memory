@@ -656,6 +656,9 @@ def lifecycle_tier(action: str = "evaluate", dry_run: bool = True, limit: int = 
 def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.compression(action=action, dry_run=dry_run, config_path=config_path, limit=limit)
 
+def lifecycle_quality_cleanup(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return lifecycle.quality_cleanup(dry_run=dry_run, config_path=config_path, limit=limit)
+
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)
 

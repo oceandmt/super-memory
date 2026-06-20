@@ -33,6 +33,7 @@ def test_recall_arbitrate_falls_back_for_long_multi_term_query(tmp_path: Path):
         assert result["winner_policy"] != "none"
         assert result["confidence"] > 0
         assert result["fallback_terms"]
+        assert result["answer_context"][0]["record"].get("source") == "super-memory.durable-pack"
     finally:
         _restore_workspace(old)
 
@@ -61,5 +62,27 @@ def test_lifecycle_review_filters_soft_deleted_duplicates(tmp_path: Path):
         report = review(limit=100)
         duplicate_ids = {i for group in report["duplicates"] for i in group["ids"]}
         assert rec2.id not in duplicate_ids
+    finally:
+        _restore_workspace(old)
+
+
+def test_lifecycle_quality_cleanup_soft_deletes_active_duplicates_and_marks_long_events(tmp_path: Path):
+    old = _with_workspace(tmp_path)
+    try:
+        cfg = load_config()
+        svc = SuperMemoryService(cfg)
+        long_event = "raw transcript " + ("x" * 1300)
+        rec1 = MemoryRecord(content=long_event, type=MemoryType.EVENT, scope=MemoryScope.SESSION, source="test.cleanup")
+        rec2 = rec1.model_copy(deep=True)
+        rec2.id = "active-duplicate-copy"
+        svc.save(rec1)
+        svc.save(rec2)
+        dry = bridge.lifecycle_quality_cleanup(dry_run=True, limit=100)
+        assert dry["duplicates_count"] >= 1
+        assert dry["compression_count"] >= 1
+        applied = bridge.lifecycle_quality_cleanup(dry_run=False, limit=100)
+        assert applied["duplicates_count"] >= 1
+        soft_deleted_ids = {item["id"] for item in applied["duplicates"]}
+        assert rec1.id in soft_deleted_ids or rec2.id in soft_deleted_ids
     finally:
         _restore_workspace(old)

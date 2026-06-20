@@ -153,6 +153,55 @@ def tier(action: str = "evaluate", dry_run: bool = True, config_path: str | None
     return {"ok": True, "action": action, "dry_run": dry_run, "proposals": proposals[:100], "applied": applied}
 
 
+def quality_cleanup(dry_run: bool = True, config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
+    """Reduce memory-store noise by soft-deleting active duplicate IDs and marking long raw events.
+
+    Canonical-first invariant: never removes markdown files or hard-deletes records; all actions are
+    SQLite metadata annotations so audit trails remain recoverable.
+    """
+    store = _store(config_path)
+    rows = _rows(store, limit=limit)
+    groups: dict[str, list[Any]] = {}
+    for row in rows:
+        rec = row_to_memory(row)
+        key = rec.metadata.get("content_hash") or " ".join(rec.content.lower().split())
+        groups.setdefault(key, []).append(row)
+    duplicate_actions: list[dict[str, Any]] = []
+    compression_actions: list[dict[str, Any]] = []
+    for items in groups.values():
+        ids = sorted({row["id"] for row in items})
+        if len(ids) > 1:
+            keep = ids[0]
+            for dup_id in ids[1:]:
+                duplicate_actions.append({"id": dup_id, "keep": keep, "action": "would_soft_delete" if dry_run else "soft_deleted"})
+    for row in rows:
+        rec = row_to_memory(row)
+        if rec.type.value == "event" and len(rec.content) > 1200:
+            compression_actions.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "action": "would_mark" if dry_run else "marked"})
+    if not dry_run:
+        with store.connect() as conn:
+            for item in duplicate_actions:
+                conn.execute(
+                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?, '$.deleted_at', ?) WHERE id = ?",
+                    (f"lifecycle_quality_cleanup keep={item['keep']}", _now(), item["id"]),
+                )
+            for item in compression_actions:
+                conn.execute(
+                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.compression_candidate', 1, '$.compression_reviewed_at', ?, '$.compression_reason', 'long_raw_event') WHERE id = ? AND layer = ?",
+                    (_now(), item["id"], item["layer"]),
+                )
+            conn.commit()
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "duplicates": duplicate_actions[:100],
+        "duplicates_count": len(duplicate_actions),
+        "compression_candidates": compression_actions[:100],
+        "compression_count": len(compression_actions),
+        "note": "Soft-delete/mark only; no hard deletes and no markdown truncation.",
+    }
+
+
 def compression(action: str = "review", dry_run: bool = True, config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
     report = review(config_path=config_path, limit=limit)
     candidates = report["compression_candidates"]

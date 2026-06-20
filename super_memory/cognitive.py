@@ -209,6 +209,25 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
     if any(w in q for w in ["exact", "path", "config", "command", "date", "quote"]):
         layer_weights["workspace_markdown"] = 1.25
 
+    def _record_boost(rec: dict[str, Any], fallback: bool = False) -> float:
+        boost = 0.0
+        if rec.get("source") == "super-memory.durable-pack":
+            boost += 0.4
+        if rec.get("type") in {"decision", "fact", "workflow", "lesson", "insight", "doctrine"}:
+            boost += 0.22
+        if rec.get("scope") in {"shared", "project", "cross-agent"}:
+            boost += 0.16
+        try:
+            if float(rec.get("trust_score") or 0) >= 0.9:
+                boost += 0.12
+        except Exception:
+            pass
+        if rec.get("type") == "event" and not any(w in q for w in ["audit", "raw", "verbatim", "session", "transcript"]):
+            boost -= 0.2
+        if fallback:
+            boost -= 0.08
+        return boost
+
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
     fallback_terms: list[str] = []
@@ -218,14 +237,21 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
             if key in seen:
                 continue
             seen.add(str(key))
-            candidates.append({"layer": layer, "rank": idx, "score": round(layer_weights.get(layer, 0.5) - idx * 0.03, 3), "record": rec})
-    if not candidates:
+            score = layer_weights.get(layer, 0.5) - idx * 0.03 + _record_boost(rec)
+            candidates.append({"layer": layer, "rank": idx, "score": round(score, 3), "record": rec})
+    needs_fallback = not candidates or (
+        len(candidates) < limit
+        and any(w in q for w in ["durable", "pack", "openclaw", "agent", "role", "recall", "policy"])
+        and not any(c["record"].get("source") == "super-memory.durable-pack" for c in candidates)
+    )
+    if needs_fallback:
         # FTS5 MATCH is strict for long multi-term queries. Fall back to bounded
         # term-wise recall so arbitration can still surface the same memories that
         # normal focused recall/qualification can find.
         import re
         stop = {"the", "and", "for", "with", "from", "that", "this", "super", "memory"}
-        fallback_terms = [t for t in re.split(r"[^a-zA-Z0-9_]+", q) if len(t) > 3 and t not in stop][:8]
+        preferred = ["durable pack", "agent role", "recall policy", "openclaw agent", "raw transcript"]
+        fallback_terms = preferred + [t for t in re.split(r"[^a-zA-Z0-9_]+", q) if len(t) > 3 and t not in stop][:8]
         for term in fallback_terms:
             term_hits = bridge.recall(term, limit=limit, config_path=config_path)
             for layer, records in term_hits.items():
@@ -236,12 +262,13 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
                         continue
                     seen.add(str(key))
                     layered[layer].append(rec)
-                    candidates.append({"layer": layer, "rank": len(candidates), "score": round(layer_weights.get(layer, 0.5) * 0.85, 3), "record": rec, "fallback_term": term})
-                    if len(candidates) >= limit:
+                    score = layer_weights.get(layer, 0.5) * 0.85 + _record_boost(rec, fallback=True)
+                    candidates.append({"layer": layer, "rank": len(candidates), "score": round(score, 3), "record": rec, "fallback_term": term})
+                    if len(candidates) >= limit * 4:
                         break
-                if len(candidates) >= limit:
+                if len(candidates) >= limit * 4:
                     break
-            if len(candidates) >= limit:
+            if len(candidates) >= limit * 4:
                 break
     candidates.sort(key=lambda item: item["score"], reverse=True)
     winner_policy = candidates[0]["layer"] if candidates else "none"
