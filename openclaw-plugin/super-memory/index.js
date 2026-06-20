@@ -1,13 +1,19 @@
 module.exports = function superMemoryPlugin(api) {
   const cfg = api.config || {};
+  // api.config returns the global OpenClaw config, not plugin-specific config.
+  // Plugin config lives at plugins.entries.<id>.config. Merge into cfg.
+  const pluginCfg = (cfg.plugins && cfg.plugins.entries && cfg.plugins.entries['super-memory'] && cfg.plugins.entries['super-memory'].config) || {};
+  const effectiveAutoSyncTurns = pluginCfg.autoSyncTurns === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
+  const effectiveAutoFlush = pluginCfg.autoFlush === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
+  const effectiveAutoContext = pluginCfg.autoContext === true || pluginCfg.mode === 'exclusive';
+  const effectiveExclusiveMemory = pluginCfg.registerExclusiveMemoryCapability === true || pluginCfg.mode === 'exclusive';
+  const effectiveLegacyMemoryShims = pluginCfg.registerLegacyMemoryShims === true || pluginCfg.mode === 'exclusive';
+  // Override cfg fields with plugin-specific values so downstream code works unchanged
+  Object.assign(cfg, pluginCfg);
+  try { require('fs').appendFileSync('/tmp/super-memory-cfg-dump.ndjson', JSON.stringify({ts:new Date().toISOString(), cfgKeys:Object.keys(cfg), mode:cfg.mode, autoSyncTurns:cfg.autoSyncTurns, agentId:cfg.agentId, autoFlush:cfg.autoFlush, registerSuperMemoryHooks:cfg.registerSuperMemoryHooks, pluginCfgMode:pluginCfg.mode, pluginAutoSyncTurns:pluginCfg.autoSyncTurns, effectiveAutoSyncTurns:effectiveAutoSyncTurns}) + '\n'); } catch(_){}
   const childProcess = require('child_process');
-  const baseUrl = cfg.apiBaseUrl || 'http://127.0.0.1:8765';
-  const mode = cfg.mode || 'safe';
-  const effectiveAutoSyncTurns = cfg.autoSyncTurns === true || mode === 'admin' || mode === 'exclusive';
-  const effectiveAutoFlush = cfg.autoFlush === true || mode === 'admin' || mode === 'exclusive';
-  const effectiveAutoContext = cfg.autoContext === true || mode === 'exclusive';
-  const effectiveExclusiveMemory = cfg.registerExclusiveMemoryCapability === true || mode === 'exclusive';
-  const effectiveLegacyMemoryShims = cfg.registerLegacyMemoryShims === true || mode === 'exclusive';
+  const baseUrl = pluginCfg.apiBaseUrl || cfg.apiBaseUrl || 'http://127.0.0.1:8765';
+  const mode = pluginCfg.mode || 'safe';
   const registeredTools = [];
   let managedApiProcess = null;
 
@@ -240,25 +246,64 @@ module.exports = function superMemoryPlugin(api) {
     }, { priority: 10 });
 
     if (effectiveAutoSyncTurns === true) {
-      api.on('agent_end', async (event = {}) => {
+      // Hook agent_end + before_agent_finalize confirmed working via DB evidence.
+      // Content blocks are arrays on Discord — flatten array content blocks to text.
+      const syncTurnFromHook = async (hookName, event = {}, ctx = {}) => {
         if (event.success === false) return;
         try {
-          const messages = Array.isArray(event.messages) ? event.messages.slice(-6) : [];
-          const userMessage = messages.filter((m) => m && m.role === 'user').map((m) => m.content).join('\n').slice(-6000);
-          const assistantMessage = messages.filter((m) => m && m.role === 'assistant').map((m) => m.content).join('\n').slice(-6000);
+          const agentChannelMap = cfg.agentChannelMap || {};
+          const eventChannel = event.channelId || event.channel || ctx.channelId || ctx.channel || event.accountId || ctx.accountId;
+          const eventAgentId = event.agentId || event.agent || ctx.agentId || ctx.agent;
+          const effectiveAgentId =
+            (eventChannel && agentChannelMap[eventChannel]) ||
+            eventAgentId ||
+            cfg.agentId ||
+            'lucas';
+          const rawMessages = Array.isArray(event.messages)
+            ? event.messages
+            : (Array.isArray(ctx.messages) ? ctx.messages : []);
+          const messages = rawMessages.slice(-8);
+          const userMessage = messages
+            .filter((m) => m && m.role === 'user')
+            .map((m) => {
+              const c = m.content;
+              if (typeof c === 'string') return c;
+              if (Array.isArray(c)) return c.map((b) => { if (typeof b === 'string') return b; if (b && typeof b === 'object') return b.text || b.content || b.value || JSON.stringify(b); return String(b); }).filter(Boolean).join('\n');
+              return String(c || '');
+            })
+            .join('\n').slice(-6000);
+          const assistantMessage = messages
+            .filter((m) => m && m.role === 'assistant')
+            .map((m) => {
+              const c = m.content;
+              if (typeof c === 'string') return c;
+              if (Array.isArray(c)) return c.map((b) => { if (typeof b === 'string') return b; if (b && typeof b === 'object') return b.text || b.content || b.value || JSON.stringify(b); return String(b); }).filter(Boolean).join('\n');
+              return String(c || '');
+            })
+            .join('\n').slice(-6000);
           if (userMessage || assistantMessage) {
             await post('/sync-turn', {
-              agent_id: cfg.agentId || 'lucas',
-              session_id: event.sessionId || event.sessionKey,
+              agent_id: effectiveAgentId,
+              session_id: event.sessionId || event.sessionKey || ctx.sessionId || ctx.sessionKey || ctx.runId || event.runId,
               user_message: cleanText(userMessage),
               assistant_message: cleanText(assistantMessage),
-              metadata: { hook: 'agent_end' }
+              metadata: {
+                hook: hookName,
+                channelId: eventChannel,
+                eventAgentId,
+                runId: event.runId || ctx.runId,
+                sessionKey: event.sessionKey || ctx.sessionKey
+              }
             });
+          } else {
+            api.logger?.debug?.(`Super Memory ${hookName} skipped: no user/assistant messages`);
           }
         } catch (err) {
-          api.logger?.warn?.(`Super Memory auto-sync failed: ${err.message}`);
+          api.logger?.warn?.(`Super Memory auto-sync ${hookName} failed: ${err.message}`);
         }
-      }, { priority: 90 });
+      };
+      api.on('before_agent_finalize', async (event = {}, ctx = {}) => syncTurnFromHook('before_agent_finalize', event, ctx), { priority: 90 });
+      api.on('agent_end', async (event = {}, ctx = {}) => syncTurnFromHook('agent_end', event, ctx), { priority: 90 });
     }
 
     api.on('before_compaction', async () => {

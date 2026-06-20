@@ -74,6 +74,11 @@
           "default": false,
           "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
         },
+        "registerLegacyMemoryTools": {
+          "type": "boolean",
+          "default": false,
+          "description": "Backward-compatible alias for registerLegacyMemoryShims."
+        },
         "registerDynamicMcpToolProxy": {
           "type": "boolean",
           "default": false,
@@ -93,6 +98,14 @@
           "type": "string",
           "default": "normal",
           "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
+        },
+        "agentChannelMap": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "description": "Optional channel/account id to agent id map used by autoSyncTurns hooks for cross-agent capture."
         }
       },
       "additionalProperties": false

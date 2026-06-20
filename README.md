@@ -61,6 +61,84 @@ super-memory-api
 
 The API binds to `127.0.0.1:8765` by default. **Do not expose it directly to a network** unless you add an authentication layer in front of it.
 
+### Always-on API service and automatic session memory
+
+For real OpenClaw operation, run the API as an always-on local service and enable the native plugin's turn hooks. This lets every completed OpenClaw turn be captured automatically through `/sync-turn` and projected into all four Super Memory layers:
+
+1. Workspace Markdown — canonical append-only session record
+2. MemPalace — structured/procedural/project memory
+3. Honcho — conversation/participant/session memory
+4. Neural Memory — associative/graph/semantic-style memory
+
+Recommended user-level systemd service:
+
+```bash
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/super-memory-api.service <<'EOF'
+[Unit]
+Description=Super Memory API (user-level)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.openclaw/workspace
+ExecStart=%h/.openclaw/venvs/super-memory-cli/bin/super-memory-api --host 127.0.0.1 --port 8765
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now super-memory-api
+curl -fsS http://127.0.0.1:8765/health
+```
+
+Recommended OpenClaw plugin config in `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "super-memory": {
+        "enabled": true,
+        "config": {
+          "mode": "admin",
+          "agentId": "lucas",
+          "apiBaseUrl": "http://127.0.0.1:8765",
+          "manageApiService": true,
+          "autoSyncTurns": true,
+          "autoFlush": true,
+          "autoContext": false,
+          "registerSuperMemoryHooks": true,
+          "registerDynamicMcpToolProxy": false,
+          "registerExclusiveMemoryCapability": false,
+          "registerLegacyMemoryTools": false
+        }
+      }
+    }
+  }
+}
+```
+
+Operational notes:
+
+- `autoSyncTurns: true` registers the modern OpenClaw `api.on('agent_end', ...)` turn hook and posts compact user/assistant turn content to `/sync-turn`.
+- `/sync-turn` writes through the canonical-first flow and projects the same turn into Workspace Markdown, MemPalace, Honcho, and Neural Memory layers.
+- `autoFlush: true` flushes compact/reset summaries before compaction or reset.
+- `autoContext` should stay `false` until pre-prompt context injection is explicitly qualified in the target OpenClaw instance.
+- Keep `registerExclusiveMemoryCapability` and `registerLegacyMemoryTools` false unless deliberately testing Super Memory as the active OpenClaw memory slot replacement.
+
+Verification commands:
+
+```bash
+systemctl --user status super-memory-api
+curl -fsS http://127.0.0.1:8765/health
+super-memory status --config ~/.openclaw/super-memory.yaml
+```
+
 ## Integration surfaces
 
 Super Memory has two integration surfaces:

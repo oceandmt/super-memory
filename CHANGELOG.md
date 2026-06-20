@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 (2026-06-20)
+
+### Fixed
+
+- **Cross-agent turn sync**: Native OpenClaw plugin `agent_end`/`before_agent_finalize` hooks now correctly
+  register for all multi-agent instances (Alex, Max, Isol) via Discord `agentChannelMap`.
+  Root cause: `api.config` returned global OpenClaw config, not plugin-specific config, causing
+  `effectiveAutoSyncTurns = false`. Fix: read from `plugins.entries['super-memory'].config`.
+- **Discord content array blocks**: Assistant messages in Discord turn events arrive as array content
+  blocks, causing `[object Object]` serialization. Fixed content flattening to extract `text`/`content`
+  from each block.
+- **Plugin hot-reload**: `SIGUSR1` (coalesced hot reload) does not reload cached JS modules.
+  Documentation now recommends `systemctl restart` for plugin code changes.
+- **Memory slot activation**: Plugin activation through memory slot now correctly passes config
+  (`autoSyncTurns`, `mode`, `agentChannelMap`) via `registerSuperMemoryHooks`.
+
+### Added
+
+- `agentChannelMap` schema in `openclaw.plugin.json` — Discord channel ID to agent ID routing
+- `registerLegacyMemoryTools` flag in plugin config schema
+- Content block array flatten helper for multi-block Discord messages
+- `hooks.allowConversationAccess` config field for conversation-level access
+
+### Changed
+
+- Plugin file size: 21794 → 25004 bytes (config merge + content flatten + agent routing)
+- `openclaw.plugin.json`: 7358 → 7844 bytes (extended schema)
+
 ## 0.1.0 (unreleased)
 
 Initial development release.
