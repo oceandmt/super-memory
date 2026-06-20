@@ -93,7 +93,7 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
         layer_counts[row["layer"]] = layer_counts.get(row["layer"], 0) + 1
         norm = rec.metadata.get("content_hash") or " ".join(rec.content.lower().split())
         content_seen.setdefault(norm, []).append(rec.id)
-        if len(rec.content) > 1200:
+        if len(rec.content) > 1200 and not rec.metadata.get("compression_candidate"):
             compression_candidates.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "reason": "long content"})
     # Canonical markdown is file-backed, not stored in SQLite. Missing canonical
     # here means a derived SQLite id has no sqlite canonical twin, not necessarily
@@ -176,7 +176,7 @@ def quality_cleanup(dry_run: bool = True, config_path: str | None = None, limit:
                 duplicate_actions.append({"id": dup_id, "keep": keep, "action": "would_soft_delete" if dry_run else "soft_deleted"})
     for row in rows:
         rec = row_to_memory(row)
-        if rec.type.value == "event" and len(rec.content) > 1200:
+        if rec.type.value == "event" and len(rec.content) > 1200 and not rec.metadata.get("compression_candidate"):
             compression_actions.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "action": "would_mark" if dry_run else "marked"})
     if not dry_run:
         with store.connect() as conn:
