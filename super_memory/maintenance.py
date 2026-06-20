@@ -23,7 +23,13 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     try:
         report["steps"]["semantic_doctor"] = semantic_doctor(config_path=config_path)
         if not dry_run and report["steps"]["semantic_doctor"].get("ok"):
-            report["steps"]["semantic_index"] = semantic_index(config_path=config_path, rebuild=False, batch_size=8, limit=min(limit, 200))
+            vector_count = int(report["steps"]["semantic_doctor"].get("vector_count") or 0)
+            # Keep MCP maintenance bounded. Full/rebuild indexing belongs to
+            # super_memory_semantic_index or an external cron/background run.
+            if vector_count == 0:
+                report["steps"]["semantic_index"] = semantic_index(config_path=config_path, rebuild=False, batch_size=4, limit=min(limit, 25))
+            else:
+                report["steps"]["semantic_index"] = {"ok": True, "skipped": True, "reason": "existing vector index present", "vector_count": vector_count}
             report["steps"]["semantic_verify"] = semantic_verify(config_path=config_path, query="Super Memory durable pack OpenClaw agent role baseline", limit=5)
     except Exception as exc:  # pragma: no cover - runtime optional dependencies
         report["steps"]["semantic_error"] = str(exc)
