@@ -12,7 +12,7 @@ Use **admin additive/capture mode** for other OpenClaw installations first. It e
 pip install 'git+https://github.com/oceandmt/super-memory.git'
 super-memory setup --workspace-root "$HOME/.openclaw/workspace" --output "$HOME/.openclaw/super-memory.yaml" --overwrite
 super-memory doctor --no-benchmark --json-out
-super-memory-api
+super-memory-api --host 127.0.0.1 --port 8765
 ```
 
 ## Local plugin install
@@ -106,7 +106,7 @@ curl -fsS http://127.0.0.1:8765/health
 If OpenClaw logs `Super Memory API health check failed`, start the API first:
 
 ```bash
-super-memory-api
+super-memory-api --host 127.0.0.1 --port 8765
 ```
 
 If tools load but recall is empty, run:
