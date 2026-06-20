@@ -584,6 +584,26 @@ def parallel_save(req: CognitivePayloadRequest) -> dict[str, Any]:
 def recall_arbitrate(req: RecallArbitrateRequest) -> dict[str, Any]:
     return bridge.recall_arbitrate(req.query, limit=req.limit, config_path=req.config_path)
 
+@app.post("/semantic/doctor")
+def api_semantic_doctor(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    req = req or {}
+    return bridge.semantic_doctor(config_path=req.get("config_path"), query=req.get("query", "semantic recall smoke test"))
+
+@app.post("/semantic/index")
+def api_semantic_index(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    req = req or {}
+    return bridge.semantic_index(config_path=req.get("config_path"), rebuild=req.get("rebuild", False), batch_size=req.get("batch_size", 8), limit=req.get("limit"))
+
+@app.post("/semantic/verify")
+def api_semantic_verify(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    req = req or {}
+    return bridge.semantic_verify(config_path=req.get("config_path"), query=req.get("query", "semantic recall smoke test"), limit=req.get("limit", 5))
+
+@app.post("/maintenance/run")
+def api_maintenance_run(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    req = req or {}
+    return bridge.maintenance_run(dry_run=req.get("dry_run", True), limit=req.get("limit", 500), config_path=req.get("config_path"))
+
 @app.post("/consolidation-cycle")
 def consolidation_cycle(req: ConsolidationCycleRequest) -> dict[str, Any]:
     return bridge.consolidation_cycle(strategy=req.strategy, dry_run=req.dry_run, config_path=req.config_path)

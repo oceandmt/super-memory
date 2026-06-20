@@ -665,6 +665,22 @@ def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
 def embedding_auto_select(config_path: str | None = None) -> dict[str, Any]:
     return memory_core.embedding_auto_select(config_path=config_path)
 
+def semantic_doctor(config_path: str | None = None, query: str = "semantic recall smoke test") -> dict[str, Any]:
+    from .semantic import semantic_doctor as _semantic_doctor
+    return _semantic_doctor(config_path=config_path, query=query)
+
+def semantic_index(config_path: str | None = None, rebuild: bool = False, batch_size: int = 8, limit: int | None = None) -> dict[str, Any]:
+    from .semantic import semantic_index as _semantic_index
+    return _semantic_index(config_path=config_path, rebuild=rebuild, batch_size=batch_size, limit=limit)
+
+def semantic_verify(config_path: str | None = None, query: str = "semantic recall smoke test", limit: int = 5) -> dict[str, Any]:
+    from .semantic import semantic_verify as _semantic_verify
+    return _semantic_verify(config_path=config_path, query=query, limit=limit)
+
+def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    from .maintenance import maintenance_run as _maintenance_run
+    return _maintenance_run(dry_run=dry_run, limit=limit, config_path=config_path)
+
 def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return memory_core.short_term_audit(limit=limit, config_path=config_path)
 

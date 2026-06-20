@@ -181,22 +181,48 @@ module.exports = function superMemoryPlugin(api) {
     api.logger?.warn?.('Super Memory running in EXCLUSIVE memory slot mode — canonical markdown may diverge from memory-core');
     if (typeof api.registerMemoryCapability === 'function') {
       api.registerMemoryCapability({
-        promptBuilder: () => [
-          'Super Memory is the active development memory slot. Preserve Workspace Markdown as canonical truth and use Super Memory search/get for recall.'
-        ],
-        flushPlanResolver: () => null,
+        async promptBuilder(event = {}) {
+          const base = ['Super Memory is the active OpenClaw memory slot. Preserve Workspace Markdown as canonical truth and use Super Memory search/get for recall.'];
+          try {
+            const query = cleanText(event.prompt || event.query || event.input || '');
+            if (query) {
+              const payload = await post('/prefetch', { query, limit: cfg.prePromptLimit || 8 });
+              const text = payload.answer || payload.context || payload.text || payload.summary;
+              if (text) base.push(`[Super Memory semantic context]\n${text}`);
+            }
+          } catch (err) {
+            api.logger?.warn?.(`Super Memory capability promptBuilder failed: ${err.message}`);
+          }
+          return base;
+        },
+        flushPlanResolver: () => ({
+          provider: 'super-memory',
+          canonical: 'workspace_markdown',
+          captureTurns: true,
+          captureToolOutcomes: true,
+          captureDecisions: true,
+          redactSecrets: true,
+          maintenance: { cleanup: true, semanticIndex: true, dreaming: true }
+        }),
         runtime: {
           async getMemorySearchManager() {
             return { manager: createSearchManager() };
           },
           resolveMemoryBackendConfig() {
-            return { backend: 'builtin' };
+            return { backend: 'super-memory', canonical: 'workspace_markdown', vector: cfg.vectorBackend || 'sqlite_vec', apiBaseUrl: baseUrl };
           },
           async closeMemorySearchManager() {},
           async closeAllMemorySearchManagers() {}
         },
         publicArtifacts: {
-          async listArtifacts() { return []; }
+          async listArtifacts() {
+            return [
+              { id: 'super-memory-daily', kind: 'markdown', path: 'memory/YYYY-MM-DD.md' },
+              { id: 'super-memory-long-term', kind: 'markdown', path: 'MEMORY.md' },
+              { id: 'super-memory-registers', kind: 'directory', path: 'memory/registers' },
+              { id: 'super-memory-dreams', kind: 'directory', path: 'memory/dreams' }
+            ];
+          }
         }
       });
     }

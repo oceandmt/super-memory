@@ -76,17 +76,28 @@ def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[s
         key = rec.metadata.get("content_hash") or rec.session_id or rec.content[:120]
         clusters[str(key)].append(rec)
     candidates = []
+    noisy_sessions = {"test-hook", "test-hook-verify"}
     for key, records in clusters.items():
         newest = records[0]
-        if len(records) > 1 or len(newest.content) > 1000:
+        text_l = newest.content.lower()
+        already_done = any(r.metadata.get("promoted_to") or r.metadata.get("promotion_reviewed_at") for r in records)
+        is_noise = (newest.session_id in noisy_sessions) or text_l.startswith("test ") or len(newest.content) < 120
+        has_signal = any(term in text_l for term in ["fix", "triển khai", "decision", "decided", "blocker", "workflow", "durable", "semantic", "gateway", "qualify"])
+        suggested_type = "lesson" if has_signal else "context"
+        score = (len(records) * 0.25) + (0.35 if has_signal else 0) + (0.2 if len(newest.content) >= 1000 else 0) - (0.75 if is_noise else 0) - (1.0 if already_done else 0)
+        qualifies = (len(records) >= 4 and len(newest.content) >= 500 and score >= 1.0) or (has_signal and len(newest.content) >= 1000 and score >= 0.8)
+        if qualifies:
             candidates.append({
                 "cluster_key": key,
                 "count": len(records),
                 "representative_id": newest.id,
                 "session_id": newest.session_id,
                 "chars": len(newest.content),
-                "suggested_type": "lesson" if "fix" in newest.content.lower() or "triển khai" in newest.content.lower() else "context",
+                "suggested_type": suggested_type,
+                "promotion_score": round(score, 3),
+                "signals": {"has_signal": has_signal, "is_noise": is_noise, "already_reviewed": already_done},
             })
+    candidates.sort(key=lambda c: (c.get("promotion_score", 0), c.get("count", 0), c.get("chars", 0)), reverse=True)
     return {"ok": True, "checked": len(rows), "candidates": candidates[:100], "candidate_count": len(candidates)}
 
 
@@ -103,9 +114,9 @@ def short_term_repair(limit: int = 500, dry_run: bool = True, config_path: str |
     svc = SuperMemoryService(cfg)
     promoted: list[dict[str, Any]] = []
     if dry_run:
-        return {"ok": True, "dry_run": True, "would_promote": audit["candidates"][:20], "count": audit["candidate_count"]}
+        return {"ok": True, "dry_run": True, "would_promote": audit["candidates"][:10], "count": audit["candidate_count"], "policy": {"max_promotions_per_run": 10, "min_score": 1.0, "noise_filters": ["test-hook", "short low-signal events", "already promoted"]}}
     with svc.store.connect() as conn:
-        for cand in audit["candidates"][:20]:
+        for cand in audit["candidates"][:10]:
             row = conn.execute("SELECT * FROM memories WHERE id = ? LIMIT 1", (cand["representative_id"],)).fetchone()
             if not row:
                 continue

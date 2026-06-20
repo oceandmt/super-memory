@@ -102,6 +102,10 @@ ADVANCED_TOOLS = {
     "super_memory_lifecycle_compression",
     "super_memory_embedding_doctor",
     "super_memory_embedding_auto_select",
+    "super_memory_semantic_doctor",
+    "super_memory_semantic_index",
+    "super_memory_semantic_verify",
+    "super_memory_maintenance_run",
     "super_memory_short_term_audit",
     "super_memory_short_term_repair",
     "super_memory_dreaming_audit",
@@ -499,6 +503,10 @@ for _name, _desc, _props, _required in [
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_embedding_doctor", "Inspect embedding/semantic provider health and recommend FTS or semantic mode.", {"config_path": {"type": "string"}}, []),
     ("super_memory_embedding_auto_select", "Choose the healthiest local recall backend using doctor metadata.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_semantic_doctor", "Run semantic sqlite-vec/Ollama doctor checks.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_semantic_index", "Incrementally index canonical workspace memories into sqlite-vec.", {"rebuild": {"type": "boolean", "default": False}, "batch_size": {"type": "integer", "default": 8}, "limit": {"type": "integer"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_semantic_verify", "Verify semantic KNN recall and hydrate canonical memories.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "limit": {"type": "integer", "default": 5}, "config_path": {"type": "string"}}, []),
+    ("super_memory_maintenance_run", "Run safe maintenance: cleanup, semantic index, short-term policy, dreaming, health checks.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_short_term_audit", "Audit short-term event memories for promotion candidates.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_short_term_repair", "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_dreaming_audit", "Audit inputs for dreaming/sleep consolidation artifacts.", {"config_path": {"type": "string"}}, []),
@@ -741,6 +749,14 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.embedding_doctor(config_path=args.get("config_path"))
     if name == "super_memory_embedding_auto_select":
         return bridge.embedding_auto_select(config_path=args.get("config_path"))
+    if name == "super_memory_semantic_doctor":
+        return bridge.semantic_doctor(config_path=args.get("config_path"), query=args.get("query", "semantic recall smoke test"))
+    if name == "super_memory_semantic_index":
+        return bridge.semantic_index(config_path=args.get("config_path"), rebuild=args.get("rebuild", False), batch_size=args.get("batch_size", 8), limit=args.get("limit"))
+    if name == "super_memory_semantic_verify":
+        return bridge.semantic_verify(config_path=args.get("config_path"), query=args.get("query", "semantic recall smoke test"), limit=args.get("limit", 5))
+    if name == "super_memory_maintenance_run":
+        return bridge.maintenance_run(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_short_term_audit":
         return bridge.short_term_audit(limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_short_term_repair":
