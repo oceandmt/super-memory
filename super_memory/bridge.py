@@ -79,6 +79,16 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             trust_score=payload.get("trust_score"),
             metadata=payload.get("metadata", {}),
         )
+        dedup = svc.dedup_check(record)
+        if dedup["skipped"]:
+            items.append({
+                "ok": True,
+                "record": record.model_dump(mode="json"),
+                "dedup": dedup,
+                "results": [],
+                "graph_projection": None,
+            })
+            continue
         results = svc.save(record)
         graph_projection = None
         try:
@@ -89,6 +99,7 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         items.append({
             "ok": bool(canonical and canonical.ok),
             "record": record.model_dump(mode="json"),
+            "dedup": {"skipped": False},
             "results": [r.model_dump(mode="json") for r in results],
             "graph_projection": graph_projection,
         })
@@ -247,12 +258,130 @@ def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dic
     return {"records": [r.model_dump(mode="json") for r in records]}
 
 
+def _durable_pack_source_stats(pack_name: str, project: str, config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, layer, content_hash, content, type, scope, source, project, created_at,
+                   json_extract(metadata_json, '$.soft_deleted') AS soft_deleted
+            FROM memories
+            WHERE source = 'super-memory.durable-pack'
+            AND project = ?
+            AND tags_json LIKE ?
+            ORDER BY created_at DESC
+            """,
+            (project, f"%{pack_name}%"),
+        ).fetchall()
+    by_hash: dict[str, list[dict[str, Any]]] = {}
+    active_ids: set[str] = set()
+    for row in rows:
+        item = dict(row)
+        ch = item.get("content_hash") or item.get("content")
+        by_hash.setdefault(ch, []).append(item)
+        if not item.get("soft_deleted"):
+            active_ids.add(item["id"])
+    duplicate_groups = []
+    for ch, items in by_hash.items():
+        ids = sorted({i["id"] for i in items if not i.get("soft_deleted")})
+        if len(ids) > 1:
+            duplicate_groups.append({"content_hash": ch, "ids": ids, "count": len(ids)})
+    expected_hashes = []
+    import hashlib
+    for item in durable_pack_mod.build_openclaw_pack(pack_name=pack_name, project=project):
+        expected_hashes.append(hashlib.sha256(item["content"].encode("utf-8", errors="replace")).hexdigest())
+    found_hashes = {h for h, items in by_hash.items() if any(not i.get("soft_deleted") for i in items)}
+    return {
+        "pack_name": pack_name,
+        "project": project,
+        "expected_items": len(expected_hashes),
+        "found_items": sum(1 for h in expected_hashes if h in found_hashes),
+        "missing_hashes": [h for h in expected_hashes if h not in found_hashes],
+        "active_ids": sorted(active_ids),
+        "duplicate_groups": duplicate_groups,
+        "duplicates_count": sum(max(0, g["count"] - 1) for g in duplicate_groups),
+    }
+
+
+def _dedupe_durable_pack(pack_name: str, project: str, config_path: str | None = None) -> dict[str, Any]:
+    stats_payload = _durable_pack_source_stats(pack_name, project, config_path=config_path)
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    soft_deleted: list[str] = []
+    with store.connect() as conn:
+        for group in stats_payload["duplicate_groups"]:
+            ids = group["ids"]
+            keep_id = ids[0]
+            for memory_id in ids[1:]:
+                conn.execute(
+                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
+                    (f"durable_pack_dedupe keep={keep_id}", memory_id),
+                )
+                soft_deleted.append(memory_id)
+        conn.commit()
+    return {"ok": True, "soft_deleted": soft_deleted, "count": len(soft_deleted)}
+
+
+def durable_pack_status(
+    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
+    project: str = durable_pack_mod.DEFAULT_PROJECT,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    stats_payload = _durable_pack_source_stats(pack_name, project, config_path=config_path)
+    qualification = []
+    for query in durable_pack_mod.qualification_queries():
+        hits = recall(query, limit=5, config_path=config_path)
+        hit_count = sum(len(v) for v in hits.values())
+        qualification.append({"query": query, "hit_count": hit_count, "ok": hit_count > 0})
+    stats_payload["qualification"] = qualification
+    stats_payload["ok"] = (
+        stats_payload["found_items"] == stats_payload["expected_items"]
+        and stats_payload["duplicates_count"] == 0
+        and all(q["ok"] for q in qualification)
+    )
+    return stats_payload
+
+
+def durable_pack_audit(
+    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
+    project: str = durable_pack_mod.DEFAULT_PROJECT,
+    fix: bool = False,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    before = durable_pack_status(pack_name=pack_name, project=project, config_path=config_path)
+    cross_before = cross_layer_health(config_path=config_path)
+    fixes: dict[str, Any] = {}
+    if fix:
+        fixes["dedupe"] = _dedupe_durable_pack(pack_name, project, config_path=config_path)
+        if cross_before.get("sqlite_only_ids", 0):
+            fixes["backfill_markdown_sqlite"] = backfill_markdown_sqlite(config_path=config_path)
+    after = durable_pack_status(pack_name=pack_name, project=project, config_path=config_path)
+    cross_after = cross_layer_health(config_path=config_path)
+    recommendations = []
+    if after.get("duplicates_count", 0):
+        recommendations.append("Run durable_pack_audit(fix=True) to soft-delete duplicate durable pack records.")
+    if cross_after.get("sqlite_only_ids", 0):
+        recommendations.append("Run backfill_markdown_sqlite or cleanup to repair SQLite-only IDs.")
+    recommendations.append("Keep curated durable memories ranked above raw event transcripts during recall.")
+    return {
+        "ok": after.get("ok", False) and cross_after.get("ok", False),
+        "before": before,
+        "after": after,
+        "cross_layer_before": cross_before,
+        "cross_layer_after": cross_after,
+        "fixes": fixes,
+        "recommendations": recommendations,
+    }
+
+
 def durable_pack(
     pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
     project: str = durable_pack_mod.DEFAULT_PROJECT,
     agents: list[str] | None = None,
     qualify: bool = True,
     debug: bool = True,
+    dedupe: bool = True,
     config_path: str | None = None,
 ) -> dict[str, Any]:
     """Install a deterministic high-signal OpenClaw durable memory pack.
@@ -266,6 +395,7 @@ def durable_pack(
         for item in pack:
             item.setdefault("metadata", {})["agents"] = agents
     saved = remember_batch(pack, config_path=config_path)
+    dedupe_result = _dedupe_durable_pack(pack_name, project, config_path=config_path) if dedupe else {"ok": True, "soft_deleted": [], "count": 0}
 
     qualification: list[dict[str, Any]] = []
     if qualify:
@@ -287,6 +417,8 @@ def durable_pack(
         "pack_name": pack_name,
         "project": project,
         "saved": saved,
+        "dedupe": dedupe_result,
+        "status": durable_pack_status(pack_name=pack_name, project=project, config_path=config_path),
         "qualification": qualification,
         "debug": debug_payload,
     }

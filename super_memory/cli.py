@@ -161,6 +161,7 @@ def durable_pack_cmd(
     agent: list[str] = typer.Option(["lucas", "alex", "max", "isol"], "--agent"),
     no_qualify: bool = typer.Option(False, "--no-qualify"),
     no_debug: bool = typer.Option(False, "--no-debug"),
+    no_dedupe: bool = typer.Option(False, "--no-dedupe"),
     config: Optional[str] = None,
     json_out: bool = False,
 ):
@@ -173,6 +174,7 @@ def durable_pack_cmd(
         agents=agent,
         qualify=not no_qualify,
         debug=not no_debug,
+        dedupe=not no_dedupe,
         config_path=config,
     )
     if json_out:
@@ -186,6 +188,42 @@ def durable_pack_cmd(
     for q in result.get("qualification", []):
         table.add_row("✅" if q.get("ok") else "❌", str(q.get("hit_count", 0)), q.get("query", ""))
     console.print(table)
+
+@app.command("durable-pack-status")
+def durable_pack_status_cmd(
+    pack_name: str = typer.Option("openclaw-super-memory-durable-pack-v1", "--pack-name"),
+    project: str = typer.Option("super-memory", "--project"),
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    """Show installed/qualified/duplicate-free status for the OpenClaw durable pack."""
+    from . import bridge as _bridge
+
+    result = _bridge.durable_pack_status(pack_name=pack_name, project=project, config_path=config)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(f"[green]Durable pack status[/green] {pack_name}: {'OK' if result.get('ok') else 'ISSUES'}")
+    console.print(f"found={result.get('found_items')}/{result.get('expected_items')} duplicates={result.get('duplicates_count')}")
+
+@app.command("durable-pack-audit")
+def durable_pack_audit_cmd(
+    pack_name: str = typer.Option("openclaw-super-memory-durable-pack-v1", "--pack-name"),
+    project: str = typer.Option("super-memory", "--project"),
+    fix: bool = typer.Option(False, "--fix"),
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    """Deep audit the OpenClaw durable pack; --fix dedupes and backfills canonical rows."""
+    from . import bridge as _bridge
+
+    result = _bridge.durable_pack_audit(pack_name=pack_name, project=project, fix=fix, config_path=config)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(f"[green]Durable pack audit[/green] {pack_name}: {'OK' if result.get('ok') else 'ISSUES'}")
+    for rec in result.get("recommendations", []):
+        console.print(f"- {rec}")
 
 @app.command("promote")
 def promote(

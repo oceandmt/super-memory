@@ -45,6 +45,8 @@ NORMAL_TOOLS = {
     "super_memory_prefetch",
     "super_memory_sync_turn",
     "super_memory_durable_pack",
+    "super_memory_durable_pack_status",
+    "super_memory_durable_pack_audit",
     "super_memory_memory_search",
     "super_memory_memory_get",
     "super_memory_status",
@@ -364,6 +366,28 @@ TOOLS: dict[str, JSON] = {
                 "agents": {"type": "array", "items": {"type": "string"}},
                 "qualify": {"type": "boolean", "default": True},
                 "debug": {"type": "boolean", "default": True},
+                "dedupe": {"type": "boolean", "default": True},
+                "config_path": {"type": "string"},
+            }
+        ),
+    },
+    "super_memory_durable_pack_status": {
+        "description": "Audit whether the curated OpenClaw durable memory pack is installed, qualified, and duplicate-free.",
+        "inputSchema": _schema(
+            {
+                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
+                "project": {"type": "string", "default": "super-memory"},
+                "config_path": {"type": "string"},
+            }
+        ),
+    },
+    "super_memory_durable_pack_audit": {
+        "description": "Deep audit the OpenClaw durable memory pack; with fix=true, soft-delete duplicates and backfill SQLite-only canonical rows.",
+        "inputSchema": _schema(
+            {
+                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
+                "project": {"type": "string", "default": "super-memory"},
+                "fix": {"type": "boolean", "default": False},
                 "config_path": {"type": "string"},
             }
         ),
@@ -575,6 +599,20 @@ def _call_tool(name: str, args: JSON) -> Any:
             agents=args.get("agents") or ["lucas", "alex", "max", "isol"],
             qualify=args.get("qualify", True),
             debug=args.get("debug", True),
+            dedupe=args.get("dedupe", True),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_durable_pack_status":
+        return bridge.durable_pack_status(
+            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
+            project=args.get("project", "super-memory"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_durable_pack_audit":
+        return bridge.durable_pack_audit(
+            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
+            project=args.get("project", "super-memory"),
+            fix=args.get("fix", False),
             config_path=args.get("config_path"),
         )
     if name == "super_memory_memory_search":

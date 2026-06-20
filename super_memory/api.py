@@ -173,6 +173,13 @@ class DurablePackRequest(BaseModel):
     agents: list[str] = Field(default_factory=lambda: ["lucas", "alex", "max", "isol"])
     qualify: bool = True
     debug: bool = True
+    dedupe: bool = True
+    config_path: str | None = None
+
+class DurablePackAuditRequest(BaseModel):
+    pack_name: str = "openclaw-super-memory-durable-pack-v1"
+    project: str = "super-memory"
+    fix: bool = False
     config_path: str | None = None
 
 class PromoteRequest(BaseModel):
@@ -439,9 +446,26 @@ def durable_pack(req: DurablePackRequest) -> dict[str, Any]:
         agents=req.agents,
         qualify=req.qualify,
         debug=req.debug,
+        dedupe=req.dedupe,
         config_path=req.config_path,
     )
 
+@app.post("/durable-pack/status")
+def durable_pack_status(req: DurablePackAuditRequest) -> dict[str, Any]:
+    return bridge.durable_pack_status(
+        pack_name=req.pack_name,
+        project=req.project,
+        config_path=req.config_path,
+    )
+
+@app.post("/durable-pack/audit")
+def durable_pack_audit(req: DurablePackAuditRequest) -> dict[str, Any]:
+    return bridge.durable_pack_audit(
+        pack_name=req.pack_name,
+        project=req.project,
+        fix=req.fix,
+        config_path=req.config_path,
+    )
 
 @app.post("/promote")
 def promote(req: dict[str, Any]) -> dict[str, Any]:

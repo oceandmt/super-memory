@@ -226,6 +226,17 @@ class SuperMemoryService:
 
     def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
+        seen_hashes: set[str] = set()
+
+        def _dedupe(records: list[MemoryRecord]) -> list[MemoryRecord]:
+            deduped: list[MemoryRecord] = []
+            for rec in records:
+                ch = rec.metadata.get("content_hash") or rec.content
+                if ch in seen_hashes:
+                    continue
+                seen_hashes.add(ch)
+                deduped.append(rec)
+            return deduped
 
         def _extra() -> dict[str, object]:
             return {
@@ -240,7 +251,7 @@ class SuperMemoryService:
                 if layer not in self.config.enabled_layers:
                     continue
                 try:
-                    out[layer] = self.backends[layer].recall(query, limit=limit)
+                    out[layer] = _dedupe(self.backends[layer].recall(query, limit=limit))
                 except Exception:
                     out[layer] = []
         return out

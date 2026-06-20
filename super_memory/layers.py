@@ -247,9 +247,26 @@ class SQLiteLayerBackend(MemoryBackend):
         safe = ' '.join(f'"{t}"' for t in tokens if t and t.upper() not in ('NEAR', 'AND', 'OR', 'NOT'))
         return safe or raw
 
+    @staticmethod
+    def _rank_sql_clause(query: str) -> str:
+        q = query.lower()
+        audit_query = any(token in q for token in ("audit", "raw", "verbatim", "session", "transcript"))
+        event_penalty = 0 if audit_query else -20
+        return f"""
+                        ORDER BY
+                            CASE WHEN m.source = 'super-memory.durable-pack' THEN 100 ELSE 0 END DESC,
+                            CASE WHEN m.type IN ('decision','fact','workflow','lesson','insight','doctrine') THEN 40 ELSE 0 END DESC,
+                            CASE WHEN m.scope IN ('shared','project','cross-agent') THEN 25 ELSE 0 END DESC,
+                            COALESCE(m.trust_score, 0.5) DESC,
+                            CASE WHEN m.type = 'event' THEN {event_penalty} ELSE 0 END DESC,
+                            m.created_at DESC
+        """
+
     def recall(self, query: str, limit: int = 10) -> list[MemoryRecord]:
         fts_query = self._fts_safe_query(query)
         out: list[MemoryRecord] = []
+        order_sql = self._rank_sql_clause(query)
+        active_sql = "(json_extract(m.metadata_json, '$.soft_deleted') IS NULL OR json_extract(m.metadata_json, '$.soft_deleted') != 1)"
         with self._connect() as conn:
             try:
                 if fts_query:
@@ -257,7 +274,8 @@ class SQLiteLayerBackend(MemoryBackend):
                         """
                         SELECT m.* FROM memories_fts f
                         JOIN memories m ON m.rowid = f.rowid
-                        WHERE memories_fts MATCH ? AND m.layer = ?
+                        WHERE memories_fts MATCH ? AND m.layer = ? AND 
+                        """ + active_sql + "\n" + order_sql + """
                         LIMIT ?
                         """,
                         (fts_query, self.layer.value, limit),
@@ -268,8 +286,9 @@ class SQLiteLayerBackend(MemoryBackend):
                 # FTS parse failed — fall back to LIKE search
                 rows = conn.execute(
                     """
-                    SELECT * FROM memories
-                    WHERE content LIKE ? AND layer = ?
+                    SELECT * FROM memories m
+                    WHERE content LIKE ? AND layer = ? AND 
+                    """ + active_sql + "\n" + order_sql + """
                     LIMIT ?
                     """,
                     (f"%{query}%", self.layer.value, limit),
