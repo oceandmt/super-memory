@@ -677,6 +677,10 @@ def semantic_verify(config_path: str | None = None, query: str = "semantic recal
     from .semantic import semantic_verify as _semantic_verify
     return _semantic_verify(config_path=config_path, query=query, limit=limit)
 
+def semantic_quality_audit(config_path: str | None = None) -> dict[str, Any]:
+    from .semantic import semantic_quality_audit as _semantic_quality_audit
+    return _semantic_quality_audit(config_path=config_path)
+
 def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     from .maintenance import maintenance_run as _maintenance_run
     return _maintenance_run(dry_run=dry_run, limit=limit, config_path=config_path)
@@ -686,6 +690,9 @@ def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[s
 
 def short_term_repair(limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     return memory_core.short_term_repair(limit=limit, dry_run=dry_run, config_path=config_path)
+
+def short_term_mark_reviewed(cluster_key: str, decision: str = "deferred", config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.short_term_mark_reviewed(cluster_key=cluster_key, decision=decision, config_path=config_path)
 
 def dreaming_audit(config_path: str | None = None) -> dict[str, Any]:
     return memory_core.dreaming_audit(config_path=config_path)

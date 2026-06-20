@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter, defaultdict
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -85,7 +86,7 @@ def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[s
         has_signal = any(term in text_l for term in ["fix", "triển khai", "decision", "decided", "blocker", "workflow", "durable", "semantic", "gateway", "qualify"])
         suggested_type = "lesson" if has_signal else "context"
         score = (len(records) * 0.25) + (0.35 if has_signal else 0) + (0.2 if len(newest.content) >= 1000 else 0) - (0.75 if is_noise else 0) - (1.0 if already_done else 0)
-        qualifies = (len(records) >= 4 and len(newest.content) >= 500 and score >= 1.0) or (has_signal and len(newest.content) >= 1000 and score >= 0.8)
+        qualifies = (not already_done) and ((len(records) >= 4 and len(newest.content) >= 500 and score >= 1.0) or (has_signal and len(newest.content) >= 1000 and score >= 0.8))
         if qualifies:
             candidates.append({
                 "cluster_key": key,
@@ -107,6 +108,22 @@ def _summarize_event(text: str, max_chars: int = 700) -> str:
         return cleaned
     return cleaned[: max_chars - 1].rstrip() + "…"
 
+
+def short_term_mark_reviewed(cluster_key: str, decision: str = "deferred", config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    now = _now()
+    updated = 0
+    with store.connect() as conn:
+        rows = conn.execute("SELECT id, layer, metadata_json FROM memories WHERE json_extract(metadata_json, '$.content_hash') = ?", (cluster_key,)).fetchall()
+        for row in rows:
+            metadata = json.loads(row["metadata_json"] or "{}")
+            metadata["promotion_reviewed_at"] = now
+            metadata["promotion_decision"] = decision
+            metadata["promotion_cluster_key"] = cluster_key
+            conn.execute("UPDATE memories SET metadata_json=? WHERE id=? AND layer=?", (json.dumps(metadata, ensure_ascii=False), row["id"], row["layer"]))
+            updated += 1
+    return {"ok": True, "cluster_key": cluster_key, "decision": decision, "updated": updated}
 
 def short_term_repair(limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     audit = short_term_audit(limit=limit, config_path=config_path)

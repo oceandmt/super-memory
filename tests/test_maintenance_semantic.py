@@ -48,6 +48,26 @@ def test_short_term_audit_policy_filters_low_signal_noise(tmp_path: Path):
     assert result["candidates"][0]["promotion_score"] >= 1.0
 
 
+def test_short_term_mark_reviewed_suppresses_cluster(tmp_path: Path):
+    config = _cfg(tmp_path)
+    svc = SuperMemoryService(load_config(config))
+    for i in range(4):
+        svc.save(MemoryRecord(content="triển khai semantic gateway qualify fix " + ("x" * 1200), type=MemoryType.EVENT, scope=MemoryScope.SESSION, session_id="real-session", metadata={"content_hash": "signal"}))
+    before = short_term_audit(config_path=config)
+    key = before["candidates"][0]["cluster_key"]
+    marked = bridge.short_term_mark_reviewed(key, decision="deferred", config_path=config)
+    assert marked["updated"] >= 4
+    after = short_term_audit(config_path=config)
+    assert after["candidate_count"] == 0
+
+
+def test_semantic_quality_audit_shape(tmp_path: Path):
+    config = _cfg(tmp_path)
+    result = bridge.semantic_quality_audit(config_path=config)
+    assert "cases" in result
+    assert len(result["cases"]) == 3
+
+
 def test_maintenance_dry_run_shape(tmp_path: Path):
     config = _cfg(tmp_path)
     result = bridge.maintenance_run(dry_run=True, limit=20, config_path=config)

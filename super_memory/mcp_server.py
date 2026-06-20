@@ -105,9 +105,11 @@ ADVANCED_TOOLS = {
     "super_memory_semantic_doctor",
     "super_memory_semantic_index",
     "super_memory_semantic_verify",
+    "super_memory_semantic_quality_audit",
     "super_memory_maintenance_run",
     "super_memory_short_term_audit",
     "super_memory_short_term_repair",
+    "super_memory_short_term_mark_reviewed",
     "super_memory_dreaming_audit",
     "super_memory_dreaming_run",
     "super_memory_dreaming_repair",
@@ -506,9 +508,11 @@ for _name, _desc, _props, _required in [
     ("super_memory_semantic_doctor", "Run semantic sqlite-vec/Ollama doctor checks.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "config_path": {"type": "string"}}, []),
     ("super_memory_semantic_index", "Incrementally index canonical workspace memories into sqlite-vec.", {"rebuild": {"type": "boolean", "default": False}, "batch_size": {"type": "integer", "default": 8}, "limit": {"type": "integer"}, "config_path": {"type": "string"}}, []),
     ("super_memory_semantic_verify", "Verify semantic KNN recall and hydrate canonical memories.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "limit": {"type": "integer", "default": 5}, "config_path": {"type": "string"}}, []),
+    ("super_memory_semantic_quality_audit", "Check known durable queries rank high in semantic retrieval.", {"config_path": {"type": "string"}}, []),
     ("super_memory_maintenance_run", "Run safe maintenance: cleanup, semantic index, short-term policy, dreaming, health checks.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_short_term_audit", "Audit short-term event memories for promotion candidates.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_short_term_repair", "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_short_term_mark_reviewed", "Mark a short-term promotion cluster as reviewed/promoted/deferred/ignored.", {"cluster_key": {"type": "string"}, "decision": {"type": "string", "default": "deferred"}, "config_path": {"type": "string"}}, ["cluster_key"]),
     ("super_memory_dreaming_audit", "Audit inputs for dreaming/sleep consolidation artifacts.", {"config_path": {"type": "string"}}, []),
     ("super_memory_dreaming_run", "Create a deterministic dreaming consolidation artifact and optional insight memory.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "config_path": {"type": "string"}}, []),
     ("super_memory_dreaming_repair", "Inspect dreaming artifacts and recommend non-destructive repair/run actions.", {"config_path": {"type": "string"}}, []),
@@ -755,12 +759,16 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.semantic_index(config_path=args.get("config_path"), rebuild=args.get("rebuild", False), batch_size=args.get("batch_size", 8), limit=args.get("limit"))
     if name == "super_memory_semantic_verify":
         return bridge.semantic_verify(config_path=args.get("config_path"), query=args.get("query", "semantic recall smoke test"), limit=args.get("limit", 5))
+    if name == "super_memory_semantic_quality_audit":
+        return bridge.semantic_quality_audit(config_path=args.get("config_path"))
     if name == "super_memory_maintenance_run":
         return bridge.maintenance_run(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_short_term_audit":
         return bridge.short_term_audit(limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_short_term_repair":
         return bridge.short_term_repair(limit=args.get("limit", 500), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_short_term_mark_reviewed":
+        return bridge.short_term_mark_reviewed(cluster_key=args["cluster_key"], decision=args.get("decision", "deferred"), config_path=args.get("config_path"))
     if name == "super_memory_dreaming_audit":
         return bridge.dreaming_audit(config_path=args.get("config_path"))
     if name == "super_memory_dreaming_run":

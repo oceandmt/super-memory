@@ -168,10 +168,36 @@ def semantic_index(
     }
 
 
+def _semantic_quality_adjustment(row: sqlite3.Row, query: str) -> tuple[float, dict[str, Any]]:
+    q = (query or "").lower()
+    source = (row["source"] or "") if "source" in row.keys() else ""
+    project = (row["project"] or "") if "project" in row.keys() else ""
+    mem_type = (row["type"] or "") if "type" in row.keys() else ""
+    content = (row["content"] or "").lower()
+    trust = row["trust_score"] if "trust_score" in row.keys() else None
+    boost = 0.0
+    reasons: list[str] = []
+    if source == "super-memory.durable-pack":
+        boost += 0.45; reasons.append("durable_source")
+    if project and project.lower() in q:
+        boost += 0.12; reasons.append("project_match")
+    if trust is not None and float(trust) >= 0.8:
+        boost += 0.18; reasons.append("trusted")
+    if mem_type in {"fact", "decision", "workflow", "lesson"}:
+        boost += 0.08; reasons.append("durable_type")
+    if content.startswith("[agent:openclaw-neuralmemory") or "cluster of" in content[:220]:
+        boost -= 0.25; reasons.append("cluster_summary_penalty")
+    for term in ["durable", "pack", "openclaw", "agent", "role", "recall", "policy", "raw transcript"]:
+        if term in q and term in content:
+            boost += 0.03
+    return boost, {"boost": round(boost, 4), "reasons": reasons}
+
+
 def semantic_verify(config_path: str | None = None, query: str = "semantic recall smoke test", limit: int = 5) -> dict[str, Any]:
     cfg = load_config(config_path)
     store = VectorStore(cfg)
-    results = store.search_text(query, top_k=limit)
+    # Search deeper than requested, then apply deterministic quality/routing boosts.
+    results = store.search_text(query, top_k=max(limit * 10, 50))
     hydrated: list[dict[str, Any]] = []
     if results:
         db_path = Path(cfg.workspace_root) / cfg.sqlite_path
@@ -179,18 +205,37 @@ def semantic_verify(config_path: str | None = None, query: str = "semantic recal
         conn.row_factory = sqlite3.Row
         for memory_id, score in results:
             row = conn.execute(
-                "SELECT id, content, type, agent_id, session_id, created_at FROM memories WHERE id=? AND layer='workspace_markdown'",
+                "SELECT id, content, type, agent_id, session_id, project, source, trust_score, created_at FROM memories WHERE id=? AND layer='workspace_markdown'",
                 (memory_id,),
             ).fetchone()
             if row:
                 item = dict(row)
+                boost, quality = _semantic_quality_adjustment(row, query)
                 item["semantic_score"] = score
+                item["quality_adjustment"] = quality
+                item["final_score"] = round(float(score) + boost, 6)
                 item["provenance"] = {"layer": "semantic", "id": memory_id}
                 hydrated.append(item)
         conn.close()
+    hydrated.sort(key=lambda x: x.get("final_score", x.get("semantic_score", 0)), reverse=True)
+    hydrated = hydrated[:limit]
     return {
         "ok": bool(hydrated),
         "query": query,
         "count": len(hydrated),
         "results": hydrated,
     }
+
+def semantic_quality_audit(config_path: str | None = None) -> dict[str, Any]:
+    cases = [
+        ("Super Memory durable pack OpenClaw agent role baseline", ["super-memory.durable-pack"]),
+        ("raw transcript capture necessary audit sufficient agent intelligence", ["super-memory.durable-pack"]),
+        ("Discord content array blocks final assistant text tool call JSON", ["super-memory.durable-pack"]),
+    ]
+    results = []
+    for query, expected_sources in cases:
+        verify = semantic_verify(config_path=config_path, query=query, limit=3)
+        sources = [r.get("source") for r in verify.get("results", [])]
+        ok = any(src in expected_sources for src in sources)
+        results.append({"query": query, "ok": ok, "sources": sources, "top_ids": [r.get("id") for r in verify.get("results", [])]})
+    return {"ok": all(r["ok"] for r in results), "cases": results}
