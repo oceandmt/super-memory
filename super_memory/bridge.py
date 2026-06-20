@@ -4,7 +4,7 @@ import importlib.util as _importlib_util
 from typing import Any
 
 from . import cleanup as cleanup_mod
-from . import code_index, cognitive, durable_pack as durable_pack_mod, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
+from . import code_index, cognitive, durable_pack as durable_pack_mod, graph, intelligence, leitner, lifecycle, memory_core, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
 from .config import load_config
 from .hooks import TurnContext
@@ -658,6 +658,27 @@ def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: i
 
 def lifecycle_quality_cleanup(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.quality_cleanup(dry_run=dry_run, config_path=config_path, limit=limit)
+
+def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.embedding_doctor(config_path=config_path)
+
+def embedding_auto_select(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.embedding_auto_select(config_path=config_path)
+
+def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.short_term_audit(limit=limit, config_path=config_path)
+
+def short_term_repair(limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.short_term_repair(limit=limit, dry_run=dry_run, config_path=config_path)
+
+def dreaming_audit(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.dreaming_audit(config_path=config_path)
+
+def dreaming_run(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.dreaming_run(limit=limit, dry_run=dry_run, config_path=config_path)
+
+def dreaming_repair(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core.dreaming_repair(config_path=config_path)
 
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)

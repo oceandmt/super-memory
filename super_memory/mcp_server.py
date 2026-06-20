@@ -100,6 +100,13 @@ ADVANCED_TOOLS = {
     "super_memory_lifecycle_cache",
     "super_memory_lifecycle_tier",
     "super_memory_lifecycle_compression",
+    "super_memory_embedding_doctor",
+    "super_memory_embedding_auto_select",
+    "super_memory_short_term_audit",
+    "super_memory_short_term_repair",
+    "super_memory_dreaming_audit",
+    "super_memory_dreaming_run",
+    "super_memory_dreaming_repair",
     "super_memory_reflex_status",
     "super_memory_leitner",
     "super_memory_leitner_due",
@@ -490,6 +497,13 @@ for _name, _desc, _props, _required in [
     ("super_memory_lifecycle_cache", "Manage local activation cache status/save/load/clear.", {"action": {"type": "string", "default": "status"}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_embedding_doctor", "Inspect embedding/semantic provider health and recommend FTS or semantic mode.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_embedding_auto_select", "Choose the healthiest local recall backend using doctor metadata.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_short_term_audit", "Audit short-term event memories for promotion candidates.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_short_term_repair", "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dreaming_audit", "Audit inputs for dreaming/sleep consolidation artifacts.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_dreaming_run", "Create a deterministic dreaming consolidation artifact and optional insight memory.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dreaming_repair", "Inspect dreaming artifacts and recommend non-destructive repair/run actions.", {"config_path": {"type": "string"}}, []),
     ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
     ("super_memory_leitner_due", "Return count of Leitner-due memories without loading full queue.", {"config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
@@ -723,6 +737,20 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.lifecycle_tier(action=args.get("action", "evaluate"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_compression":
         return bridge.lifecycle_compression(action=args.get("action", "review"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_embedding_doctor":
+        return bridge.embedding_doctor(config_path=args.get("config_path"))
+    if name == "super_memory_embedding_auto_select":
+        return bridge.embedding_auto_select(config_path=args.get("config_path"))
+    if name == "super_memory_short_term_audit":
+        return bridge.short_term_audit(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_short_term_repair":
+        return bridge.short_term_repair(limit=args.get("limit", 500), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_dreaming_audit":
+        return bridge.dreaming_audit(config_path=args.get("config_path"))
+    if name == "super_memory_dreaming_run":
+        return bridge.dreaming_run(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_dreaming_repair":
+        return bridge.dreaming_repair(config_path=args.get("config_path"))
     if name == "super_memory_reflex_status":
         return bridge.reflex_status(config_path=args.get("config_path"))
     if name == "super_memory_leitner":

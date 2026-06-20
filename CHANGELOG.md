@@ -23,6 +23,7 @@
 
 - Durable Memory Pack for OpenClaw agents: deterministic shared/project memories for Super Memory v0.2.0 fixes, agent roles, cross-agent workflows, recall policy, and memory quality lessons. Available via CLI `super-memory durable-pack`, API `/durable-pack`, and MCP tool `super_memory_durable_pack`, with auto-qualify, debug output, idempotent save, dedupe, status, and audit/fix flows.
 - Recall arbitration now falls back to bounded term-wise recall for long multi-term queries so `super_memory_recall_arbitrate` returns context when focused normal recall succeeds. Fallback scoring now boosts `super-memory.durable-pack`, curated durable types, shared/project scope, and high-trust records. Lifecycle duplicate review now filters soft-deleted records and groups by content hash to reduce duplicate scanner noise; `super_memory_lifecycle_quality_cleanup` can soft-delete active duplicates and mark long raw event transcripts for compression without hard deletion.
+- Memory-core optimization roadmap foundation: added embedding doctor/auto-select, short-term promotion audit/repair, and deterministic dreaming audit/run/repair flows, exposed through bridge and MCP tools with tests.
 - `agentChannelMap` schema in `openclaw.plugin.json` — Discord channel ID to agent ID routing
 - `registerLegacyMemoryTools` flag in plugin config schema
 - Content block array flatten helper for multi-block Discord messages
