@@ -15,6 +15,9 @@
   Documentation now recommends `systemctl restart` for plugin code changes.
 - **Memory slot activation**: Plugin activation through memory slot now correctly passes config
   (`autoSyncTurns`, `mode`, `agentChannelMap`) via `registerSuperMemoryHooks`.
+- **Tool call JSON in assistant reply**: Hook was joining all assistant messages (including
+  intermediate tool call JSON). Fixed to take only the **last assistant text message** and strip
+  leading JSON lines, so only the final text reply is saved to Super Memory.
 
 ### Added
 
@@ -25,7 +28,7 @@
 
 ### Changed
 
-- Plugin file size: 21794 → 25004 bytes (config merge + content flatten + agent routing)
+- Plugin file size: 21794 → 25452 bytes (config merge + content flatten + agent routing + tool call filtering)
 - `openclaw.plugin.json`: 7358 → 7844 bytes (extended schema)
 
 ## 0.1.0 (unreleased)
