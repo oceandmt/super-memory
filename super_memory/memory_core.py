@@ -23,8 +23,8 @@ def _store(config_path: str | None = None) -> SuperMemoryStore:
 
 def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
     cfg = load_config(config_path)
-    semantic_cfg = getattr(cfg, "semantic", None)
-    ollama_url = os.environ.get("SUPER_MEMORY_OLLAMA_EMBED_URL", "http://127.0.0.1:11434/api/embed")
+    vector_enabled = bool(getattr(cfg, "vector_enabled", False))
+    ollama_url = os.environ.get("SUPER_MEMORY_OLLAMA_EMBED_URL", str(getattr(cfg, "embedding_endpoint", "http://127.0.0.1:11434/api/embed")))
     sqlite_vec_available = False
     try:
         import sqlite_vec  # type: ignore  # noqa: F401
@@ -33,7 +33,7 @@ def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
         sqlite_vec_available = False
     status = {
         "ok": True,
-        "semantic_enabled": bool(getattr(semantic_cfg, "enabled", False)) if semantic_cfg else False,
+        "semantic_enabled": vector_enabled,
         "sqlite_vec_available": sqlite_vec_available,
         "ollama_embed_url": ollama_url,
         "fts_available": True,
