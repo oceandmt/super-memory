@@ -154,6 +154,39 @@ def save_order():
     console.print("4. Neural Memory layer: associative graph/semantic recall adapter, embedded LLM optional")
 
 
+@app.command("durable-pack")
+def durable_pack_cmd(
+    pack_name: str = typer.Option("openclaw-super-memory-durable-pack-v1", "--pack-name"),
+    project: str = typer.Option("super-memory", "--project"),
+    agent: list[str] = typer.Option(["lucas", "alex", "max", "isol"], "--agent"),
+    no_qualify: bool = typer.Option(False, "--no-qualify"),
+    no_debug: bool = typer.Option(False, "--no-debug"),
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    """Install the OpenClaw durable memory pack and auto-qualify recall."""
+    from . import bridge as _bridge
+
+    result = _bridge.durable_pack(
+        pack_name=pack_name,
+        project=project,
+        agents=agent,
+        qualify=not no_qualify,
+        debug=not no_debug,
+        config_path=config,
+    )
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(f"[green]Durable pack[/green] {pack_name}: {'OK' if result.get('ok') else 'FAILED'}")
+    table = Table(title="Qualification")
+    table.add_column("OK")
+    table.add_column("Hits")
+    table.add_column("Query")
+    for q in result.get("qualification", []):
+        table.add_row("✅" if q.get("ok") else "❌", str(q.get("hit_count", 0)), q.get("query", ""))
+    console.print(table)
+
 @app.command("promote")
 def promote(
     memory_id: str = typer.Argument(..., help="Memory ID to promote"),

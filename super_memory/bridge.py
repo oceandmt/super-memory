@@ -4,7 +4,7 @@ import importlib.util as _importlib_util
 from typing import Any
 
 from . import cleanup as cleanup_mod
-from . import code_index, cognitive, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
+from . import code_index, cognitive, durable_pack as durable_pack_mod, graph, intelligence, leitner, lifecycle, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
 from .config import load_config
 from .hooks import TurnContext
@@ -245,6 +245,51 @@ def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dic
     svc = SuperMemoryService(cfg)
     records = svc.prefetch(query, limit=limit)
     return {"records": [r.model_dump(mode="json") for r in records]}
+
+
+def durable_pack(
+    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
+    project: str = durable_pack_mod.DEFAULT_PROJECT,
+    agents: list[str] | None = None,
+    qualify: bool = True,
+    debug: bool = True,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Install a deterministic high-signal OpenClaw durable memory pack.
+
+    The pack is canonical-first, shared-scope, and intentionally curated to improve
+    agent continuity beyond raw transcript recall. Qualification performs recall
+    checks for the pack's key concepts; debug returns health/status snapshots.
+    """
+    pack = durable_pack_mod.build_openclaw_pack(pack_name=pack_name, project=project)
+    if agents:
+        for item in pack:
+            item.setdefault("metadata", {})["agents"] = agents
+    saved = remember_batch(pack, config_path=config_path)
+
+    qualification: list[dict[str, Any]] = []
+    if qualify:
+        for query in durable_pack_mod.qualification_queries():
+            hits = recall(query, limit=5, config_path=config_path)
+            hit_count = sum(len(v) for v in hits.values())
+            qualification.append({"query": query, "hit_count": hit_count, "ok": hit_count > 0})
+
+    debug_payload: dict[str, Any] = {}
+    if debug:
+        debug_payload = {
+            "health": health(config_path=config_path),
+            "status": status(config_path=config_path),
+        }
+
+    ok = bool(saved.get("ok")) and all(q["ok"] for q in qualification) if qualify else bool(saved.get("ok"))
+    return {
+        "ok": ok,
+        "pack_name": pack_name,
+        "project": project,
+        "saved": saved,
+        "qualification": qualification,
+        "debug": debug_payload,
+    }
 
 
 def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:

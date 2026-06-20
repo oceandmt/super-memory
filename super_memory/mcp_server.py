@@ -44,6 +44,7 @@ NORMAL_TOOLS = {
     "super_memory_recall",
     "super_memory_prefetch",
     "super_memory_sync_turn",
+    "super_memory_durable_pack",
     "super_memory_memory_search",
     "super_memory_memory_get",
     "super_memory_status",
@@ -354,6 +355,19 @@ TOOLS: dict[str, JSON] = {
             }
         ),
     },
+    "super_memory_durable_pack": {
+        "description": "Install curated shared/project durable memories for OpenClaw agents, then auto-qualify and debug recall.",
+        "inputSchema": _schema(
+            {
+                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
+                "project": {"type": "string", "default": "super-memory"},
+                "agents": {"type": "array", "items": {"type": "string"}},
+                "qualify": {"type": "boolean", "default": True},
+                "debug": {"type": "boolean", "default": True},
+                "config_path": {"type": "string"},
+            }
+        ),
+    },
     "super_memory_memory_search": {
         "description": "OpenClaw memory_search-compatible recall payload from Super Memory.",
         "inputSchema": _schema(
@@ -554,6 +568,15 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_sync_turn":
         config_path = args.pop("config_path", None)
         return bridge.sync_turn(args, config_path=config_path)
+    if name == "super_memory_durable_pack":
+        return bridge.durable_pack(
+            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
+            project=args.get("project", "super-memory"),
+            agents=args.get("agents") or ["lucas", "alex", "max", "isol"],
+            qualify=args.get("qualify", True),
+            debug=args.get("debug", True),
+            config_path=args.get("config_path"),
+        )
     if name == "super_memory_memory_search":
         return bridge.memory_search(
             args["query"],

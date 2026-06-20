@@ -167,6 +167,14 @@ class SyncTurnRequest(BaseModel):
     config_path: str | None = None
 
 
+class DurablePackRequest(BaseModel):
+    pack_name: str = "openclaw-super-memory-durable-pack-v1"
+    project: str = "super-memory"
+    agents: list[str] = Field(default_factory=lambda: ["lucas", "alex", "max", "isol"])
+    qualify: bool = True
+    debug: bool = True
+    config_path: str | None = None
+
 class PromoteRequest(BaseModel):
     memory_id: str
     config_path: str | None = None
@@ -421,6 +429,18 @@ def prefetch(req: RecallRequest) -> dict[str, Any]:
 def sync_turn(req: SyncTurnRequest) -> dict[str, Any]:
     payload = req.model_dump(exclude={"config_path"})
     return bridge.sync_turn(payload, config_path=req.config_path)
+
+
+@app.post("/durable-pack")
+def durable_pack(req: DurablePackRequest) -> dict[str, Any]:
+    return bridge.durable_pack(
+        pack_name=req.pack_name,
+        project=req.project,
+        agents=req.agents,
+        qualify=req.qualify,
+        debug=req.debug,
+        config_path=req.config_path,
+    )
 
 
 @app.post("/promote")
