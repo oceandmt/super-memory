@@ -24,7 +24,7 @@ from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "1.3.0"}
+SERVER_INFO = {"name": "super-memory", "version": "1.4.0"}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
