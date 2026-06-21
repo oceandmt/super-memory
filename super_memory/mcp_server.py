@@ -75,6 +75,9 @@ NORMAL_TOOLS = {
     # P3: Stabilization
     "super_memory_graph_health",
     "super_memory_stabilize",
+    # Lifecycle: Expiration
+    "super_memory_expire_by_age",
+    "super_memory_expire_by_valid_until",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -353,6 +356,25 @@ TOOLS: dict[str, JSON] = {
                 "dry_run": {"type": "boolean", "default": True},
                 "source_prefixes": {"type": "array", "items": {"type": "string"}},
                 "max_days": {"type": "integer"},
+            }
+        ),
+    },
+    "super_memory_expire_by_age": {
+        "description": "Soft-delete memories past their expires_days TTL (e.g. todos, ephemeral notes). Safe by default (dry_run=True).",
+        "inputSchema": _schema(
+            {
+                "config_path": {"type": "string"},
+                "max_days": {"type": "integer", "default": 90},
+                "dry_run": {"type": "boolean", "default": True},
+            }
+        ),
+    },
+    "super_memory_expire_by_valid_until": {
+        "description": "Soft-delete memories past their valid_until window (scheduled rules, time-bounded API keys). Safe by default (dry_run=True).",
+        "inputSchema": _schema(
+            {
+                "config_path": {"type": "string"},
+                "dry_run": {"type": "boolean", "default": True},
             }
         ),
     },
@@ -663,6 +685,17 @@ def _call_tool(name: str, args: JSON) -> Any:
             dry_run=args.get("dry_run", True),
             source_prefixes=args.get("source_prefixes"),
             max_days=args.get("max_days"),
+        )
+    if name == "super_memory_expire_by_age":
+        return bridge.expire_by_age(
+            config_path=args.get("config_path"),
+            max_days=args.get("max_days", 90),
+            dry_run=args.get("dry_run", True),
+        )
+    if name == "super_memory_expire_by_valid_until":
+        return bridge.expire_by_valid_until(
+            config_path=args.get("config_path"),
+            dry_run=args.get("dry_run", True),
         )
     if name == "super_memory_sanitize_prompt":
         return {"text": bridge.sanitize_prompt(args["text"])}

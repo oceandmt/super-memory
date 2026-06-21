@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 155,
+  "total_tools": 173,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -336,6 +336,32 @@
           }
         },
         "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_auto_compact",
+      "category": "core",
+      "description": "Auto-compact soft-deleted records when ratio exceeds threshold (default 20%). Safe by default (dry_run=True).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "default": 0.2
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        }
       },
       "profiles": [
         "user",
@@ -3643,6 +3669,256 @@
       ]
     },
     {
+      "name": "super_memory_write_queue_flush",
+      "category": "other",
+      "description": "Flush the deferred write queue (batch save pending records).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "queue_key": {
+            "type": "string",
+            "default": "default"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_write_queue_defer",
+      "category": "other",
+      "description": "Defer a memory record to the write queue for batch flush.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "type_": {
+            "type": "string",
+            "default": "context"
+          },
+          "scope": {
+            "type": "string",
+            "default": "session"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_depth_prior_status",
+      "category": "other",
+      "description": "Show depth prior adaptation state (query type depths, success rates).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_detect_conflicts",
+      "category": "other",
+      "description": "Detect conflicting memories via negation/temporal analysis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "min_similarity": {
+            "type": "number",
+            "default": 0.3
+          },
+          "limit": {
+            "type": "integer",
+            "default": 50
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_resolve_conflict",
+      "category": "other",
+      "description": "Resolve a detected conflict.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conflict_key": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "keep_both",
+              "keep_a",
+              "keep_b",
+              "supersede"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "default": ""
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "conflict_key",
+          "resolution"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_version_create",
+      "category": "knowledge_mgmt",
+      "description": "Create a brain version snapshot for safe rollback.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "default": "snapshot"
+          },
+          "description": {
+            "type": "string",
+            "default": ""
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_version_list",
+      "category": "knowledge_mgmt",
+      "description": "List all version snapshots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_version_diff",
+      "category": "knowledge_mgmt",
+      "description": "Diff two version snapshots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from_version": {
+            "type": "string"
+          },
+          "to_version": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_version",
+          "to_version"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_version_rollback_dry_run",
+      "category": "knowledge_mgmt",
+      "description": "Preview rollback to a snapshot (non-destructive dry-run).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
       "name": "super_memory_leitner",
       "category": "other",
       "description": "Leitner 5-box: queue|mark|schedule|stats|auto_seed.",
@@ -3693,6 +3969,242 @@
       },
       "profiles": [
         "admin"
+      ]
+    },
+    {
+      "name": "super_memory_causal_chain",
+      "category": "other",
+      "description": "Trace causal chain through LEADS_TO/CAUSED_BY synapses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string",
+            "default": "forward",
+            "enum": [
+              "forward",
+              "backward"
+            ]
+          },
+          "max_depth": {
+            "type": "integer",
+            "default": 6
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_event_sequence",
+      "category": "other",
+      "description": "Get chronological event sequence within optional time window.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_temporal_range",
+      "category": "other",
+      "description": "Get memories within a time window.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "end": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_topic_narrative",
+      "category": "other",
+      "description": "Build coherent narrative from memories related to a topic.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_classify_affect",
+      "category": "other",
+      "description": "Classify arousal (0.0-1.0) and valence (positive/negative/neutral) of text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_recall_by_affect",
+      "category": "core",
+      "description": "Recall memories filtered by arousal threshold or valence.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "min_arousal": {
+            "type": "number"
+          },
+          "valence": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "neutral"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "default": 20
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_graph_health",
+      "category": "graph",
+      "description": "Run full graph health check: neurons, synapses, orphans, duplicates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_stabilize",
+      "category": "other",
+      "description": "Run full graph stabilization: health check, repair orphans, dedup, prune stale.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "prune_stale_synapses": {
+            "type": "boolean",
+            "default": true
+          },
+          "weight_threshold": {
+            "type": "number",
+            "default": 0.05
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
       ]
     },
     {

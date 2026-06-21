@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import sqlite3
+
+from datetime import timezone
 from typing import Any
 
 from .config import load_config
@@ -396,3 +399,144 @@ def cleanup(
         "actions": actions,
         "checks": checks,
     }
+
+
+def expire_by_age(
+    *,
+    config_path: str | None = None,
+    max_days: int = 90,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Expire memories past their expires_days TTL.
+
+    Finds memories where:
+      - expires_days IS NOT NULL
+      - created_at + expires_days < now()
+      - NOT already soft-deleted
+
+    Marks them as soft-deleted (soft_delete=1 in metadata_json).
+    Safe by default (dry_run=True).
+    """
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, content, type, source, created_at,
+                   json_extract(metadata_json, '$.expires_days') AS expires_days
+            FROM memories
+            WHERE json_extract(metadata_json, '$.expires_days') IS NOT NULL
+              AND json_extract(metadata_json, '$.expires_days') != 'null'
+              AND (json_extract(metadata_json, '$.soft_deleted') IS NULL
+                   OR json_extract(metadata_json, '$.soft_deleted') != 1)
+              AND datetime(created_at, '+' || CAST(json_extract(metadata_json, '$.expires_days') AS TEXT) || ' days') < datetime('now')
+            ORDER BY created_at ASC
+            """,
+        ).fetchall()
+
+        expired_ids = [r["id"] for r in rows]
+        report: dict[str, Any] = {
+            "ok": True,
+            "strategy": "expire_by_age",
+            "candidate_ids": len(expired_ids),
+            "dry_run": dry_run,
+            "samples": [{"id": r["id"], "type": r["type"], "source": r["source"], "created_at": r["created_at"]} for r in rows[:5]],
+            "expired": None,
+        }
+
+        if not expired_ids:
+            report["reason"] = "no expired memories found"
+            return report
+
+        if dry_run:
+            report["reason"] = f"{len(expired_ids)} memories would be soft-deleted (max_days={max_days})"
+            return report
+
+        # Soft-delete expired memories
+        now = datetime.datetime.now(timezone.utc).isoformat()
+        for mid in expired_ids:
+            conn.execute(
+                """
+                UPDATE memories
+                SET metadata_json = json_set(
+                    COALESCE(metadata_json, '{}'),
+                    '$.soft_deleted', 1,
+                    '$.expired_at', ?
+                )
+                WHERE id = ?
+                """,
+                (now, mid),
+            )
+        conn.commit()
+
+        report["expired"] = {"soft_deleted_ids": len(expired_ids), "expired_at": now}
+        return report
+
+
+def expire_by_valid_until(
+    *,
+    config_path: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Expire memories past their valid_until window.
+
+    Finds memories where:
+      - metadata.valid_until IS NOT NULL
+      - valid_until < now()
+      - NOT already soft-deleted
+
+    Marks them as soft-deleted.
+    """
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, content, type, source, created_at,
+                   json_extract(metadata_json, '$.valid_until') AS valid_until
+            FROM memories
+            WHERE json_extract(metadata_json, '$.valid_until') IS NOT NULL
+              AND json_extract(metadata_json, '$.valid_until') != 'null'
+              AND (json_extract(metadata_json, '$.soft_deleted') IS NULL
+                   OR json_extract(metadata_json, '$.soft_deleted') != 1)
+              AND json_extract(metadata_json, '$.valid_until') < datetime('now')
+            ORDER BY created_at ASC
+            """,
+        ).fetchall()
+
+        expired_ids = [r["id"] for r in rows]
+        report: dict[str, Any] = {
+            "ok": True,
+            "strategy": "expire_by_valid_until",
+            "candidate_ids": len(expired_ids),
+            "dry_run": dry_run,
+            "samples": [{"id": r["id"], "type": r["type"], "source": r["source"], "valid_until": r["valid_until"]} for r in rows[:5]],
+            "expired": None,
+        }
+
+        if not expired_ids:
+            report["reason"] = "no expired memories found"
+            return report
+
+        if dry_run:
+            report["reason"] = f"{len(expired_ids)} memories would be soft-deleted"
+            return report
+
+        now = datetime.datetime.now(timezone.utc).isoformat()
+        for mid in expired_ids:
+            conn.execute(
+                """
+                UPDATE memories
+                SET metadata_json = json_set(
+                    COALESCE(metadata_json, '{}'),
+                    '$.soft_deleted', 1,
+                    '$.expired_at', ?
+                )
+                WHERE id = ?
+                """,
+                (now, mid),
+            )
+        conn.commit()
+
+        report["expired"] = {"soft_deleted_ids": len(expired_ids), "expired_at": now}
+        return report

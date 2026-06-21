@@ -59,9 +59,15 @@ class SuperMemoryService:
         record.metadata["content_hash"] = content_hash
 
         # Enrich with arousal/valence
+        arousal_log: dict | None = None
         try:
             from .affect import enrich_record as _enrich
-            record = _enrich(record)
+            enriched = _enrich(record)
+            arousal_log = {
+                "arousal": record.metadata.get("arousal"),
+                "valence": record.metadata.get("valence"),
+            }
+            record = enriched
         except Exception as exc:
             logger.warning("save.affect_enrich_failed", error=f"{type(exc).__name__}: {exc}")
 
@@ -109,6 +115,10 @@ class SuperMemoryService:
                     elif not markdown_ok and self.config.require_canonical_first:
                         result.pending_canonical_sync = True
                     results.append(result)
+
+        # Log affect stats for observability
+        if arousal_log is not None:
+            logger.info("save.affect", arousal=arousal_log.get("arousal"), valence=arousal_log.get("valence"), memory_id=record.id)
 
         return results
 

@@ -655,6 +655,16 @@ def prune(config_path: str | None = None, dry_run: bool = True, source_prefixes:
     """
     return cleanup_mod.prune(config_path=config_path, dry_run=dry_run, source_prefixes=source_prefixes, max_days=max_days)
 
+
+def expire_by_age(config_path: str | None = None, max_days: int = 90, dry_run: bool = True) -> dict[str, Any]:
+    """Soft-delete memories past their expires_days TTL."""
+    return cleanup_mod.expire_by_age(config_path=config_path, max_days=max_days, dry_run=dry_run)
+
+
+def expire_by_valid_until(config_path: str | None = None, dry_run: bool = True) -> dict[str, Any]:
+    """Soft-delete memories past their valid_until window."""
+    return cleanup_mod.expire_by_valid_until(config_path=config_path, dry_run=dry_run)
+
 # Phase 7 / P2 lifecycle
 def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.review(config_path=config_path, limit=limit)
