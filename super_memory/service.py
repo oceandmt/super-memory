@@ -62,8 +62,8 @@ class SuperMemoryService:
         try:
             from .affect import enrich_record as _enrich
             record = _enrich(record)
-        except Exception:
-            pass  # Non-fatal
+        except Exception as exc:
+            logger.warning("save.affect_enrich_failed", error=f"{type(exc).__name__}: {exc}")
 
         def _extra() -> dict[str, object]:
             return {
@@ -268,15 +268,16 @@ class SuperMemoryService:
                                 seen_hashes.add(ch)
                                 layer_records.append(rec)
                     out[layer] = layer_records[:limit]
-                except Exception:
+                except Exception as exc:
+                    logger.warning("recall.layer_failed", layer=layer.value, error=f"{type(exc).__name__}: {exc}")
                     out[layer] = []
 
         # Record outcome for depth adaptation
         total_hits = sum(len(v) for v in out.values())
         try:
             record_outcome(query, hit_count=total_hits, store=self.store)
-        except Exception:
-            pass  # Non-fatal
+        except Exception as exc:
+            logger.warning("recall.outcome_failed", error=f"{type(exc).__name__}: {exc}")
 
         return out
 

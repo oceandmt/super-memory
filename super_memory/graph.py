@@ -275,7 +275,10 @@ def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[
             (q, q, q, limit),
         ).fetchall()
         for row in rows:
-            conn.execute("UPDATE cognitive_fibers SET frequency=frequency+1, updated_at=? WHERE id=?", (_now(), row["id"]))
+            try:
+                conn.execute("UPDATE cognitive_fibers SET frequency=frequency+1, updated_at=? WHERE id=?", (_now(), row["id"]))
+            except Exception:
+                pass  # Non-fatal — frequency is a derived metric
     return {"ok": True, "query": query, "fibers": [{"id": r["id"], "memory_id": json.loads(r["metadata_json"]).get("memory_id"), "anchor_neuron_id": r["anchor_neuron_id"], "summary": r["summary"], "salience": r["salience"], "coherence": r["coherence"], "frequency": r["frequency"] + 1, "tags": json.loads(r["tags_json"])} for r in rows]}
 
 
