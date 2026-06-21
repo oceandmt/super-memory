@@ -1242,3 +1242,105 @@ def version_rollback_dry_run(
     cfg = _lc(config_path)
     store = SuperMemoryStore(cfg)
     return rollback_dry_run(store, version_id)
+
+
+# ── Phase 3: Answer Reconstruction ─────────────────────────────────────────
+def causal_chain(
+    memory_id: str,
+    direction: str = "forward",
+    max_depth: int = 6,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Trace a causal chain through memories."""
+    from .reconstruct import causal_chain as _cc
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _cc(memory_id, store, max_depth=max_depth, direction=direction)
+
+
+def event_sequence(
+    start: str | None = None,
+    end: str | None = None,
+    types: list[str] | None = None,
+    limit: int = 20,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Get chronological event sequence."""
+    from .reconstruct import event_sequence as _es
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _es(store, start=start, end=end, types=types, limit=limit)
+
+
+def temporal_range(
+    start: str,
+    end: str,
+    config_path: str | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Get memories within a time window."""
+    from .reconstruct import temporal_range as _tr
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _tr(store, start=start, end=end, **kwargs)
+
+
+def topic_narrative(
+    topic: str,
+    limit: int = 10,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Build a coherent narrative from memories related to a topic."""
+    from .reconstruct import topic_narrative as _tn
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _tn(topic, store, max_memories=limit)
+
+
+# ── Phase 3: Arousal/Valence ───────────────────────────────────────────────
+def classify_affect(text: str) -> dict[str, Any]:
+    """Classify arousal (0.0-1.0) and valence (positive/negative/neutral)."""
+    from .affect import classify_affect as _ca
+    return _ca(text)
+
+
+def recall_by_affect(
+    min_arousal: float | None = None,
+    valence: str | None = None,
+    limit: int = 20,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Recall memories filtered by arousal/valence."""
+    from .affect import recall_by_affect as _rba
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _rba(store, min_arousal=min_arousal, valence=valence, limit=limit)
+
+
+# ── Phase 3: Stabilization ─────────────────────────────────────────────────
+def graph_health(config_path: str | None = None) -> dict[str, Any]:
+    """Run full graph health check."""
+    from .stabilize import graph_health as _gh
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _gh(store)
+
+
+def stabilize(
+    dry_run: bool = True,
+    prune_stale_synapses: bool = True,
+    weight_threshold: float = 0.05,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Run full graph stabilization: health, repair orphans, dedup, prune."""
+    from .stabilize import stabilize as _st
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _st(store, dry_run=dry_run, prune_stale_synapses=prune_stale_synapses, weight_threshold=weight_threshold)

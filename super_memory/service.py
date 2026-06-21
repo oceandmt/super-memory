@@ -58,6 +58,13 @@ class SuperMemoryService:
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
 
+        # Enrich with arousal/valence
+        try:
+            from .affect import enrich_record as _enrich
+            record = _enrich(record)
+        except Exception:
+            pass  # Non-fatal
+
         def _extra() -> dict[str, object]:
             return {
                 "memory_id": record.id,

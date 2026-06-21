@@ -24,7 +24,7 @@ from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "1.1.3"}
+SERVER_INFO = {"name": "super-memory", "version": "1.3.0"}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
@@ -64,6 +64,17 @@ NORMAL_TOOLS = {
     "super_memory_version_list",
     "super_memory_version_diff",
     "super_memory_version_rollback_dry_run",
+    # P3: Answer Reconstruction
+    "super_memory_causal_chain",
+    "super_memory_event_sequence",
+    "super_memory_temporal_range",
+    "super_memory_topic_narrative",
+    # P3: Arousal/Valence
+    "super_memory_classify_affect",
+    "super_memory_recall_by_affect",
+    # P3: Stabilization
+    "super_memory_graph_health",
+    "super_memory_stabilize",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -549,6 +560,15 @@ for _name, _desc, _props, _required in [
     ("super_memory_version_rollback_dry_run", "Preview rollback to a snapshot (non-destructive dry-run).", {"version_id": {"type": "string"}, "config_path": {"type": "string"}}, ["version_id"]),
     ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
     ("super_memory_leitner_due", "Return count of Leitner-due memories without loading full queue.", {"config_path": {"type": "string"}}, []),
+    # Phase 3 tools
+    ("super_memory_causal_chain", "Trace causal chain through LEADS_TO/CAUSED_BY synapses.", {"memory_id": {"type": "string"}, "direction": {"type": "string", "default": "forward", "enum": ["forward", "backward"]}, "max_depth": {"type": "integer", "default": 6}, "config_path": {"type": "string"}}, ["memory_id"]),
+    ("super_memory_event_sequence", "Get chronological event sequence within optional time window.", {"start": {"type": "string"}, "end": {"type": "string"}, "types": {"type": "array", "items": {"type": "string"}}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
+    ("super_memory_temporal_range", "Get memories within a time window.", {"start": {"type": "string"}, "end": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, ["start", "end"]),
+    ("super_memory_topic_narrative", "Build coherent narrative from memories related to a topic.", {"topic": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["topic"]),
+    ("super_memory_classify_affect", "Classify arousal (0.0-1.0) and valence (positive/negative/neutral) of text.", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_recall_by_affect", "Recall memories filtered by arousal threshold or valence.", {"min_arousal": {"type": "number"}, "valence": {"type": "string", "enum": ["positive", "negative", "neutral"]}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
+    ("super_memory_graph_health", "Run full graph health check: neurons, synapses, orphans, duplicates.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_stabilize", "Run full graph stabilization: health check, repair orphans, dedup, prune stale.", {"dry_run": {"type": "boolean", "default": True}, "prune_stale_synapses": {"type": "boolean", "default": True}, "weight_threshold": {"type": "number", "default": 0.05}, "config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
     ("super_memory_train_local", "Train from local text/rich docs under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
     ("super_memory_index_local", "Index code symbols/imports under workspace only.", {"path": {"type": "string"}, "extensions": {"type": "array", "items": {"type": "string"}}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
@@ -857,6 +877,53 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_version_rollback_dry_run":
         return bridge.version_rollback_dry_run(
             version_id=args["version_id"],
+            config_path=args.get("config_path"),
+        )
+    # Phase 3 handlers
+    if name == "super_memory_causal_chain":
+        return bridge.causal_chain(
+            memory_id=args["memory_id"],
+            direction=args.get("direction", "forward"),
+            max_depth=args.get("max_depth", 6),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_event_sequence":
+        return bridge.event_sequence(
+            start=args.get("start"),
+            end=args.get("end"),
+            types=args.get("types"),
+            limit=args.get("limit", 20),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_temporal_range":
+        return bridge.temporal_range(
+            start=args["start"],
+            end=args["end"],
+            limit=args.get("limit", 20),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_topic_narrative":
+        return bridge.topic_narrative(
+            topic=args["topic"],
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_classify_affect":
+        return bridge.classify_affect(text=args["text"])
+    if name == "super_memory_recall_by_affect":
+        return bridge.recall_by_affect(
+            min_arousal=args.get("min_arousal"),
+            valence=args.get("valence"),
+            limit=args.get("limit", 20),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_graph_health":
+        return bridge.graph_health(config_path=args.get("config_path"))
+    if name == "super_memory_stabilize":
+        return bridge.stabilize(
+            dry_run=args.get("dry_run", True),
+            prune_stale_synapses=args.get("prune_stale_synapses", True),
+            weight_threshold=args.get("weight_threshold", 0.05),
             config_path=args.get("config_path"),
         )
     if name == "super_memory_dreaming_repair":
