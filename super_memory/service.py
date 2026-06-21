@@ -226,9 +226,13 @@ class SuperMemoryService:
 
     def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
-        seen_hashes: set[str] = set()
 
-        def _dedupe(records: list[MemoryRecord]) -> list[MemoryRecord]:
+        def _dedupe_layer(records: list[MemoryRecord]) -> list[MemoryRecord]:
+            # Keep recall results independently visible per layer. Cross-layer
+            # dedupe makes healthy projections look empty (e.g. mempalace hit
+            # suppressing honcho/neural_memory with the same content_hash).
+            # Presentation-level merged recall can still dedupe later.
+            seen_hashes: set[str] = set()
             deduped: list[MemoryRecord] = []
             for rec in records:
                 ch = rec.metadata.get("content_hash") or rec.content
@@ -251,7 +255,7 @@ class SuperMemoryService:
                 if layer not in self.config.enabled_layers:
                     continue
                 try:
-                    out[layer] = _dedupe(self.backends[layer].recall(query, limit=limit))
+                    out[layer] = _dedupe_layer(self.backends[layer].recall(query, limit=limit))
                 except Exception:
                     out[layer] = []
         return out

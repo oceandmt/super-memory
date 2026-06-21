@@ -24,7 +24,7 @@ from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "0.1.1"}
+SERVER_INFO = {"name": "super-memory", "version": "1.1.3"}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
@@ -37,6 +37,7 @@ NORMAL_TOOLS = {
     "super_memory_auto",
     "super_memory_stats",
     "super_memory_health",
+    "super_memory_auto_compact",
     "super_memory_cleanup",
     "super_memory_sanitize_prompt",
     "super_memory_sanitize_auto_capture",
@@ -301,6 +302,14 @@ TOOLS: dict[str, JSON] = {
     "super_memory_health": {
         "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_auto_compact": {
+        "description": "Auto-compact soft-deleted records when ratio exceeds threshold (default 20%). Safe by default (dry_run=True).",
+        "inputSchema": {"type": "object", "properties": {
+            "threshold": {"type": "number", "default": 0.2},
+            "dry_run": {"type": "boolean", "default": True},
+            "config_path": {"type": "string"}
+        }},
     },
     "super_memory_cleanup": {
         "description": "Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.",
@@ -594,6 +603,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.supervised_runtime_smoke(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
+    if name == "super_memory_auto_compact":
+        return bridge.auto_compact(
+            threshold=args.get("threshold", 0.2),
+            dry_run=args.get("dry_run", True),
+            config_path=args.get("config_path"),
+        )
     if name == "super_memory_cleanup":
         return bridge.cleanup(
             config_path=args.get("config_path"),

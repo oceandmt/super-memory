@@ -36,11 +36,17 @@ def _init_tables(store: SuperMemoryStore) -> None:
 
 
 def _rows(store: SuperMemoryStore, limit: int = 500, include_soft_deleted: bool = False) -> list[Any]:
-    active_sql = ""
-    if not include_soft_deleted:
-        active_sql = "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+    if include_soft_deleted:
+        query = "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?"
+    else:
+        query = (
+            "SELECT * FROM memories "
+            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+            "ORDER BY created_at DESC LIMIT ?"
+        )
     with store.connect() as conn:
-        return conn.execute(f"SELECT * FROM memories {active_sql} ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+        return conn.execute(query, (limit,)).fetchall()
 
 
 def _load_state(store: SuperMemoryStore, key: str) -> dict[str, Any] | None:

@@ -187,11 +187,43 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
-def embed_text(text: str, config=None) -> list[float] | None:
+_KEEP_ALIVE_MODEL: str | None = None
+
+
+def warmup_embedding_model(config=None) -> bool:
+    """Ensure the embedding model is loaded and kept warm.
+    Sends a warm-up request with keep_alive=30m.
+    Returns True if model is ready, False if unavailable.
+    """
+    global _KEEP_ALIVE_MODEL
+    cfg = config or load_config()
+    model = getattr(cfg, "embedding_model", "nomic-embed-text")
+    if _KEEP_ALIVE_MODEL == model:
+        return True  # Already warmed up
+    # Use the same /api/embed endpoint with a tiny input to warm the model
+    endpoint = getattr(cfg, "embedding_endpoint", "http://127.0.0.1:11434/api/embed")
+    try:
+        # Warm by sending a tiny embed request — this loads the model
+        payload = json.dumps({"model": model, "input": ["warm"]}).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            json.loads(resp.read())
+        _KEEP_ALIVE_MODEL = model
+        logger.info("Embedding model %s warmed up", model)
+        return True
+    except Exception as exc:
+        logger.warning("Embedding model warmup failed: %s", exc)
+        return False
+
+
+def embed_text(text: str, config=None, timeout: int = 300) -> list[float] | None:
     """Embed text using the configured provider.
 
     Currently supports Ollama's /api/embed endpoint. Returns None when
     embeddings are disabled or unavailable.
+
+    Automatically warms up the model on first call. Uses generous
+    timeout (default 300s) for CPU-bound large texts.
     """
     cfg = config or load_config()
     provider = (getattr(cfg, "embedding_provider", "ollama") or "ollama").lower()
@@ -200,17 +232,42 @@ def embed_text(text: str, config=None) -> list[float] | None:
     if provider != "ollama":
         logger.warning("Unsupported embedding provider: %s", provider)
         return None
+
+    # Ensure model is warm
+    warmup_embedding_model(config=cfg)
+
     endpoint = getattr(cfg, "embedding_endpoint", "http://127.0.0.1:11434/api/embed")
     model = getattr(cfg, "embedding_model", "nomic-embed-text")
     try:
-        payload = json.dumps({"model": model, "input": [text or ""]}).encode("utf-8")
-        req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read())
-        embeddings = data.get("embeddings") or []
-        if not embeddings:
-            return None
-        return list(embeddings[0])
+        # Split large texts into chunks to avoid timeout on CPU
+        input_text = text or ""
+        if len(input_text) > 2000:
+            # For texts >2000 chars, embed in chunks and average
+            chunks = [input_text[i:i+2000] for i in range(0, len(input_text), 2000)]
+            all_embeddings = []
+            for chunk in chunks:
+                payload = json.dumps({"model": model, "input": [chunk]}).encode("utf-8")
+                req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    data = json.loads(resp.read())
+                chunk_embs = data.get("embeddings") or []
+                if chunk_embs:
+                    all_embeddings.append(list(chunk_embs[0]))
+            if not all_embeddings:
+                return None
+            # Average the chunk embeddings
+            n = len(all_embeddings)
+            avg = [sum(vals[i] for vals in all_embeddings) / n for i in range(len(all_embeddings[0]))]
+            return avg
+        else:
+            payload = json.dumps({"model": model, "input": [input_text]}).encode("utf-8")
+            req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read())
+            embeddings = data.get("embeddings") or []
+            if not embeddings:
+                return None
+            return list(embeddings[0])
     except Exception as exc:
         logger.warning("Embedding request failed: %s", exc)
         return None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -12,18 +13,73 @@ def sqlite_path(config: SuperMemoryConfig) -> Path:
     return Path(config.workspace_root) / config.sqlite_path
 
 
+# ── Thread-safe connection cache ──────────────────────────────────────────────
+_connection_cache: dict[str, sqlite3.Connection] = {}
+_connection_lock = threading.Lock()
+
+
+def _get_cached_connection(db_path: Path) -> sqlite3.Connection:
+    """Return a cached SQLite connection for the given path.
+
+    Creates a new connection on first access or if the cached connection
+    becomes unusable (e.g. after fork, VACUUM, or unexpected close).
+    All connections use WAL mode + busy_timeout + Row factory.
+    """
+    key = str(db_path.resolve())
+    with _connection_lock:
+        conn = _connection_cache.get(key)
+        if conn is not None:
+            try:
+                conn.execute("SELECT 1")
+                return conn
+            except Exception:
+                # Stale connection — close and recreate
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                del _connection_cache[key]
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.row_factory = sqlite3.Row
+        _connection_cache[key] = conn
+        return conn
+
+
+def clear_connection_cache() -> None:
+    """Close and clear all cached connections. Used by cleanup/VACUUM paths."""
+    global _connection_cache
+    with _connection_lock:
+        for key, conn in _connection_cache.items():
+            try:
+                conn.close()
+            except Exception:
+                pass
+        _connection_cache = {}
+
+
+def invalidate_connection(db_path: Path) -> None:
+    """Invalidate a specific cached connection (e.g. after VACUUM)."""
+    key = str(db_path.resolve())
+    with _connection_lock:
+        conn = _connection_cache.pop(key, None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
 class SuperMemoryStore:
     def __init__(self, config: SuperMemoryConfig):
         self.config = config
         self.path = sqlite_path(config)
 
     def connect(self) -> sqlite3.Connection:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self.path, timeout=30)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
-        conn.row_factory = sqlite3.Row
-        return conn
+        """Get a cached SQLite connection with connection pooling."""
+        return _get_cached_connection(self.path)
 
     def get_memory(self, memory_id: str, layer: str | None = None) -> MemoryRecord | None:
         params: list[str] = [memory_id]

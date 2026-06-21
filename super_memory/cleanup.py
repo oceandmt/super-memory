@@ -5,7 +5,7 @@ from typing import Any
 
 from .config import load_config
 from .migrations import run_migrations
-from .storage import SuperMemoryStore
+from .storage import SuperMemoryStore, clear_connection_cache, invalidate_connection, row_to_memory
 
 
 def _sqlite_master_sql(conn: sqlite3.Connection, type_: str, name: str) -> str | None:
@@ -154,15 +154,21 @@ def _prune_candidate_ids(conn: sqlite3.Connection, dry_run: bool = True, source_
 
     deleted: dict[str, int] = {}
 
-    def _del(table: str, where: str, p: list[object]) -> None:
-        if not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
-            return
-        cur = conn.execute(f"DELETE FROM {table} WHERE {where}", p)
-        deleted[table] = deleted.get(table, 0) + cur.rowcount
+    def _table_exists(table: str) -> bool:
+        return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone())
 
-    _del("honcho_events", f"memory_id IN ({q})", ids)
-    _del("palace_drawers", f"memory_id IN ({q})", ids)
-    _del("graph_edges", f"source_memory_id IN ({q}) OR target_memory_id IN ({q})", ids + ids)
+    def _record_delete(table: str, cur: object) -> None:
+        deleted[table] = deleted.get(table, 0) + getattr(cur, "rowcount", 0)
+
+    if _table_exists("honcho_events"):
+        cur = conn.execute("DELETE FROM honcho_events WHERE memory_id IN (" + q + ")", ids)
+        _record_delete("honcho_events", cur)
+    if _table_exists("palace_drawers"):
+        cur = conn.execute("DELETE FROM palace_drawers WHERE memory_id IN (" + q + ")", ids)
+        _record_delete("palace_drawers", cur)
+    if _table_exists("graph_edges"):
+        cur = conn.execute("DELETE FROM graph_edges WHERE source_memory_id IN (" + q + ") OR target_memory_id IN (" + q + ")", ids + ids)
+        _record_delete("graph_edges", cur)
 
     # Cognitive neurons/synapses (gracefully skip if cognitive tables don't exist)
     cog_table = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_neurons'").fetchone()
@@ -170,16 +176,22 @@ def _prune_candidate_ids(conn: sqlite3.Connection, dry_run: bool = True, source_
         neuron_ids = [
             r["id"]
             for r in conn.execute(
-                f"SELECT id FROM cognitive_neurons WHERE source_memory_id IN ({q})",
+                "SELECT id FROM cognitive_neurons WHERE source_memory_id IN (" + q + ")",
                 ids,
             ).fetchall()
         ]
         if neuron_ids:
             nq = ",".join("?" for _ in neuron_ids)
-            _del("cognitive_synapses", f"source_neuron_id IN ({nq}) OR target_neuron_id IN ({nq})", neuron_ids + neuron_ids)
-            _del("cognitive_neurons", f"id IN ({nq})", neuron_ids)
-    _del("cognitive_fibers", f"id IN ({fq})", fiber_ids)
-    _del("memories", f"id IN ({q})", ids)
+            if _table_exists("cognitive_synapses"):
+                cur = conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id IN (" + nq + ") OR target_neuron_id IN (" + nq + ")", neuron_ids + neuron_ids)
+                _record_delete("cognitive_synapses", cur)
+            cur = conn.execute("DELETE FROM cognitive_neurons WHERE id IN (" + nq + ")", neuron_ids)
+            _record_delete("cognitive_neurons", cur)
+    if _table_exists("cognitive_fibers"):
+        cur = conn.execute("DELETE FROM cognitive_fibers WHERE id IN (" + fq + ")", fiber_ids)
+        _record_delete("cognitive_fibers", cur)
+    cur = conn.execute("DELETE FROM memories WHERE id IN (" + q + ")", ids)
+    _record_delete("memories", cur)
 
     report["pruned"] = {"ids": len(ids), "rows": deleted.get("memories", 0), "deleted_tables": deleted}
     return report
@@ -246,6 +258,77 @@ def prune(
     return report
 
 
+def auto_compact(
+    *,
+    config_path: str | None = None,
+    threshold: float = 0.2,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Auto-compact soft-deleted records when they exceed a threshold.
+
+    Counts soft-deleted records. If soft-deleted ratio > threshold,
+    runs hard-delete + VACUUM to reclaim space.
+    Safe by default (dry_run=True). Use dry_run=False to actually compact.
+    """
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        deleted = conn.execute(
+            "SELECT COUNT(*) FROM memories WHERE json_extract(metadata_json, '$.soft_deleted') = 1"
+        ).fetchone()[0]
+        ratio = deleted / max(total, 1)
+        report: dict[str, Any] = {
+            "ok": True,
+            "total": total,
+            "soft_deleted": deleted,
+            "ratio": round(ratio, 4),
+            "threshold": threshold,
+            "needs_compact": ratio > threshold,
+            "dry_run": dry_run,
+        }
+        if not report["needs_compact"]:
+            report["reason"] = f"ratio {ratio:.1%} <= threshold {threshold:.0%}, no compaction needed"
+            return report
+
+        # Find soft-deleted IDs
+        ids = [
+            r["id"]
+            for r in conn.execute(
+                "SELECT DISTINCT id FROM memories WHERE json_extract(metadata_json, '$.soft_deleted') = 1"
+            ).fetchall()
+        ]
+        report["candidate_ids"] = len(ids)
+
+        if dry_run:
+            report["reason"] = f">{threshold:.0%} soft-deleted, {len(ids)} IDs would be hard-deleted + VACUUM"
+            return report
+
+        # Hard-delete using prune logic
+        q = ",".join("?" for _ in ids)
+        conn.execute("DELETE FROM memories WHERE id IN (" + q + ")", ids)
+        conn.execute("DELETE FROM honcho_events WHERE memory_id IN (" + q + ")", ids)
+        conn.execute("DELETE FROM palace_drawers WHERE memory_id IN (" + q + ")", ids)
+        conn.execute(
+            "DELETE FROM graph_edges WHERE source_memory_id IN (" + q + ") OR target_memory_id IN (" + q + ")",
+            ids + ids,
+        )
+        conn.commit()
+
+    # VACUUM outside transaction
+    clear_connection_cache()
+    vac_conn = sqlite3.connect(str(store.path), timeout=60)
+    try:
+        vac_conn.execute("VACUUM")
+    finally:
+        vac_conn.close()
+    invalidate_connection(store.path)
+
+    report["hard_deleted"] = len(ids)
+    report["vacuumed"] = True
+    return report
+
+
 def cleanup(
     *,
     config_path: str | None = None,
@@ -295,9 +378,16 @@ def cleanup(
             raise
 
     if vacuum:
-        with store.connect() as conn:
+        # VACUUM requires exclusive access — close all cached connections first
+        clear_connection_cache()
+        conn = sqlite3.connect(str(store.path), timeout=60)
+        try:
             conn.execute("VACUUM")
             actions.append("vacuum")
+        finally:
+            conn.close()
+        # Invalidate so next connect() creates fresh connection
+        invalidate_connection(store.path)
 
     return {
         "ok": True,

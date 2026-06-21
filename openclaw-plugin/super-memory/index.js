@@ -2,7 +2,7 @@ module.exports = function superMemoryPlugin(api) {
   const cfg = api.config || {};
   // api.config returns the global OpenClaw config, not plugin-specific config.
   // Plugin config lives at plugins.entries.<id>.config. Merge into cfg.
-  const pluginCfg = (cfg.plugins && cfg.plugins.entries && cfg.plugins.entries['super-memory'] && cfg.plugins.entries['super-memory'].config) || {};
+  const pluginCfg = (cfg.plugins && cfg.plugins.entries && cfg.plugins.entries['super-memory'] && cfg.plugins.entries['super-memory'].config) || cfg || {};
   const effectiveAutoSyncTurns = pluginCfg.autoSyncTurns === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
   const effectiveAutoFlush = pluginCfg.autoFlush === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
   const effectiveAutoContext = pluginCfg.autoContext === true || pluginCfg.mode === 'exclusive';

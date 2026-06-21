@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -9,16 +10,21 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
+import structlog
+
 from . import bridge, mcp_server
 from .config import load_config
 from .observability import metrics as _metrics_snapshot, prometheus_metrics as _prometheus_metrics
 
-app = FastAPI(title="Super Memory API", version="0.1.1")
+_logger = structlog.get_logger("super-memory.api")
+
+app = FastAPI(title="Super Memory API", version="1.1.3")
 
 # ── In-memory rate limiter ──────────────────────────────────────────────────
 _RATE_LIMIT_WINDOW_S = 60
 _RATE_LIMIT_MAX = 200
 _rate_buckets: dict[str, list[float]] = {}
+_rate_lock = threading.Lock()
 
 _rate_exempt_ips = {"127.0.0.1", "::1", "localhost"}
 
@@ -28,15 +34,16 @@ def _rate_limit_ip(client_ip: str) -> tuple[bool, int]:
         return True, _RATE_LIMIT_MAX
     now = time.time()
     window_start = now - _RATE_LIMIT_WINDOW_S
-    if client_ip not in _rate_buckets:
-        _rate_buckets[client_ip] = []
-    # Prune expired timestamps
-    _rate_buckets[client_ip] = [t for t in _rate_buckets[client_ip] if t > window_start]
-    used = len(_rate_buckets[client_ip])
-    remaining = _RATE_LIMIT_MAX - used
-    if remaining <= 0:
-        return False, 0
-    _rate_buckets[client_ip].append(now)
+    with _rate_lock:
+        if client_ip not in _rate_buckets:
+            _rate_buckets[client_ip] = []
+        # Prune expired timestamps
+        _rate_buckets[client_ip] = [t for t in _rate_buckets[client_ip] if t > window_start]
+        used = len(_rate_buckets[client_ip])
+        remaining = _RATE_LIMIT_MAX - used
+        if remaining <= 0:
+            return False, 0
+        _rate_buckets[client_ip].append(now)
     return True, remaining - 1
 
 # ── Bearer token auth ────────────────────────────────────────────────────────
@@ -78,6 +85,7 @@ async def security_middleware(request: Request, call_next):
         if cfg.api_token:
             auth_header = request.headers.get("Authorization", "")
             if not auth_header.startswith("Bearer ") or auth_header[7:] != cfg.api_token:
+                _logger.warning("auth.failed", ip=client_ip, path=request.url.path, method=request.method)
                 return JSONResponse(
                     status_code=401,
                     content={"detail": "Unauthorized — invalid or missing Bearer token"},

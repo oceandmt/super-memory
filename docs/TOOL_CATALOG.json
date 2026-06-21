@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 138,
+  "total_tools": 155,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -518,6 +518,109 @@
           },
           "metadata": {
             "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_durable_pack",
+      "category": "other",
+      "description": "Install curated shared/project durable memories for OpenClaw agents, then auto-qualify and debug recall.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pack_name": {
+            "type": "string",
+            "default": "openclaw-super-memory-durable-pack-v1"
+          },
+          "project": {
+            "type": "string",
+            "default": "super-memory"
+          },
+          "agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "qualify": {
+            "type": "boolean",
+            "default": true
+          },
+          "debug": {
+            "type": "boolean",
+            "default": true
+          },
+          "dedupe": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_durable_pack_status",
+      "category": "other",
+      "description": "Audit whether the curated OpenClaw durable memory pack is installed, qualified, and duplicate-free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pack_name": {
+            "type": "string",
+            "default": "openclaw-super-memory-durable-pack-v1"
+          },
+          "project": {
+            "type": "string",
+            "default": "super-memory"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_durable_pack_audit",
+      "category": "other",
+      "description": "Deep audit the OpenClaw durable memory pack; with fix=true, soft-delete duplicates and backfill SQLite-only canonical rows.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pack_name": {
+            "type": "string",
+            "default": "openclaw-super-memory-durable-pack-v1"
+          },
+          "project": {
+            "type": "string",
+            "default": "super-memory"
+          },
+          "fix": {
+            "type": "boolean",
+            "default": false
           },
           "config_path": {
             "type": "string"
@@ -3155,6 +3258,31 @@
       ]
     },
     {
+      "name": "super_memory_lifecycle_quality_cleanup",
+      "category": "lifecycle",
+      "description": "Soft-delete active duplicate memory IDs and mark long raw event transcripts for compression without hard deletion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
       "name": "super_memory_lifecycle_cache",
       "category": "lifecycle",
       "description": "Manage local activation cache status/save/load/clear.",
@@ -3223,6 +3351,287 @@
             "type": "integer",
             "default": 500
           },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_embedding_doctor",
+      "category": "other",
+      "description": "Inspect embedding/semantic provider health and recommend FTS or semantic mode.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_embedding_auto_select",
+      "category": "other",
+      "description": "Choose the healthiest local recall backend using doctor metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_semantic_doctor",
+      "category": "other",
+      "description": "Run semantic sqlite-vec/Ollama doctor checks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "default": "semantic recall smoke test"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_semantic_index",
+      "category": "other",
+      "description": "Incrementally index canonical workspace memories into sqlite-vec.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rebuild": {
+            "type": "boolean",
+            "default": false
+          },
+          "batch_size": {
+            "type": "integer",
+            "default": 8
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_semantic_verify",
+      "category": "other",
+      "description": "Verify semantic KNN recall and hydrate canonical memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "default": "semantic recall smoke test"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_semantic_quality_audit",
+      "category": "other",
+      "description": "Check known durable queries rank high in semantic retrieval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_maintenance_run",
+      "category": "other",
+      "description": "Run safe maintenance: cleanup, semantic index, short-term policy, dreaming, health checks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_short_term_audit",
+      "category": "other",
+      "description": "Audit short-term event memories for promotion candidates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_short_term_repair",
+      "category": "other",
+      "description": "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_short_term_mark_reviewed",
+      "category": "other",
+      "description": "Mark a short-term promotion cluster as reviewed/promoted/deferred/ignored.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cluster_key": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "default": "deferred"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cluster_key"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dreaming_audit",
+      "category": "other",
+      "description": "Audit inputs for dreaming/sleep consolidation artifacts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dreaming_run",
+      "category": "other",
+      "description": "Create a deterministic dreaming consolidation artifact and optional insight memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dreaming_repair",
+      "category": "other",
+      "description": "Inspect dreaming artifacts and recommend non-destructive repair/run actions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
           "config_path": {
             "type": "string"
           }

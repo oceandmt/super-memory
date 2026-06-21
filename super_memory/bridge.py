@@ -45,8 +45,13 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
     dedup = svc.dedup_check(record)
     if dedup["skipped"]:
         logger.debug("remember dedup hit — skipping save", memory_id=record.id, matched_id=dedup["matched_id"])
+        # Return the existing canonical record id on dedup. Callers frequently
+        # use result.record.id for follow-up show/get queries; returning the
+        # unsaved candidate id makes those follow-ups look like data loss.
+        matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
+        out_record = matched or record
         return {
-            "record": record.model_dump(mode="json"),
+            "record": out_record.model_dump(mode="json"),
             "dedup": dedup,
             "results": [],
             "graph_projection": None,
@@ -81,9 +86,11 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         )
         dedup = svc.dedup_check(record)
         if dedup["skipped"]:
+            matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
+            out_record = matched or record
             items.append({
                 "ok": True,
-                "record": record.model_dump(mode="json"),
+                "record": out_record.model_dump(mode="json"),
                 "dedup": dedup,
                 "results": [],
                 "graph_projection": None,
@@ -629,6 +636,11 @@ def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) 
 
 def graph_cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
     return graph.cleanup_orphans(config_path=config_path)
+
+
+def auto_compact(config_path: str | None = None, threshold: float = 0.2, dry_run: bool = True) -> dict[str, Any]:
+    """Auto-compact soft-deleted records when ratio exceeds threshold."""
+    return cleanup_mod.auto_compact(config_path=config_path, threshold=threshold, dry_run=dry_run)
 
 
 def cleanup(config_path: str | None = None, vacuum: bool = False, integrity_check: bool = True) -> dict[str, Any]:

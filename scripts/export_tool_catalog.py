@@ -13,11 +13,13 @@ import sys
 from pathlib import Path
 
 # Add super_memory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 # Force the project root before site-packages so the local source shadows
-# any pre-installed super-memory distribution.
+# any pre-installed super-memory distribution. Keep PROJECT_ROOT stable because
+# mutating __main__.__file__ also mutates this module's __file__ global.
 import __main__ as _bm
-_bm.__file__ = str(Path(__file__).parent.parent / "__init__.py")
+_bm.__file__ = str(PROJECT_ROOT / "__init__.py")
 
 import super_memory.mcp_server as mcp
 
@@ -166,7 +168,7 @@ def main():
     args = parser.parse_args()
     
     # Ensure docs/ exists
-    docs_dir = Path(__file__).parent.parent / 'docs'
+    docs_dir = PROJECT_ROOT / 'docs'
     docs_dir.mkdir(exist_ok=True)
     
     # Get all tools from admin profile
