@@ -225,22 +225,10 @@ class SuperMemoryService:
         return flushed
 
     def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
+        # Expand query for better coverage
+        from .query_expansion import expand_query
+        expanded_queries = expand_query(query, store=self.store)
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
-
-        def _dedupe_layer(records: list[MemoryRecord]) -> list[MemoryRecord]:
-            # Keep recall results independently visible per layer. Cross-layer
-            # dedupe makes healthy projections look empty (e.g. mempalace hit
-            # suppressing honcho/neural_memory with the same content_hash).
-            # Presentation-level merged recall can still dedupe later.
-            seen_hashes: set[str] = set()
-            deduped: list[MemoryRecord] = []
-            for rec in records:
-                ch = rec.metadata.get("content_hash") or rec.content
-                if ch in seen_hashes:
-                    continue
-                seen_hashes.add(ch)
-                deduped.append(rec)
-            return deduped
 
         def _extra() -> dict[str, object]:
             return {
@@ -255,7 +243,16 @@ class SuperMemoryService:
                 if layer not in self.config.enabled_layers:
                     continue
                 try:
-                    out[layer] = _dedupe_layer(self.backends[layer].recall(query, limit=limit))
+                    layer_records: list[MemoryRecord] = []
+                    seen_hashes: set[str] = set()
+                    for q in expanded_queries:
+                        records = self.backends[layer].recall(q, limit=max(limit, 5))
+                        for rec in records:
+                            ch = rec.metadata.get("content_hash") or rec.content
+                            if ch not in seen_hashes:
+                                seen_hashes.add(ch)
+                                layer_records.append(rec)
+                    out[layer] = layer_records[:limit]
                 except Exception:
                     out[layer] = []
         return out
@@ -293,19 +290,34 @@ class SuperMemoryService:
         return self.save(record)
 
     def prefetch(self, query: str, limit: int = 10) -> list[MemoryRecord]:
+        """Recall + merge across layers using RRF score fusion.
+
+        Replaces simple sequential dedup with Reciprocal Rank Fusion (RRF)
+        for better multi-layer ranking. Fall back to simple merge if layers
+        don't produce rankable results.
+        """
         layered = self.recall(query, limit=limit)
-        merged: list[MemoryRecord] = []
-        seen: set[str] = set()
-        for layer in SAVE_ORDER:
-            for record in layered.get(layer, []):
-                key = f"{record.id}:{record.content}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                merged.append(record)
-                if len(merged) >= limit:
-                    return merged
-        return merged
+
+        # RRF: assign each record a fused score from its rank across layers
+        scores: dict[str, float] = {}
+        records: dict[str, MemoryRecord] = {}
+        k = 60  # RRF constant
+
+        for records_in_layer in layered.values():
+            for rank, rec in enumerate(records_in_layer):
+                key = f"{rec.id}:{rec.content}"
+                if key not in records:
+                    records[key] = rec
+                # RRF score: 1 / (k + rank)
+                scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+
+        if not scores:
+            return []
+
+        # Sort by RRF score descending
+        sorted_keys = sorted(scores.keys(), key=lambda k: scores[k], reverse=True)
+        result = [records[key] for key in sorted_keys[:limit]]
+        return result
 
     def recall_graph(self, memory_id: str, depth: int = 2, limit: int = 20) -> list[MemoryRecord]:
         """Recursive graph recall over the Neural Memory projection.
