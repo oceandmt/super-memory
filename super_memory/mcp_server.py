@@ -51,6 +51,19 @@ NORMAL_TOOLS = {
     "super_memory_memory_search",
     "super_memory_memory_get",
     "super_memory_status",
+    # P1: Write Queue
+    "super_memory_write_queue_flush",
+    "super_memory_write_queue_defer",
+    # P1: Depth Prior
+    "super_memory_depth_prior_status",
+    # P2: Conflict Detection
+    "super_memory_detect_conflicts",
+    "super_memory_resolve_conflict",
+    # P2: Versioning
+    "super_memory_version_create",
+    "super_memory_version_list",
+    "super_memory_version_diff",
+    "super_memory_version_rollback_dry_run",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -525,6 +538,15 @@ for _name, _desc, _props, _required in [
     ("super_memory_dreaming_audit", "Audit inputs for dreaming/sleep consolidation artifacts.", {"config_path": {"type": "string"}}, []),
     ("super_memory_dreaming_run", "Create a deterministic dreaming consolidation artifact and optional insight memory.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "config_path": {"type": "string"}}, []),
     ("super_memory_dreaming_repair", "Inspect dreaming artifacts and recommend non-destructive repair/run actions.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_write_queue_flush", "Flush the deferred write queue (batch save pending records).", {"queue_key": {"type": "string", "default": "default"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_write_queue_defer", "Defer a memory record to the write queue for batch flush.", {"content": {"type": "string"}, "type_": {"type": "string", "default": "context"}, "scope": {"type": "string", "default": "session"}, "agent_id": {"type": "string", "default": "lucas"}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
+    ("super_memory_depth_prior_status", "Show depth prior adaptation state (query type depths, success rates).", {"config_path": {"type": "string"}}, []),
+    ("super_memory_detect_conflicts", "Detect conflicting memories via negation/temporal analysis.", {"content": {"type": "string"}, "min_similarity": {"type": "number", "default": 0.3}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
+    ("super_memory_resolve_conflict", "Resolve a detected conflict.", {"conflict_key": {"type": "string"}, "resolution": {"type": "string", "enum": ["keep_both", "keep_a", "keep_b", "supersede"]}, "reason": {"type": "string", "default": ""}, "config_path": {"type": "string"}}, ["conflict_key", "resolution"]),
+    ("super_memory_version_create", "Create a brain version snapshot for safe rollback.", {"name": {"type": "string", "default": "snapshot"}, "description": {"type": "string", "default": ""}, "config_path": {"type": "string"}}, []),
+    ("super_memory_version_list", "List all version snapshots.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_version_diff", "Diff two version snapshots.", {"from_version": {"type": "string"}, "to_version": {"type": "string"}, "config_path": {"type": "string"}}, ["from_version", "to_version"]),
+    ("super_memory_version_rollback_dry_run", "Preview rollback to a snapshot (non-destructive dry-run).", {"version_id": {"type": "string"}, "config_path": {"type": "string"}}, ["version_id"]),
     ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
     ("super_memory_leitner_due", "Return count of Leitner-due memories without loading full queue.", {"config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
@@ -788,6 +810,55 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.dreaming_audit(config_path=args.get("config_path"))
     if name == "super_memory_dreaming_run":
         return bridge.dreaming_run(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_write_queue_flush":
+        return bridge.write_queue_flush(
+            queue_key=args.get("queue_key", "default"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_write_queue_defer":
+        return bridge.write_queue_defer(
+            content=args["content"],
+            type_=args.get("type_", "context"),
+            scope=args.get("scope", "session"),
+            agent_id=args.get("agent_id", "lucas"),
+            tags=args.get("tags"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_depth_prior_status":
+        return bridge.depth_prior_status(config_path=args.get("config_path"))
+    if name == "super_memory_detect_conflicts":
+        return bridge.detect_conflicts(
+            content=args.get("content"),
+            min_similarity=args.get("min_similarity", 0.3),
+            limit=args.get("limit", 50),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_resolve_conflict":
+        return bridge.resolve_conflict(
+            conflict_key=args["conflict_key"],
+            resolution=args["resolution"],
+            reason=args.get("reason", ""),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_version_create":
+        return bridge.version_create(
+            name=args.get("name", "snapshot"),
+            description=args.get("description", ""),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_version_list":
+        return bridge.version_list(config_path=args.get("config_path"))
+    if name == "super_memory_version_diff":
+        return bridge.version_diff(
+            from_version=args["from_version"],
+            to_version=args["to_version"],
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_version_rollback_dry_run":
+        return bridge.version_rollback_dry_run(
+            version_id=args["version_id"],
+            config_path=args.get("config_path"),
+        )
     if name == "super_memory_dreaming_repair":
         return bridge.dreaming_repair(config_path=args.get("config_path"))
     if name == "super_memory_reflex_status":

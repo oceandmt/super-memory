@@ -1065,3 +1065,180 @@ def backfill_markdown_sqlite(limit: int = 2000, config_path: str | None = None) 
         "errors": errors,
         "remaining_sqlite_only": remaining,
     }
+
+
+# ── Phase 1: Write Queue ───────────────────────────────────────────────────
+def write_queue_flush(queue_key: str = "default", config_path: str | None = None) -> dict[str, Any]:
+    """Flush the global deferred write queue."""
+    _ensure_write_queue(config_path)
+    results = _WRITE_QUEUES[queue_key].flush_sync()
+    return {
+        "ok": True,
+        "flushed": len(results),
+        "ok_count": sum(1 for r in results if r.ok),
+        "results": [r.model_dump(mode="json") for r in results],
+    }
+
+
+def write_queue_defer(
+    content: str,
+    type_: str = "context",
+    scope: str = "session",
+    agent_id: str = "lucas",
+    tags: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Defer a memory record to the write queue."""
+    _ensure_write_queue(config_path)
+    record = MemoryRecord(
+        content=content,
+        type=MemoryType(type_),
+        scope=MemoryScope(scope),
+        agent_id=agent_id,
+        tags=tags or [],
+    )
+    _WRITE_QUEUES["default"].defer(record)
+    return {
+        "ok": True,
+        "memory_id": record.id,
+        "pending": _WRITE_QUEUES["default"].pending_count,
+    }
+
+
+_WRITE_QUEUES: dict[str, Any] = {}
+
+
+def _ensure_write_queue(config_path: str | None = None) -> None:
+    if "default" not in _WRITE_QUEUES:
+        from .write_queue import DeferredWriteQueue as _DWQ
+        from .config import load_config as _lc
+        cfg = _lc(config_path)
+        store = SuperMemoryStore(cfg)
+        _WRITE_QUEUES["default"] = _DWQ.create_batch_service(store, batch_size=50)
+
+
+# ── Phase 1: Depth Prior ───────────────────────────────────────────────────
+def depth_prior_status(config_path: str | None = None) -> dict[str, Any]:
+    """Show depth prior adaptation state."""
+    from .depth_prior import _get_prior, classify_query
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    prior = _get_prior(store)
+    return {
+        "ok": True,
+        **prior.to_dict(),
+        "query_types": sorted({
+            **prior.successes,
+            **prior.failures,
+            **prior.depths,
+        }.keys()),
+    }
+
+
+# ── Phase 2: Conflict Detection ────────────────────────────────────────────
+def detect_conflicts(
+    content: str | None = None,
+    min_similarity: float = 0.3,
+    limit: int = 50,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Detect conflicts among memories.
+
+    If content is provided, checks new content against existing records.
+    Otherwise, samples recent active records and cross-checks them.
+    """
+    from .conflict import detect_conflicts_for_content, detect_conflicts as _dc, ConflictReport
+    from .config import load_config as _lc
+    from datetime import datetime, timezone
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+
+    if content:
+        report = detect_conflicts_for_content(
+            content, store, limit=limit, min_similarity=min_similarity
+        )
+    else:
+        # Sample recent records
+        with store.connect() as conn:
+            active_filter = (
+                "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+            )
+            rows = conn.execute(
+                f"SELECT * FROM memories WHERE {active_filter} ORDER BY created_at DESC LIMIT {limit}"
+            ).fetchall()
+        records = []
+        from .models import MemoryRecord as _MR
+        for row in rows:
+            records.append(_MR(
+                id=row["id"],
+                content=row["content"],
+                type=row["type"],
+                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
+            ))
+        report = _dc(records, min_similarity=min_similarity)
+
+    return {"ok": True, **report.to_dict()}
+
+
+def resolve_conflict(
+    conflict_key: str,
+    resolution: str,
+    reason: str = "",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Resolve a detected conflict."""
+    from .conflict import resolve_conflict as _rc
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _rc(conflict_key, resolution, reason=reason, store=store)
+
+
+# ── Phase 2: Versioning ────────────────────────────────────────────────────
+def version_create(
+    name: str = "snapshot",
+    description: str = "",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Create a brain version snapshot."""
+    from .version import create_snapshot
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return create_snapshot(store, name=name, description=description)
+
+
+def version_list(config_path: str | None = None) -> dict[str, Any]:
+    """List version snapshots."""
+    from .version import list_snapshots
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return list_snapshots(store)
+
+
+def version_diff(
+    from_version: str,
+    to_version: str,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Diff two version snapshots."""
+    from .version import diff_snapshots
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return diff_snapshots(store, from_version, to_version)
+
+
+def version_rollback_dry_run(
+    version_id: str,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Preview rollback to a snapshot."""
+    from .version import rollback_dry_run
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return rollback_dry_run(store, version_id)

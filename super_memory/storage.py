@@ -123,6 +123,42 @@ class SuperMemoryStore:
             )
             conn.commit()
 
+    def _get_meta(self, key: str) -> str | None:
+        """Get a runtime metadata value from the meta table.
+
+        Uses a dedicated 'meta' table (created lazily) for small
+        key-value persistence (e.g. depth prior state).
+        Returns None if the meta table doesn't exist or key is missing.
+        """
+        with self.connect() as conn:
+            try:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+                )
+            except Exception:
+                return None
+            row = conn.execute("SELECT value FROM _meta WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row else None
+
+    def _set_meta(self, key: str, value: object) -> None:
+        """Set a runtime metadata value.
+
+        Creates the meta table if needed. Value is JSON-serialized.
+        """
+        import json
+
+        dumped = json.dumps(value, ensure_ascii=False)
+        with self.connect() as conn:
+            try:
+                conn.execute("CREATE TABLE IF NOT EXISTS _meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            except Exception:
+                return
+            conn.execute(
+                "INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)",
+                (key, dumped),
+            )
+            conn.commit()
+
 
 def row_to_memory(row: sqlite3.Row) -> MemoryRecord:
     metadata = json.loads(row["metadata_json"])

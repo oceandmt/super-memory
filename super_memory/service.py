@@ -226,14 +226,22 @@ class SuperMemoryService:
 
     def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
         # Expand query for better coverage
+        from .depth_prior import classify_query, expected_depth, record_outcome
         from .query_expansion import expand_query
-        expanded_queries = expand_query(query, store=self.store)
+
+        depth = expected_depth(query, store=self.store)
+        # Expand query with more variants for deeper searches
+        expansion_limit = max(3, min(8, depth * 3))
+        expanded_queries = expand_query(query, store=self.store)[:expansion_limit]
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
 
         def _extra() -> dict[str, object]:
             return {
                 "query_chars": len(query),
+                "query_type": classify_query(query),
+                "depth": depth,
                 "limit": limit,
+                "expanded_count": len(expanded_queries),
                 "layers": [layer.value for layer in out],
                 "hit_count": sum(len(records) for records in out.values()),
             }
@@ -255,6 +263,14 @@ class SuperMemoryService:
                     out[layer] = layer_records[:limit]
                 except Exception:
                     out[layer] = []
+
+        # Record outcome for depth adaptation
+        total_hits = sum(len(v) for v in out.values())
+        try:
+            record_outcome(query, hit_count=total_hits, store=self.store)
+        except Exception:
+            pass  # Non-fatal
+
         return out
 
     def sync_turn(self, context: TurnContext) -> list[SaveResult]:
