@@ -234,7 +234,7 @@ def _schema(properties: JSON, required: list[str] | None = None) -> JSON:
 
 TOOLS: dict[str, JSON] = {
     "super_memory_remember": {
-        "description": "Save a memory through Super Memory canonical-first layer order.",
+        "description": "Save a memory through Super Memory canonical-first layer order. Supports defer=True for batch queuing.",
         "inputSchema": _schema(
             {
                 "content": {"type": "string"},
@@ -247,6 +247,7 @@ TOOLS: dict[str, JSON] = {
                 "source": {"type": "string"},
                 "trust_score": {"type": "number"},
                 "metadata": {"type": "object"},
+                "defer": {"type": "boolean", "default": False},
                 "config_path": {"type": "string"},
             },
             ["content"],
@@ -639,7 +640,8 @@ def _call_tool(name: str, args: JSON) -> Any:
         raise PermissionError(f"tool not exposed in {MCP_PROFILE!r} MCP profile: {name}")
     if name == "super_memory_remember":
         config_path = args.pop("config_path", None)
-        return bridge.remember(args, config_path=config_path)
+        defer = args.pop("defer", False)
+        return bridge.remember(args, config_path=config_path, defer=defer)
     if name == "super_memory_remember_batch":
         config_path = args.pop("config_path", None)
         return bridge.remember_batch(args["memories"], config_path=config_path)

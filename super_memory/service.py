@@ -1,3 +1,13 @@
+"""Super Memory service: canonical-first save orchestration, recall, dedup, sync.
+
+The central orchestration layer that:
+- Routes saves through SAVE_ORDER (markdown → mempalace → honcho → neural_memory)
+- Falls back gracefully when markdown is unavailable
+- Deduplicates by content_hash
+- Enriches records with affect (arousal/valence)
+- Expands queries and fuses results via RRF across 4 layers
+"""
+
 from __future__ import annotations
 
 import importlib.util as _importlib_util

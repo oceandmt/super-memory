@@ -1,3 +1,19 @@
+"""Cognitive graph: neurons, synapses, fibers with spreading activation.
+
+Layers:
+- Layer 4 neurons: knowledge atoms with type/content/relations
+- Synapses: weighted directed edges (CAUSED_BY, LEADS_TO, RELATED_TO, etc.)
+- Fibers: activation pathways through the graph
+
+Spreading activation:
+- Token overlap scoring for seed selection
+- Recursive traversal with configurable depth (default 2) and decay (0.55)
+- Recency, confidence, and frequency boosting for ranking
+
+This module is derived (non-canonical) — the graph is rebuilt from
+canonical markdown on demand.
+"""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,12 @@
+"""SQLite storage layer: connection pooling, FTS5 tables, memory CRUD.
+
+Key services:
+- SuperMemoryStore: thread-safe connection cache with WAL mode
+- FTS5 tables: memories_fts, honcho_events_fts for text search
+- row_to_memory() helper: sqlite3.Row → MemoryRecord
+- Connection invalidation/clear for VACUUM safety
+"""
+
 from __future__ import annotations
 
 import json

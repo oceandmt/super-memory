@@ -1,3 +1,8 @@
+"""Super Memory configuration: path resolution, layer enable/disable, canonical-first policy.
+
+Uses pydantic-settings (SuperMemoryConfig) with env/CLI fallback.
+"""
+
 from __future__ import annotations
 
 import os

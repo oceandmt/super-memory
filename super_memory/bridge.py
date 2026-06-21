@@ -23,7 +23,17 @@ else:
     logger = _logging.getLogger("super-memory.bridge")
 
 
-def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+def remember(payload: dict[str, Any], config_path: str | None = None, defer: bool = False) -> dict[str, Any]:
+    """Save a memory with canonical-first layered persistence.
+
+    Args:
+        payload: Memory payload (content, type, scope, agent_id, session_id, project, tags, source, metadata).
+        config_path: Optional config path.
+        defer: If True, enqueue to write queue instead of saving immediately.
+
+    Returns:
+        Dict with record, results (or pending count when deferred), graph_projection.
+    """
     payload = normalize_memory_payload(payload)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
@@ -39,6 +49,17 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         trust_score=payload.get("trust_score"),
         metadata=payload.get("metadata", {}),
     )
+
+    if defer:
+        # Defer to write queue for batch flush
+        _ensure_write_queue(config_path)
+        _WRITE_QUEUES["default"].defer(record)
+        return {
+            "record": record.model_dump(mode="json"),
+            "deferred": True,
+            "pending": _WRITE_QUEUES["default"].pending_count,
+        }
+
     # Dedup check: skip save when an active record with the same content_hash
     # already exists. This prevents duplicate test, contract, and benchmark
     # memories from accumulating across sessions.

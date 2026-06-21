@@ -1,3 +1,13 @@
+"""Super Memory data models: MemoryRecord, MemoryType, MemoryScope, SaveResult.
+
+Core domain types used across all layers:
+- MemoryType: FACT, DECISION, PREFERENCE, TODO, BLOCKER, WORKFLOW, INSIGHT, CONTEXT, DOCTRINE, LESSON, EVENT, BOUNDARY
+- MemoryScope: SESSION, AGENT_LOCAL, SHARED, PROJECT, CROSS_AGENT
+- MemoryLayer: WORKSPACE_MARKDOWN, MEMPALACE, HONCHO, NEURAL_MEMORY
+- MemoryRecord: canonical memory payload with metadata (content_hash, arousal, valence, etc.)
+- SaveResult: per-layer save outcome with pending_canonical_sync flag
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
