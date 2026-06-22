@@ -14,6 +14,8 @@ class DedupConfig:
     embedding_ambiguous_low: float = 0.75
     llm_enabled: bool = False
     llm_provider: str = "none"
+    llm_endpoint: str = "http://localhost:11434/v1/chat/completions"
+    llm_model: str = "llama3.1:8b"
     llm_max_pairs_per_encode: int = 3
     merge_strategy: str = "keep_newer"
     max_candidates: int = 30
@@ -24,6 +26,7 @@ class DedupConfig:
             "embedding_threshold": self.embedding_threshold,
             "embedding_ambiguous_low": self.embedding_ambiguous_low,
             "llm_enabled": self.llm_enabled, "llm_provider": self.llm_provider,
+            "llm_endpoint": self.llm_endpoint, "llm_model": self.llm_model,
             "llm_max_pairs_per_encode": self.llm_max_pairs_per_encode,
             "merge_strategy": self.merge_strategy, "max_candidates": self.max_candidates,
         }
@@ -38,6 +41,8 @@ class DedupConfig:
                 embedding_ambiguous_low=float(data.get("embedding_ambiguous_low", 0.75)),
                 llm_enabled=bool(data.get("llm_enabled", False)),
                 llm_provider=str(data.get("llm_provider", "none")),
+                llm_endpoint=str(data.get("llm_endpoint", "http://localhost:11434/v1/chat/completions")),
+                llm_model=str(data.get("llm_model", "llama3.1:8b")),
                 llm_max_pairs_per_encode=int(data.get("llm_max_pairs_per_encode", 3)),
                 merge_strategy=str(data.get("merge_strategy", "keep_newer")),
                 max_candidates=int(data.get("max_candidates", 30)),

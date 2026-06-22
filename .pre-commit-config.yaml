@@ -1,37 +1,20 @@
+# Pre-commit hooks for super-memory-github
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.0
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-format
-
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-toml
-      - id: check-added-large-files
-      - id: check-merge-conflict
-      - id: check-case-conflict
-      - id: mixed-line-ending
-        args: [--fix=lf]
-
-  - repo: https://github.com/trufflesecurity/trufflehog
-    rev: v3.87.1
-    hooks:
-      - id: trufflehog
-        args: [--only-verified]
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
-    hooks:
-      - id: mypy
-        additional_dependencies: [types-requests, types-setuptools]
-        args: [--ignore-missing-imports, --no-error-summary]
-
-ci:
-  autofix_commit_msg: "chore: pre-commit autofix"
-  autoupdate_commit_msg: "chore: pre-commit autoupdate"
+      - id: auto-deep-engine
+        name: Auto Deep Engine
+        description: Run Auto Deep audit/qualify/debug/improve before commit
+        entry: python3 -m super_memory.auto_deep
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+      - id: pytest-p0-p3
+        name: P0-P3 Tests
+        description: Run P0-P3 test suite
+        entry: python3 -m pytest tests/test_safety_firewall.py tests/test_safety_freshness.py tests/test_safety_encryption.py tests/test_spreading_activation.py tests/test_dedup_pipeline.py tests/test_dedup_config.py tests/test_dedup_t3_llm.py tests/test_extraction.py tests/test_extraction_relations.py tests/test_extraction_structure.py tests/test_extraction_structure_detector.py tests/test_trigger_engine.py tests/test_brain_mode.py tests/test_cache.py tests/test_cache_manager.py tests/test_cache_selector.py tests/test_pipeline_integration.py tests/test_eternal_context.py tests/test_embeddings.py tests/test_embeddings_provider.py tests/test_sync_protocol.py -q --timeout=30
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]

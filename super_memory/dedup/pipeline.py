@@ -76,6 +76,11 @@ class DedupPipeline:
             if t2 is not None:
                 return t2
 
+        # Tier 3: LLM judge (optional, when T2 borderline or no vector store)
+        t3 = self._tier3_llm(content, candidates)
+        if t3 is not None:
+            return t3
+
         return DedupResult(False, reason="no tier found match")
 
     def _get_candidates_by_hash(self, content_hash: int) -> list[dict]:
@@ -143,7 +148,6 @@ class DedupPipeline:
         if self._vector_store is None:
             return None
         try:
-            # Use vector store search to find similar content
             semantic_results = self._vector_store.search_text(content, top_k=5)
             if not semantic_results:
                 return None
@@ -154,6 +158,61 @@ class DedupPipeline:
                 return DedupResult(False, tier=2, similarity_score=best_score, reason=f"Embedding mismatch {best_score:.3f}")
             return None  # borderline — defer to LLM if available
         except Exception:
+            return None
+
+    def _tier3_llm(self, content: str, candidates: list[dict]) -> DedupResult | None:
+        """Tier 3: LLM-based semantic dedup using external LLM endpoint.
+
+        Uses requests to call an OpenAI-compatible HTTP endpoint.
+        Falls back gracefully if requests is not installed or endpoint unreachable.
+        """
+        if not self._config.llm_enabled:
+            return None
+        try:
+            import requests as _req
+        except ImportError:
+            logger.debug("T3 LLM dedup: requests not installed, skipping")
+            return None
+
+        endpoint = getattr(self._config, "llm_endpoint", "") or "http://localhost:11434/v1/chat/completions"
+        model = getattr(self._config, "llm_model", "") or "llama3.1:8b"
+
+        # Only check the top candidate (most similar by T2 or first candidate)
+        top_candidate = candidates[0] if candidates else None
+        if not top_candidate:
+            return None
+
+        existing_content = top_candidate.get("content", "") or ""
+        if not existing_content.strip():
+            return None
+
+        prompt = DEDUP_USER_PROMPT.format(content_a=content[:2000], content_b=existing_content[:2000])
+
+        try:
+            resp = _req.post(
+                endpoint,
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": DEDUP_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 64,
+                },
+                timeout=8,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            answer = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip().upper()
+            if "DUPLICATE" in answer:
+                return DedupResult(True, top_candidate["id"], 3, 0.95, f"LLM determined duplicate")
+            if "DISTINCT" in answer:
+                return DedupResult(False, tier=3, similarity_score=0.0, reason="LLM determined distinct")
+            # UNCERTAIN or unknown
+            return None
+        except Exception as exc:
+            logger.debug("T3 LLM dedup call failed (non-blocking): %s", exc)
             return None
 
 

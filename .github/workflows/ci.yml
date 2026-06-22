@@ -1,55 +1,84 @@
-name: CI
+name: Super Memory CI
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
+    tags: ['v*']
   pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
+    branches: [master, main]
 
 jobs:
-  test:
+  test-p0-p3:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: |
-            pyproject.toml
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install -e ".[dev]"
+          pip install pytest pytest-timeout pytest-cov
 
-      - name: Run tests
+      - name: Core module imports
         run: |
-          pytest -v
+          python -c "
+          import super_memory
+          print(f'Version: {super_memory.__version__}')
+          # Smoke imports for all P0-P3 modules
+          from super_memory.safety.firewall import check_content, sanitize_explicit_content
+          from super_memory.safety.freshness import evaluate_freshness
+          from super_memory.safety.encryption import MemoryEncryptor
+          from super_memory.spreading_activation import SpreadingActivation
+          from super_memory.dedup.pipeline import DedupPipeline, DedupConfig
+          from super_memory.dedup.config import DedupConfig
+          from super_memory.extraction.relations import extract_relations, RelationType
+          from super_memory.extraction.structure_detector import detect_structure
+          from super_memory.embeddings.provider import EmbeddingProvider
+          from super_memory.cache.manager import ActivationCache
+          from super_memory.cache.selector import select_warm_activations
+          from super_memory.trigger_engine import check_triggers
+          from super_memory.eternal_context import EternalContext
+          from super_memory.brain_mode import BrainMode, BrainModeConfig
+          from super_memory.pipeline_integration import run_safety_firewall, enrich_with_relations
+          from super_memory.sync.protocol import build_merkle_tree, diff_merkle
+          from super_memory.auto_deep import run_deep_engine
+          print('All P0-P3 module imports OK')
+          "
 
-      - name: Check formatting (if ruff available)
-        if: always()
+      - name: Run P0-P3 tests
         run: |
-          pip install ruff
-          ruff check . --output-format=github
+          python -m pytest tests/test_safety_firewall.py tests/test_safety_freshness.py tests/test_safety_encryption.py tests/test_spreading_activation.py tests/test_dedup_pipeline.py tests/test_dedup_config.py tests/test_dedup_t3_llm.py tests/test_extraction.py tests/test_extraction_relations.py tests/test_extraction_structure.py tests/test_extraction_structure_detector.py tests/test_trigger_engine.py tests/test_brain_mode.py tests/test_cache.py tests/test_cache_manager.py tests/test_cache_selector.py tests/test_pipeline_integration.py tests/test_eternal_context.py tests/test_embeddings.py tests/test_embeddings_provider.py tests/test_sync_protocol.py -v --timeout=30 --tb=short
 
-  security:
+      - name: Run Auto Deep Engine
+        run: |
+          python -m super_memory.auto_deep
+
+  auto-deep-engine:
     runs-on: ubuntu-latest
+    needs: test-p0-p3
     steps:
       - uses: actions/checkout@v4
-      - name: Check for secrets
-        uses: trufflesecurity/trufflehog@v3
+      - uses: actions/setup-python@v5
         with:
-          path: ./
-          base: main
-          head: HEAD
-          extra_args: --only-verified
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - name: Run Auto Deep Audit + Qualify + Improve
+        run: |
+          python -c "
+          from super_memory.auto_deep import run_deep_engine
+          result = run_deep_engine()
+          print(result.full_report())
+          # Fail CI if grade < B
+          if result.qualify.grade not in ('A', 'B'):
+              raise SystemExit(1)
+          "

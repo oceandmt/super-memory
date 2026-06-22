@@ -89,6 +89,11 @@ NORMAL_TOOLS = {
     "super_memory_dedup_check_content",
     "super_memory_load_warm_cache",
     "super_memory_run_auto_deep",
+    # P4: Advanced
+    "super_memory_build_merkle_root",
+    "super_memory_diff_merkle_trees",
+    "super_memory_build_memory_proof",
+    "super_memory_select_warm_activations",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote", "super_memory_spreading_activation"}
 ADVANCED_TOOLS = {
@@ -611,6 +616,13 @@ for _name, _desc, _props, _required in [
     ("super_memory_watch_scan", "One-shot file watch scan; no daemon.", {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["directory"]),
     ("super_memory_sync_status", "Show sync status only; cloud disabled.", {"config_path": {"type": "string"}}, []),
     ("super_memory_store_status", "Show store status only; community store disabled.", {"config_path": {"type": "string"}}, []),
+
+    # P4: Advanced features
+    ("super_memory_build_merkle_root", "Build Merkle root hash for all active memories.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_diff_merkle_trees", "Diff local vs remote Merkle states.", {"local_root": {"type": "string"}, "remote_root": {"type": "string"}, "remote_buckets": {"type": "object"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_build_memory_proof", "Build Merkle proof for a specific memory.", {"memory_id": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
+    ("super_memory_select_warm_activations", "Select warm activations ranked by embedding similarity.", {"query": {"type": "string"}, "top_k": {"type": "integer", "default": 20}, "min_similarity": {"type": "number", "default": 0.3}, "config_path": {"type": "string"}}, ["query"]),
+
 
     # Phase 4: P0-P3 Endpoints
     ("super_memory_safety_firewall", "Check content against input firewall (P0).", {"text": {"type": "string"}}, ["text"]),
@@ -1181,6 +1193,29 @@ def handle(request: JSON) -> JSON | None:
         return bridge.load_warm_cache(config_path=args.get("config_path"))
     if name == "super_memory_run_auto_deep":
         return bridge.run_auto_deep(config_path=args.get("config_path"))
+    if name == "super_memory_build_merkle_root":
+        return bridge.build_merkle_root(config_path=args.get("config_path"))
+    if name == "super_memory_diff_merkle_trees":
+        return bridge.diff_merkle_trees(
+            local_root=args.get("local_root"),
+            remote_root=args.get("remote_root"),
+            remote_buckets=args.get("remote_buckets"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_build_memory_proof":
+        return bridge.build_memory_proof(memory_id=args["memory_id"], config_path=args.get("config_path"))
+    if name == "super_memory_select_warm_activations":
+        from super_memory.cache.selector import select_warm_activations, _embed_query
+        query = args["query"]
+        emb = _embed_query(query)
+        from super_memory.pipeline_integration import load_warm_cache as _lwc
+        from super_memory.config import load_config as _lc
+        from super_memory.storage import SuperMemoryStore
+        cfg = _lc(args.get("config_path"))
+        store = SuperMemoryStore(cfg)
+        cache = _lwc(store)
+        selected = select_warm_activations(emb, cache, top_k=args.get("top_k", 20), min_similarity=args.get("min_similarity", 0.3), query=query)
+        return {"entries": len(selected), "selected": dict(sorted(selected.items(), key=lambda x: -x[1])[:10])}
 
 class _StdoutToStderr:
     """Redirect accidental library logs/prints away from MCP stdout.

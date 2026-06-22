@@ -34,6 +34,21 @@ SAVE_ORDER = [
 ]
 
 
+def _run_auto_deep_background() -> None:
+    """Run auto_deep in background thread, best-effort."""
+    try:
+        from .auto_deep import run_deep_engine
+        result = run_deep_engine()
+        logger.info(
+            "auto_deep.completed",
+            grade=result.qualify.grade,
+            avg_score=result.audit.stats.get("avg_score"),
+            duration_ms=f"{result.total_duration_ms:.0f}",
+        )
+    except Exception as exc:
+        logger.debug("auto_deep.background_failed", error=f"{type(exc).__name__}: {exc}")
+
+
 class SuperMemoryService:
     def __init__(self, config: SuperMemoryConfig):
         self.config = config
@@ -153,6 +168,20 @@ class SuperMemoryService:
         # Log affect stats for observability
         if arousal_log is not None:
             logger.info("save.affect", arousal=arousal_log.get("arousal"), valence=arousal_log.get("valence"), memory_id=record.id)
+
+        # P5: Auto Deep quality check after every N saves (triggered by counter)
+        try:
+            # Increment save counter in meta store
+            counter = int(self.store._get_meta("auto_deep_save_counter") or "0")
+            counter += 1
+            self.store._set_meta("auto_deep_save_counter", str(counter))
+            # Run auto_deep every 50 saves
+            if counter % 50 == 0:
+                logger.info("save.auto_deep_trigger", save_count=counter)
+                import threading
+                threading.Thread(target=_run_auto_deep_background, daemon=True).start()
+        except Exception:
+            pass
 
         return results
 

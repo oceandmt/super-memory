@@ -1544,3 +1544,103 @@ def run_auto_deep(config_path: str | None = None) -> dict[str, Any]:
         "improvements": len(result.improve.improvements_made),
         "total_ms": result.total_duration_ms,
     }
+
+
+def build_merkle_root(config_path: str | None = None) -> dict[str, Any]:
+    """Build Merkle root hash for all active memories."""
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    from .sync.protocol import build_merkle_tree
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+
+    with store.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, content, type, scope, created_at FROM memories "
+            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+            "ORDER BY rowid DESC LIMIT 2000"
+        ).fetchall()
+
+    memories = [dict(r) for r in rows]
+    root = build_merkle_tree(memories)
+    bucket_count = len(root.children)
+    return {"root_hash": root.hash, "bucket_count": bucket_count, "total_memories": len(memories)}
+
+
+def diff_merkle_trees(
+    local_root: str | None = None,
+    remote_root: str | None = None,
+    remote_buckets: dict[str, str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Diff local vs remote Merkle states."""
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    from .sync.protocol import build_merkle_tree, diff_merkle, MerkleNode
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+
+    # Build local tree
+    with store.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, content, type, scope, created_at FROM memories "
+            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+            "ORDER BY rowid DESC LIMIT 2000"
+        ).fetchall()
+
+    memories = [dict(r) for r in rows]
+    local_tree = build_merkle_tree(memories)
+
+    # Reconstruct remote tree from bucket hashes if provided
+    if remote_buckets:
+        remote_tree = MerkleNode(hash=remote_root or "", path="root")
+        for bucket_key, bucket_hash in remote_buckets.items():
+            remote_tree.children[bucket_key] = MerkleNode(hash=bucket_hash, path=f"bucket:{bucket_key}")
+        # Recompute remote root
+        import hashlib
+        combined = hashlib.sha256()
+        for bk in sorted(remote_tree.children):
+            combined.update(f"{bk}:{remote_tree.children[bk].hash}".encode())
+        remote_tree.hash = combined.hexdigest()[:16] if not remote_root else remote_root
+    else:
+        remote_tree = None
+
+    differing = []
+    if remote_tree:
+        differing = diff_merkle(local_tree, remote_tree)
+
+    return {
+        "local_root": local_tree.hash,
+        "local_buckets": {k: v.hash for k, v in sorted(local_tree.children.items())},
+        "differing_count": len(differing),
+        "differing_ids": differing[:50],
+    }
+
+
+def build_memory_proof(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
+    """Build Merkle proof for a specific memory."""
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    from .sync.protocol import build_memory_proof as _bmp
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+
+    with store.connect() as conn:
+        row = conn.execute(
+            "SELECT id, content, type, scope, created_at FROM memories WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
+
+    if not row:
+        return {"error": f"memory not found: {memory_id}"}
+
+    # Get all memories for proof context
+    rows = conn.execute(
+        "SELECT id, content, type, scope, created_at FROM memories "
+        "LIMIT 2000"
+    ).fetchall()
+
+    memories = [dict(r) for r in rows]
+    return _bmp(memories, memory_id)
