@@ -887,6 +887,129 @@ def expire_predictions(config_path: str | None = None) -> dict[str, Any]:
     return reasoning.expire_predictions(config_path=config_path)
 
 
+# ── P5 Memory Quality + Recall Quality (v1.6.0+) ──────────────────────────
+
+def quality_score(content: str, memory_type: str = "context", config_path: str | None = None) -> dict[str, Any]:
+    """Run quality assessment on memory content — fidelity, sufficiency, importance."""
+    try:
+        from .quality_scorer import score_memory
+        qs = score_memory(content, memory_type)
+        return {
+            "overall": qs.overall,
+            "fidelity": qs.fidelity,
+            "sufficiency": qs.sufficiency,
+            "importance": qs.importance,
+            "warnings": qs.warnings,
+        }
+    except Exception as e:
+        return {"error": str(e), "overall": 0.5}
+
+
+def rerank(query: str, candidates: list[dict], config_path: str | None = None) -> dict[str, Any]:
+    """Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion."""
+    try:
+        from .reranker import fusion_rerank
+        results = fusion_rerank(query, candidates)
+        return {
+            "results": [
+                {
+                    "neuron_id": r.neuron_id,
+                    "content": r.content,
+                    "score": r.score,
+                    "bm25_score": r.bm25_score,
+                    "semantic_score": r.semantic_score,
+                    "crossencoder_score": r.crossencoder_score,
+                }
+                for r in results
+            ],
+            "count": len(results),
+        }
+    except Exception as e:
+        return {"error": str(e), "results": [], "count": 0}
+
+
+def get_priming_boosts(session_id: str, neuron_ids: list[str], config_path: str | None = None) -> dict[str, Any]:
+    """Get priming boost multipliers for neurons in a session."""
+    try:
+        from .priming import get_priming_tracker
+        tracker = get_priming_tracker()
+        boosts = {nid: tracker.get_priming_boost(session_id, nid) for nid in neuron_ids}
+        primed = tracker.get_primed_neuron_ids(session_id)
+        return {"boosts": boosts, "primed_count": len(primed)}
+    except Exception as e:
+        return {"error": str(e), "boosts": {}}
+
+
+def reflex_pin(neuron_id: str, content: str = "", config_path: str | None = None) -> dict[str, Any]:
+    """Pin a neuron as always-on reflex."""
+    try:
+        from .reflex_arc import get_reflex_manager
+        mgr = get_reflex_manager()
+        ok = mgr.pin(neuron_id, content)
+        return {"ok": ok, "reflex_count": mgr.count()}
+    except Exception as e:
+        return {"error": str(e), "ok": False}
+
+
+def reflex_unpin(neuron_id: str, config_path: str | None = None) -> dict[str, Any]:
+    """Unpin a neuron from reflex status."""
+    try:
+        from .reflex_arc import get_reflex_manager
+        mgr = get_reflex_manager()
+        ok = mgr.unpin(neuron_id)
+        return {"ok": ok, "reflex_count": mgr.count()}
+    except Exception as e:
+        return {"error": str(e), "ok": False}
+
+
+def reflex_list(config_path: str | None = None) -> dict[str, Any]:
+    """List all reflex-pinned neurons."""
+    try:
+        from .reflex_arc import get_reflex_manager
+        mgr = get_reflex_manager()
+        return {"reflexes": mgr.get_all_reflexes(), "count": mgr.count()}
+    except Exception as e:
+        return {"error": str(e), "reflexes": [], "count": 0}
+
+
+def preference_detect(content: str, memory_type: str = "", config_path: str | None = None) -> dict[str, Any]:
+    """Analyze memory content for preference signals."""
+    try:
+        from .preference_detector import get_preference_detector
+        pd = get_preference_detector()
+        signals = pd.analyze(content, memory_type)
+        profile = pd.build_profile()
+        return {
+            "signals": signals,
+            "profile": {
+                "memories_analyzed": profile.memories_analyzed,
+                "preferences_count": len(profile.preferences),
+                "top_tech": [p.key for p in profile.preferences if p.category == "tech"][:5],
+                "top_topics": [p.key for p in profile.preferences if p.category == "topic"][:5],
+            },
+        }
+    except Exception as e:
+        return {"error": str(e), "signals": {}}
+
+
+def diagnostics_new(config_path: str | None = None) -> dict[str, Any]:
+    """New runtime diagnostics — component health + milestones."""
+    try:
+        from .diagnostics import get_diagnostics, check_health
+        health = check_health()
+        summary = get_diagnostics().get_summary()
+        return {
+            "healthy": health.healthy,
+            "components": health.component_status,
+            "component_errors": health.component_errors,
+            "milestones": health.milestones[-5:],
+            "warnings": health.warnings,
+            "summary": summary,
+        }
+    except Exception as e:
+        return {"error": str(e), "healthy": False}
+
+
 # Phase 8 live-readiness / diagnostics / contracts
 def diagnostics(config_path: str | None = None) -> dict[str, Any]:
     return phase8.diagnostics(config_path=config_path)

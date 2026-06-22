@@ -5,7 +5,7 @@ __version__ = "1.6.0"
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType
 from .service import SuperMemoryService
 
-# P0-P3 module exports (lazy — imported on access)
+# P0-P5 module exports (lazy — imported on access)
 from . import (
     safety,
     dedup,
@@ -19,6 +19,12 @@ from . import (
     brain_mode,
     pipeline_integration,
     auto_deep,
+    reranker,
+    quality_scorer,
+    priming,
+    reflex_arc,
+    preference_detector,
+    diagnostics,
 )
 
 __all__ = [
@@ -27,4 +33,6 @@ __all__ = [
     "safety", "dedup", "extraction", "embeddings", "cache", "sync",
     "spreading", "triggers", "eternal_context", "brain_mode",
     "pipeline_integration", "auto_deep",
+    "reranker", "quality_scorer", "priming", "reflex_arc",
+    "preference_detector", "diagnostics",
 ]

@@ -94,6 +94,15 @@ NORMAL_TOOLS = {
     "super_memory_diff_merkle_trees",
     "super_memory_build_memory_proof",
     "super_memory_select_warm_activations",
+    # P5 Memory Quality + Recall Quality (v1.6.0+)
+    "super_memory_quality_score",
+    "super_memory_rerank",
+    "super_memory_priming_boosts",
+    "super_memory_reflex_pin",
+    "super_memory_reflex_unpin",
+    "super_memory_reflex_list",
+    "super_memory_preference_detect",
+    "super_memory_diagnostics_new",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote", "super_memory_spreading_activation"}
 ADVANCED_TOOLS = {
@@ -636,6 +645,16 @@ for _name, _desc, _props, _required in [
     ("super_memory_dedup_check_content", "Check content against 3-tier dedup pipeline (P0).", {"content": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
     ("super_memory_load_warm_cache", "Load activation cache for warm-start recall (P1).", {"config_path": {"type": "string"}}, []),
     ("super_memory_run_auto_deep", "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).", {"config_path": {"type": "string"}}, []),
+
+    # Phase 5: P5 Memory Quality + Recall Quality (v1.6.0+)
+    ("super_memory_quality_score", "Run quality assessment on memory content — fidelity, sufficiency, importance.", {"content": {"type": "string"}, "memory_type": {"type": "string", "default": "context"}}, ["content"]),
+    ("super_memory_rerank", "Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion.", {"query": {"type": "string"}, "candidates": {"type": "array", "items": {"type": "object"}}}, ["query", "candidates"]),
+    ("super_memory_priming_boosts", "Get priming boost multipliers for neurons in a session.", {"session_id": {"type": "string"}, "neuron_ids": {"type": "array", "items": {"type": "string"}}}, ["session_id", "neuron_ids"]),
+    ("super_memory_reflex_pin", "Pin a neuron as always-on reflex for boosted recall.", {"neuron_id": {"type": "string"}, "content": {"type": "string", "default": ""}}, ["neuron_id"]),
+    ("super_memory_reflex_unpin", "Unpin a neuron from reflex status.", {"neuron_id": {"type": "string"}}, ["neuron_id"]),
+    ("super_memory_reflex_list", "List all reflex-pinned neurons.", {}, []),
+    ("super_memory_preference_detect", "Analyze memory content for preference signals (tech, topics, workflows).", {"content": {"type": "string"}, "memory_type": {"type": "string", "default": ""}}, ["content"]),
+    ("super_memory_diagnostics_new", "Runtime diagnostics — component health + milestones (v1.6.0+).", {"config_path": {"type": "string"}}, []),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
@@ -1216,6 +1235,45 @@ def handle(request: JSON) -> JSON | None:
         cache = _lwc(store)
         selected = select_warm_activations(emb, cache, top_k=args.get("top_k", 20), min_similarity=args.get("min_similarity", 0.3), query=query)
         return {"entries": len(selected), "selected": dict(sorted(selected.items(), key=lambda x: -x[1])[:10])}
+    if name == "super_memory_quality_score":
+        return bridge.quality_score(
+            content=args["content"],
+            memory_type=args.get("memory_type", "context"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_rerank":
+        return bridge.rerank(
+            query=args["query"],
+            candidates=args["candidates"],
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_priming_boosts":
+        return bridge.get_priming_boosts(
+            session_id=args["session_id"],
+            neuron_ids=args["neuron_ids"],
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_reflex_pin":
+        return bridge.reflex_pin(
+            neuron_id=args["neuron_id"],
+            content=args.get("content", ""),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_reflex_unpin":
+        return bridge.reflex_unpin(
+            neuron_id=args["neuron_id"],
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_reflex_list":
+        return bridge.reflex_list(config_path=args.get("config_path"))
+    if name == "super_memory_preference_detect":
+        return bridge.preference_detect(
+            content=args["content"],
+            memory_type=args.get("memory_type", ""),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_diagnostics_new":
+        return bridge.diagnostics_new(config_path=args.get("config_path"))
 
 class _StdoutToStderr:
     """Redirect accidental library logs/prints away from MCP stdout.

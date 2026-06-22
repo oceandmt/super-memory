@@ -53,14 +53,24 @@ P3_MODULES = {
     "sync.protocol": "super_memory.sync.protocol",
 }
 
+P4_MODULES = {
+    "reranker": "super_memory.reranker",
+    "quality_scorer": "super_memory.quality_scorer",
+    "priming": "super_memory.priming",
+    "reflex_arc": "super_memory.reflex_arc",
+    "preference_detector": "super_memory.preference_detector",
+    "diagnostics": "super_memory.diagnostics",
+}
+
 ALL_MODULES: dict[str, dict[str, str]] = {
     "P0": P0_MODULES,
     "P1": P1_MODULES,
     "P2": P2_MODULES,
     "P3": P3_MODULES,
+    "P4": P4_MODULES,
 }
 
-PRIORITY_ORDER = ["P0", "P1", "P2", "P3"]
+PRIORITY_ORDER = ["P0", "P1", "P2", "P3", "P4"]
 
 
 @dataclass

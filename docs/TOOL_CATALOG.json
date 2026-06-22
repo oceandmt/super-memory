@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 186,
+  "total_tools": 190,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -4477,6 +4477,109 @@
       },
       "profiles": [
         "admin"
+      ]
+    },
+    {
+      "name": "super_memory_build_merkle_root",
+      "category": "other",
+      "description": "Build Merkle root hash for all active memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_diff_merkle_trees",
+      "category": "other",
+      "description": "Diff local vs remote Merkle states.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "local_root": {
+            "type": "string"
+          },
+          "remote_root": {
+            "type": "string"
+          },
+          "remote_buckets": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_build_memory_proof",
+      "category": "other",
+      "description": "Build Merkle proof for a specific memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_select_warm_activations",
+      "category": "other",
+      "description": "Select warm activations ranked by embedding similarity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 20
+          },
+          "min_similarity": {
+            "type": "number",
+            "default": 0.3
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
       ]
     },
     {
