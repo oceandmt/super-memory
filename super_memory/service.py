@@ -120,6 +120,13 @@ class SuperMemoryService:
         except Exception as exc:
             logger.warning("save.affect_enrich_failed", error=f"{type(exc).__name__}: {exc}")
 
+        # P2 #7 Async enrichment deriver (non-blocking, doesn't affect response)
+        try:
+            from .deriver import enrich_async
+            enrich_async(record.id, record.content)
+        except Exception:
+            pass
+
         def _extra() -> dict[str, object]:
             return {
                 "memory_id": record.id,

@@ -261,6 +261,114 @@ def prune(
     return report
 
 
+def prune_synapses_with_decay(
+    *,
+    config_path: str | None = None,
+    dry_run: bool = True,
+    decay_factor: float = 0.1,
+    min_weight: float = 0.3,
+    max_age_days: int = 30,
+) -> dict[str, Any]:
+    """Apply weight decay to synapses and prune stale connections.
+
+    P2 #8 Optimization: Configurable weight-based pruning with decay.
+    Each maintenance cycle, synapses lose `decay_factor` of their weight.
+    Synapses below `min_weight` that are older than `max_age_days` are
+    soft-deleted candidates.
+
+    Strategy:
+      1. Decay all synapse weights by (1 - decay_factor)
+      2. Mark synapses where weight < min_weight AND age > max_age_days
+      3. Dry-run safe — reports candidates without deleting
+
+    Args:
+        config_path: Optional config path
+        dry_run: If True, only report
+        decay_factor: Fraction of weight lost per cycle (default 0.1 = 10%)
+        min_weight: Threshold below which synapses are pruning candidates
+        max_age_days: Age beyond which low-weight synapses are pruned
+
+    Returns:
+        Dict with decayed/pruned counts
+    """
+    from datetime import datetime, timezone
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    now = datetime.now(timezone.utc).isoformat()
+
+    report: dict[str, Any] = {
+        "ok": True,
+        "dry_run": dry_run,
+        "total_synapses": 0,
+        "decayed": 0,
+        "below_threshold": 0,
+        "prune_candidates": 0,
+        "deleted": 0,
+        "decay_factor": decay_factor,
+        "min_weight": min_weight,
+        "max_age_days": max_age_days,
+    }
+
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=max_age_days)).isoformat()
+
+    with store.connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+
+        total = conn.execute("SELECT COUNT(*) FROM cognitive_synapses").fetchone()[0]
+        report["total_synapses"] = total
+
+        if total == 0:
+            return report
+
+        # Count synapses already below threshold
+        below = conn.execute(
+            "SELECT COUNT(*) FROM cognitive_synapses WHERE weight < ? AND created_at < ?",
+            (min_weight, cutoff),
+        ).fetchone()[0]
+        report["below_threshold"] = below
+
+        # Dry run: build candidate list
+        candidate_ids: list[str] = []
+        if dry_run:
+            rows = conn.execute(
+                "SELECT id, weight FROM cognitive_synapses WHERE weight < ? AND created_at < ? ORDER BY weight ASC LIMIT 500",
+                (min_weight, cutoff),
+            ).fetchall()
+            candidate_ids = [r["id"] for r in rows]
+        else:
+            # Apply decay to all synapses
+            conn.execute(
+                "UPDATE cognitive_synapses SET weight = MAX(0.01, weight * ?), updated_at = ? WHERE weight >= ?",
+                (1.0 - decay_factor, now, min_weight),
+            )
+            report["decayed"] = conn.execute(
+                "SELECT changes()"
+            ).fetchone()[0]
+
+            # Delete stale low-weight synapses
+            conn.execute(
+                "DELETE FROM cognitive_synapses WHERE weight < ? AND created_at < ?",
+                (min_weight, cutoff),
+            )
+            report["deleted"] = conn.execute("SELECT changes()").fetchone()[0]
+            conn.commit()
+
+            # Get deleted IDs for report
+            # (Deleted rows lost; we log count only)
+            report["prune_candidates"] = report["deleted"]
+
+        if dry_run:
+            report["prune_candidates"] = len(candidate_ids)
+            report["candidate_examples"] = candidate_ids[:10]
+
+    return report
+
+
 def auto_compact(
     *,
     config_path: str | None = None,

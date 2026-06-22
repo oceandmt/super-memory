@@ -1,3 +1,9 @@
+"""OpenClaw compatibility shim for Super Memory.
+
+P2 #6: CJK trigram FTS5 support — auto-detect CJK queries and route to
+trigram-indexed FTS5 tables for multi-language search.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,6 +34,65 @@ class MemorySearchHit:
         return self.__dict__.copy()
 
 
+# ── CJK detection ─────────────────────────────────────────────────
+
+
+def _has_cjk(text: str) -> bool:
+    """Check if text contains CJK characters (Chinese, Japanese, Korean)."""
+    for ch in text:
+        cp = ord(ch)
+        # CJK Unified Ideographs
+        if 0x4E00 <= cp <= 0x9FFF:
+            return True
+        # Hangul Syllables
+        if 0xAC00 <= cp <= 0xD7AF:
+            return True
+        # Katakana
+        if 0x30A0 <= cp <= 0x30FF:
+            return True
+        # Hiragana
+        if 0x3040 <= cp <= 0x309F:
+            return True
+        # CJK Extension A
+        if 0x3400 <= cp <= 0x4DBF:
+            return True
+        # CJK Compatibility Ideographs
+        if 0xF900 <= cp <= 0xFAFF:
+            return True
+    return False
+
+
+def _cjk_fts_search(store: SuperMemoryStore, query: str, limit: int = 10) -> list[MemoryRecord]:
+    """Search CJK trigram FTS5 tables when query contains CJK characters.
+
+    Falls back silently if trigram tables don't exist or query causes errors.
+    Converts multi-word CJK queries into FTS5-safe OR terms.
+    """
+    from .storage import row_to_memory
+
+    results: list[MemoryRecord] = []
+    # FTS5 trigram doesn't support OR/AND — use individual terms
+    terms = [t.strip() for t in query.split() if len(t.strip()) >= 1]
+    with store.connect() as conn:
+        for table in ("memories_cjk_fts",):
+            try:
+                for term in terms[:3]:  # Limit to 3 terms
+                    rows = conn.execute(
+                        f"SELECT m.* FROM {table} f JOIN memories m ON m.rowid = f.rowid WHERE {table} MATCH ? ORDER BY rank LIMIT ?",
+                        (term, max(limit // len(terms), 1)),
+                    ).fetchall()
+                    for row in rows:
+                        mem = row_to_memory(row)
+                        if not any(r.id == mem.id for r in results):
+                            results.append(mem)
+            except Exception:
+                continue
+    return results[:limit]
+
+
+# ── Main search ───────────────────────────────────────────────────
+
+
 def memory_search_compatible(
     query: str,
     *,
@@ -38,15 +103,40 @@ def memory_search_compatible(
 ) -> dict[str, Any]:
     """Return a memory_search-like payload for OpenClaw compatibility.
 
-    This is not a byte-for-byte clone of memory-core internals; it preserves the
-    stable caller-facing fields agents/tools rely on: path, line range, score,
-    snippet, source, corpus, and ids.
+    Auto-detects CJK queries and routes to trigram FTS5 tables for
+    multi-language search support.
     """
 
     cfg = config or load_config(None)
     svc = SuperMemoryService(cfg)
-    layer_hits = svc.recall(query, limit=max_results)
     hits: list[MemorySearchHit] = []
+
+    # CJK path: use trigram FTS5 tables directly
+    if _has_cjk(query):
+        store = SuperMemoryStore(cfg)
+        cjk_records = _cjk_fts_search(store, query, limit=max_results)
+        for idx, record in enumerate(cjk_records):
+            score = _score_record(query, record, base=1.0 - (idx * 0.05))
+            if score < min_score:
+                continue
+            hit = _record_to_hit(record, layer=MemoryLayer.PROJECTION, score=score, query=query)
+            hits.append(hit)
+        hits.sort(key=lambda h: h.score, reverse=True)
+        hits = hits[:max_results]
+        return {
+            "results": [h.to_dict() for h in hits],
+            "provider": "super-memory",
+            "citations": "auto",
+            "debug": {
+                "backend": "super-memory",
+                "corpus": corpus,
+                "hits": len(hits),
+                "cjk": True,
+            },
+        }
+
+    # Standard path: use existing layer recall
+    layer_hits = svc.recall(query, limit=max_results)
     for layer, records in layer_hits.items():
         if corpus != "all" and not _layer_in_corpus(layer, corpus):
             continue
@@ -66,6 +156,7 @@ def memory_search_compatible(
             "backend": "super-memory",
             "corpus": corpus,
             "hits": len(hits),
+            "cjk": False,
         },
     }
 

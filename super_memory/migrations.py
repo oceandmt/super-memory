@@ -176,6 +176,49 @@ def _migrate_views(conn: sqlite3.Connection) -> list[str]:
     return changed
 
 
+def _has_cjk(text: str) -> bool:
+    """Check if text contains CJK characters (CJK Unified Ideographs, Hangul, Katakana/Hiragana)."""
+    try:
+        import unicodedata
+        for ch in text:
+            if len(ch) > 1:
+                continue
+            cp = ord(ch)
+            # CJK Unified Ideographs
+            if 0x4E00 <= cp <= 0x9FFF:
+                return True
+            # Hangul Syllables
+            if 0xAC00 <= cp <= 0xD7AF:
+                return True
+            # Katakana
+            if 0x30A0 <= cp <= 0x30FF:
+                return True
+            # Hiragana
+            if 0x3040 <= cp <= 0x309F:
+                return True
+            # CJK Extension A
+            if 0x3400 <= cp <= 0x4DBF:
+                return True
+            # CJK Compatibility Ideographs
+            if 0xF900 <= cp <= 0xFAFF:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _detect_tokenizer(config=None) -> str:
+    """Detect whether to use trigram tokenizer based on config or DB content.
+
+    Returns 'trigram' if CJK support is enabled/needed, else 'default'.
+    """
+    if config:
+        cjk_enabled = getattr(config, "cjk_fts5", None) or getattr(config, "cjk_search", "")
+        if cjk_enabled in (True, "true", "1", "trigram", "cjk"):
+            return "trigram"
+    return "default"
+
+
 def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
     """Create or upgrade FTS5 virtual tables for fast full-text search.
 
@@ -264,6 +307,51 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
         """)
         if not exists_before:
             changed.append("honcho_events_fts")
+    except sqlite3.OperationalError:
+        pass
+
+    # CJK trigram FTS5 tables (P2 #6) — tokenize=trigram for multi-language search
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS memories_cjk_fts "
+            "USING fts5(content, tokenize='trigram', content=memories, content_rowid=rowid)"
+        )
+        conn.executescript("""
+            CREATE TRIGGER IF NOT EXISTS memories_cjk_fts_ai AFTER INSERT ON memories BEGIN
+                INSERT INTO memories_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS memories_cjk_fts_ad AFTER DELETE ON memories BEGIN
+                INSERT INTO memories_cjk_fts(memories_cjk_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS memories_cjk_fts_au AFTER UPDATE ON memories BEGIN
+                INSERT INTO memories_cjk_fts(memories_cjk_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+                INSERT INTO memories_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+        """)
+        if conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_cjk_fts'").fetchone():
+            changed.append("memories_cjk_fts")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS honcho_events_cjk_fts "
+            "USING fts5(content, tokenize='trigram', content=honcho_events, content_rowid=rowid)"
+        )
+        conn.executescript("""
+            CREATE TRIGGER IF NOT EXISTS honcho_events_cjk_fts_ai AFTER INSERT ON honcho_events BEGIN
+                INSERT INTO honcho_events_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS honcho_events_cjk_fts_ad AFTER DELETE ON honcho_events BEGIN
+                INSERT INTO honcho_events_cjk_fts(honcho_events_cjk_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+            END;
+            CREATE TRIGGER IF NOT EXISTS honcho_events_cjk_fts_au AFTER UPDATE ON honcho_events BEGIN
+                INSERT INTO honcho_events_cjk_fts(honcho_events_cjk_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+                INSERT INTO honcho_events_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
+            END;
+        """)
+        if conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='honcho_events_cjk_fts'").fetchone():
+            changed.append("honcho_events_cjk_fts")
     except sqlite3.OperationalError:
         pass
 

@@ -238,6 +238,19 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     except Exception as exc:
         report["steps"]["hippocampal_replay"] = {"ok": False, "error": str(exc)}
 
+    # Synaptic pruning with weight decay (P2 #8) — maintain cognitive graph health
+    try:
+        from .cleanup import prune_synapses_with_decay
+        report["steps"]["synaptic_pruning"] = prune_synapses_with_decay(
+            config_path=config_path,
+            dry_run=True,  # Always dry-run by default (safe)
+            decay_factor=0.1,
+            min_weight=0.3,
+            max_age_days=30,
+        )
+    except Exception as exc:
+        report["steps"]["synaptic_pruning"] = {"ok": False, "error": str(exc)}
+
     from . import bridge
     report["steps"]["cross_layer_health"] = bridge.cross_layer_health(config_path=config_path)
     report["steps"]["durable_pack_status"] = bridge.durable_pack_status(config_path=config_path)
