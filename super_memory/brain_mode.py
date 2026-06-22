@@ -4,6 +4,7 @@ Ported from neural-memory v4.58.0 core/brain_mode.py.
 """
 from __future__ import annotations
 from enum import StrEnum
+__all__ = ["BrainMode", "SyncStrategy", "BrainModeConfig"]
 from dataclasses import dataclass
 from typing import Any
 

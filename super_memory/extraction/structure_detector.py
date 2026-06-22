@@ -6,6 +6,7 @@ Detects structured content patterns for better entity extraction.
 
 from __future__ import annotations
 
+__all__ = ["StructuredContent", "detect_structure"]
 import json
 import re
 from dataclasses import dataclass

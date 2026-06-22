@@ -4,6 +4,7 @@ Ported from neural-memory v4.58.0 core/eternal_context.py.
 """
 from __future__ import annotations
 import json, logging
+__all__ = ["EternalContext"]
 from typing import Any
 
 logger = logging.getLogger("super-memory.eternal")

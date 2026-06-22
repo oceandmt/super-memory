@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 175,
+  "total_tools": 186,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -4477,6 +4477,251 @@
       },
       "profiles": [
         "admin"
+      ]
+    },
+    {
+      "name": "super_memory_safety_firewall",
+      "category": "other",
+      "description": "Check content against input firewall (P0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_evaluate_freshness",
+      "category": "other",
+      "description": "Evaluate memory freshness by age in days (P0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "days_old": {
+            "type": "number",
+            "default": 0.0
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_encrypt_content",
+      "category": "other",
+      "description": "Encrypt memory content using Fernet key (P0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_extract_relations",
+      "category": "other",
+      "description": "Extract causal/comparative/sequential relations from text (P1).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_check_triggers",
+      "category": "other",
+      "description": "Check content against auto-capture trigger patterns (P1).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_detect_structure",
+      "category": "other",
+      "description": "Detect structured content format — JSON/CSV/KV/Table (P1).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_spreading_activation",
+      "category": "graph",
+      "description": "Run spreading activation for associative graph recall (P0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "anchor_neurons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_hops": {
+            "type": "integer",
+            "default": 3
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_get_eternal_context",
+      "category": "other",
+      "description": "Get session-start context injection (P1).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "integer",
+            "default": 1
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_dedup_check_content",
+      "category": "other",
+      "description": "Check content against 3-tier dedup pipeline (P0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_load_warm_cache",
+      "category": "other",
+      "description": "Load activation cache for warm-start recall (P1).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_run_auto_deep",
+      "category": "other",
+      "description": "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
       ]
     }
   ]

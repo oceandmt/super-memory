@@ -6,6 +6,10 @@ Synchronous version adapted for super-memory's non-async graph storage.
 
 from __future__ import annotations
 
+__all__ = [
+    "ActivationTrace", "ActivationResult", "ActivationState",
+    "should_stop_spreading", "SpreadingActivation",
+]
 import heapq
 import logging
 import math

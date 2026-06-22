@@ -6,6 +6,7 @@ Detects relations between text spans for graph enrichment.
 
 from __future__ import annotations
 
+__all__ = ["RelationType", "RelationCandidate", "extract_relations"]
 import logging
 import re
 from dataclasses import dataclass

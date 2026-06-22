@@ -1,6 +1,7 @@
 """Sync protocol — Merkle tree-based memory diff/sync."""
 from __future__ import annotations
 import hashlib, json, logging
+__all__ = ["MerkleNode", "build_merkle_tree", "diff_merkle"]
 from typing import Any
 
 logger = logging.getLogger("super-memory.sync")

@@ -9,6 +9,13 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+__all__ = [
+    "run_safety_firewall", "extract_relations", "detect_structure",
+    "check_triggers", "enrich_with_relations", "run_spreading_activation",
+    "_find_seed_neurons", "annotate_freshness", "load_warm_cache",
+    "save_warm_cache", "get_eternal_context",
+]
+
 logger = logging.getLogger("super-memory.pipeline")
 
 # ── Save Pipeline Extensions ─────────────────────────────────────────────
