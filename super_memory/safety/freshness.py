@@ -36,6 +36,7 @@ DEFAULT_THRESHOLDS = {
 
 
 def utcnow() -> datetime:
+    """Get current UTC datetime."""
     return datetime.now(timezone.utc)
 
 
@@ -63,10 +64,12 @@ def evaluate_freshness(
 
 
 def get_freshness_warning(created_at: datetime, reference_time: datetime | None = None) -> str | None:
+    """Get a warning string if memory is stale."""
     return evaluate_freshness(created_at, reference_time).warning
 
 
 def format_age(age_days: int) -> str:
+    """Format age in days as human-readable string."""
     if age_days == 0: return "today"
     elif age_days == 1: return "yesterday"
     elif age_days < 7: return f"{age_days} days ago"
@@ -76,6 +79,7 @@ def format_age(age_days: int) -> str:
 
 
 def get_freshness_indicator(level: FreshnessLevel) -> str:
+    """Get emoji/indicator for freshness level."""
     return {
         FreshnessLevel.FRESH: "[+]", FreshnessLevel.RECENT: "[+]",
         FreshnessLevel.AGING: "[~]", FreshnessLevel.STALE: "[!]", FreshnessLevel.ANCIENT: "[!!]",

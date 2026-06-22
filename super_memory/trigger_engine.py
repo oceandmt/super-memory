@@ -28,7 +28,8 @@ class TriggerResult:
     confidence: float = 0.0
     extracted: list[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        """Validate trigger result after creation."""
         if self.extracted is None:
             self.extracted = []
 
@@ -46,18 +47,21 @@ _TRIGGERS = [
 
 def check_triggers(content: str) -> list[TriggerResult]:
     """Check content against all registered triggers."""
-    if not content or not isinstance(content, str):
+    try:
+        if not content or not isinstance(content, str):
+            return []
+        results = []
+        for pattern, name, confidence in _TRIGGERS:
+            matches = pattern.findall(content)
+            if matches:
+                results.append(TriggerResult(
+                    matched=True, trigger_type=TriggerType.PATTERN,
+                    trigger_name=name, confidence=confidence,
+                    extracted=list(set(matches))[:5],
+                ))
+        return results
+    except Exception:
         return []
-    results = []
-    for pattern, name, confidence in _TRIGGERS:
-        matches = pattern.findall(content)
-        if matches:
-            results.append(TriggerResult(
-                matched=True, trigger_type=TriggerType.PATTERN,
-                trigger_name=name, confidence=confidence,
-                extracted=list(set(matches))[:5],
-            ))
-    return results
 
 
 def estimate_session_tokens(content: str) -> int:

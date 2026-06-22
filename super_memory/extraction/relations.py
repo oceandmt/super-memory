@@ -40,6 +40,7 @@ _PatternEntry = tuple[re.Pattern, str, RelationType, float, bool]
 
 
 def _build_patterns() -> list[_PatternEntry]:
+    """Build regex patterns for relation detection."""
     patterns: list[_PatternEntry] = []
     # Causal: "X because Y"
     patterns.append((re.compile(r"(.{5,80}?)\s+because\s+(.{5,80}?)(?:\.|;|,|$)", re.IGNORECASE), "caused_by", RelationType.CAUSAL, 0.80, False))

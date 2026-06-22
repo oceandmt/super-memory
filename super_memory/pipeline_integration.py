@@ -102,10 +102,11 @@ def enrich_with_relations(metadata: dict, content: str) -> dict:
 def run_spreading_activation(
     query: str,
     store: Any,
-    config: Any,
+    cfg: Any,
     anchor_neurons: list[str] | None = None,
     max_hops: int = 3,
 ) -> dict[str, Any]:
+    """Run spreading activation for associative recall."""
     """Run spreading activation as optional recall path."""
     try:
         from .spreading_activation import SpreadingActivation, should_stop_spreading

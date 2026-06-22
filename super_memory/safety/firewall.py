@@ -94,6 +94,7 @@ def check_content(text: str) -> FirewallResult:
 
 
 def strip_nm_context_noise(text: str) -> str:
+    """Strip noisy context markers from text before analysis."""
     if not text or not isinstance(text, str):
         return text
     cleaned = _NM_CONTEXT_NOISE_RE.sub("", text)
@@ -111,6 +112,7 @@ def sanitize_explicit_content(text: str) -> str:
 
 
 def _is_highly_repetitive(text: str) -> bool:
+    """Check if text is highly repetitive (low character variety)."""
     if len(text) < 100:
         return False
     sample = text[:5000]
@@ -129,6 +131,7 @@ def _is_highly_repetitive(text: str) -> bool:
 
 
 def _char_entropy(text: str) -> float:
+    """Compute character-level Shannon entropy of text."""
     if not text:
         return 0.0
     sample = text[:5000]

@@ -53,6 +53,7 @@ class ActivationTrace:
 
     @property
     def total_neurons_activated(self) -> int:
+        """Return number of activated neurons."""
         return sum(self.new_neurons_per_hop.values())
 
 
@@ -74,6 +75,7 @@ class ActivationState:
     source: str
 
     def __lt__(self, other: ActivationState) -> bool:
+        """Comparison for priority queue ordering."""
         return self.level > other.level
 
 
@@ -108,6 +110,7 @@ class SpreadingActivation:
     """
 
     def __init__(self, db: Any, config: Any) -> None:
+        """Initialize SpreadingActivation with DB and config."""
         self._db = db  # SQLite connection or connection factory
         self._config = config
         self._generation = 0

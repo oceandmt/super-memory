@@ -12,7 +12,8 @@ logger = logging.getLogger("super-memory.eternal")
 class EternalContext:
     """Manages session-start context injection from pinned memories."""
 
-    def __init__(self, store: Any):
+    def __init__(self, store: Any) -> None:
+        """Initialize EternalContext with storage backend."""
         self._store = store
         self._message_count = 0
 
@@ -35,6 +36,7 @@ class EternalContext:
             return "[Context unavailable]"
 
     def _get_quick_context(self) -> str:
+        """Get quick (~500 tokens) session context."""
         lines = ["[Eternal Context]"]
         with self._store.connect() as conn:
             pinned = conn.execute(
@@ -49,6 +51,7 @@ class EternalContext:
         return "\n".join(lines)
 
     def _get_detailed_context(self) -> str:
+        """Get detailed (~1300 tokens) session context."""
         lines = ["[Eternal Context — Detailed]"]
         with self._store.connect() as conn:
             pinned = conn.execute(
@@ -63,6 +66,7 @@ class EternalContext:
         return "\n".join(lines)
 
     def _get_full_context(self) -> str:
+        """Get full (~3300 tokens) session context."""
         lines = ["[Eternal Context — Full]"]
         with self._store.connect() as conn:
             pinned = conn.execute(
@@ -76,5 +80,6 @@ class EternalContext:
         return "\n".join(lines)
 
     def increment_message_count(self) -> int:
+        """Increment and return message counter."""
         self._message_count += 1
         return self._message_count
