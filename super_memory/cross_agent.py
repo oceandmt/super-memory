@@ -29,19 +29,53 @@ class CrossAgentTools:
         self.config = config or load_config()
         self.db_path = Path(self.config.workspace_root) / self.config.sqlite_path
 
+    def _fts_search(self, conn: sqlite3.Connection, query: str, agent_id: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Try FTS5 search first; fall back to LIKE."""
+        try:
+            # Check if FTS table exists
+            has_fts = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories_fts'"
+            ).fetchone() is not None
+            if has_fts:
+                # Build FTS query from user query (tokenize words)
+                fts_words = ' '.join(w for w in query.split() if len(w) > 1)
+                if fts_words:
+                    rows = _rows(conn, """
+                        SELECT m.id, m.layer, m.content, m.type, m.scope, m.agent_id,
+                               m.session_id, m.project, m.tags_json, m.source,
+                               m.trust_score, m.created_at, m.metadata_json,
+                               rank as fts_score
+                        FROM memories m
+                        JOIN memories_fts fts ON m.rowid = fts.rowid
+                        WHERE m.agent_id = ? AND m.layer = 'workspace_markdown'
+                          AND memories_fts MATCH ?
+                        ORDER BY rank ASC, m.created_at DESC
+                        LIMIT ?
+                    """, (agent_id, fts_words, limit))
+                    if rows:
+                        return rows
+        except Exception:
+            pass
+        return []
+
     def cross_agent_recall(self, query: str, agent_id: str, limit: int = 10) -> dict[str, Any]:
-        """Query memories filtered by agent_id."""
+        """Query memories filtered by agent_id with FTS5 fallback."""
         like = f"%{query}%"
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
-            rows = _rows(conn, """
-                SELECT id, layer, content, type, scope, agent_id, session_id, project,
-                       tags_json, source, trust_score, created_at, metadata_json
-                FROM memories
-                WHERE agent_id = ? AND content LIKE ? AND layer = 'workspace_markdown'
-                ORDER BY created_at DESC LIMIT ?
-            """, (agent_id, like, limit))
+
+            # Try FTS5 first
+            rows = self._fts_search(conn, query, agent_id, limit)
+            if not rows:
+                # Fallback to LIKE
+                rows = _rows(conn, """
+                    SELECT id, layer, content, type, scope, agent_id, session_id, project,
+                           tags_json, source, trust_score, created_at, metadata_json
+                    FROM memories
+                    WHERE agent_id = ? AND content LIKE ? AND layer = 'workspace_markdown'
+                    ORDER BY created_at DESC LIMIT ?
+                """, (agent_id, like, limit))
         memories = [_decode(r) for r in rows]
         return {"ok": True, "agent_id": agent_id, "query": query, "memories": memories, "count": len(memories)}
 

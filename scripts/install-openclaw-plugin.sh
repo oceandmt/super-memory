@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Super Memory OpenClaw Plugin Installer
 # Usage:
-#   bash scripts/install-openclaw-plugin.sh [--mode safe|admin|exclusive] [--plugins-dir DIR] [--restart|--no-restart]
+#   bash scripts/install-openclaw-plugin.sh [--mode safe|admin|exclusive] [--plugins-dir DIR] [--restart|--no-restart] [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -11,6 +11,7 @@ PLUGIN_SRC="$REPO_ROOT/openclaw-plugin/super-memory"
 DEFAULT_PLUGINS_DIR="$HOME/.openclaw/plugins"
 MODE="admin"
 RESTART="ask"
+DRY_RUN="no"
 PLUGINS_DIR="${OPENCLAW_PLUGINS_DIR:-$DEFAULT_PLUGINS_DIR}"
 
 while [ $# -gt 0 ]; do
@@ -19,8 +20,9 @@ while [ $# -gt 0 ]; do
     --plugins-dir) PLUGINS_DIR="${2:-}"; shift 2 ;;
     --restart) RESTART="yes"; shift ;;
     --no-restart) RESTART="no"; shift ;;
+    --dry-run) DRY_RUN="yes"; shift ;;
     -h|--help)
-      sed -n '1,12p' "$0"
+      sed -n '1,20p' "$0"
       exit 0
       ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
@@ -43,13 +45,34 @@ if ! command_exists openclaw; then
   echo "⚠️  openclaw CLI not found. Continuing with local plugin copy only."
 else
   echo "✅ openclaw CLI found: $(openclaw --version 2>/dev/null || echo ok)"
+  # Check version compatibility (expecting 0.10.x or later)
+  OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1)
+  if [ -n "$OC_VERSION" ]; then
+    OC_MAJOR=$(echo "$OC_VERSION" | cut -d. -f1)
+    OC_MINOR=$(echo "$OC_VERSION" | cut -d. -f2)
+    if [ "$OC_MAJOR" -lt 1 ] && [ "$OC_MINOR" -lt 10 ]; then
+      echo "⚠️  OpenClaw version $OC_VERSION < 0.10 — plugin slot may not work correctly"
+    fi
+  fi
 fi
 
 if ! command_exists super-memory; then
   echo "⚠️  super-memory CLI not found. Install first:"
   echo "    pip install 'git+https://github.com/oceandmt/super-memory.git'"
+elif ! super-memory --help >/dev/null 2>&1; then
+  echo "⚠️  super-memory CLI installed but not working correctly"
 else
-  echo "✅ super-memory CLI found"
+  echo "✅ super-memory CLI found: $(super-memory --version 2>/dev/null || echo ok)"
+fi
+
+if [ "$DRY_RUN" = "yes" ]; then
+  echo "🏁 Dry-run mode — would install plugin from:"
+  echo "   Source: $PLUGIN_SRC"
+  echo "   Target: $PLUGINS_DIR/super-memory"
+  echo "   Mode:   $MODE"
+  echo "   Files:  $(find "$PLUGIN_SRC" -type f | wc -l)"
+  echo "🏁 Dry-run complete — no files changed"
+  exit 0
 fi
 
 mkdir -p "$PLUGINS_DIR/super-memory"
@@ -66,9 +89,13 @@ assert d.get('kind') == 'memory'
 print('✅ manifest verified: %s tools declared' % len(d.get('contracts', {}).get('tools', [])))
 PY
 
-node --check "$PLUGINS_DIR/super-memory/index.js" >/dev/null
-node --check "$PLUGINS_DIR/super-memory/mcp-client.js" >/dev/null
-echo "✅ node syntax checks passed"
+if command_exists node; then
+  node --check "$PLUGINS_DIR/super-memory/index.js" >/dev/null 2>&1
+  node --check "$PLUGINS_DIR/super-memory/mcp-client.js" >/dev/null 2>&1
+  echo "✅ node syntax checks passed"
+else
+  echo "⚠️  node not found — skipping JS syntax check"
+fi
 
 if command_exists openclaw; then
   openclaw plugins enable super-memory 2>/dev/null || echo "⚠️  'openclaw plugins enable' unavailable or failed; configure manually if needed."

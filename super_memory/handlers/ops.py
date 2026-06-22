@@ -110,6 +110,12 @@ def get_diagnostics_handlers() -> list[ToolHandler]:
             properties={"config_path": CFG},
         ),
         SimpleHandler(
+            "super_memory_cleanup_orphans",
+            "Clean up cross-layer orphan projections (palace_drawers, honcho_events).",
+            bridge.cleanup_orphans,
+            properties={"config_path": CFG},
+        ),
+        SimpleHandler(
             "super_memory_memory_slot_contract",
             "Run Phase 8 memory-slot replacement contract.",
             bridge.memory_slot_contract,

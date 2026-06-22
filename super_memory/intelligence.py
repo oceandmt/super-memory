@@ -130,4 +130,22 @@ def consolidate(strategy: str = "all", dry_run: bool = True, config_path: str | 
 
 
 def heavy_optional(action: str, **kwargs: Any) -> dict[str, Any]:
-    return {"ok": False, "action": action, "enabled": False, "message": "Phase 4 heavy/optional feature is intentionally stubbed until explicitly configured", "params": kwargs}
+    HELP = {
+        "sync": "Cloud sync. Requires SUPER_MEMORY_HUB_URL and SUPER_MEMORY_HUB_API_KEY env vars + pip install super-memory[sync]",
+        "train": "Document training. Requires pip install super-memory[extract] for PDF/DOCX/PPTX support. See docs/semantic-mode.md",
+        "import": "Bulk import from external systems (ChromaDB, Mem0). Requires source-specific client libs. See super_memory/import.py",
+        "index": "Codebase indexing. Uses super_memory/code_index.py — run super_memory_index_local for workspace-scoped indexing",
+        "store": "Brain store for sharing/importing community knowledge bases. Requires SUPER_MEMORY_STORE_API_KEY",
+        "visualize": "Chart generation from memory data. Uses Vega-Lite rendering. Install optional: pip install vega-lite",
+        "watch": "Directory watcher for auto-ingest. Run super_memory_watch_scan for one-shot. Daemon mode requires file watcher libs",
+        "telegram_backup": "Telegram bot backup for brain DB. Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID",
+    }
+    help_text = HELP.get(action, "Available in Phase 4 once explicitly configured")
+    return {
+        "ok": False,
+        "action": action,
+        "enabled": False,
+        "message": f"Phase 4: {help_text}",
+        "alternative": f"See docs/PHASE_4_{action.upper()}.md or run with explicit config_path",
+        "params": kwargs,
+    }

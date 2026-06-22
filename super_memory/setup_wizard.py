@@ -54,6 +54,66 @@ def write_setup_config(config: dict[str, Any], output_path: str | Path, overwrit
     return path
 
 
+def generate_systemd_service(
+    workspace_root: str | Path,
+    config_path: str | Path = "~/.openclaw/super-memory.yaml",
+    api_bind: str = "127.0.0.1:8765",
+) -> str:
+    """Generate systemd user service file content for always-on API service."""
+    cfg_path = str(Path(config_path).expanduser())
+    root = str(Path(workspace_root).expanduser())
+    return """[Unit]
+Description=Super Memory API (user-level)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%(python)s -m super_memory.api --host %(bind_host)s --port %(bind_port)s --config %(config)s
+WorkingDirectory=%(root)s
+Restart=on-failure
+RestartSec=10
+Environment=SUPER_MEMORY_WORKSPACE_ROOT=%(root)s
+
+[Install]
+WantedBy=default.target
+""" % {
+        "python": "super-memory-api" if "SUPER_MEMORY_API" not in __import__("os").environ else __import__("os").environ["SUPER_MEMORY_API"],
+        "bind_host": api_bind.split(":")[0],
+        "bind_port": api_bind.split(":")[1] if ":" in api_bind else "8765",
+        "config": cfg_path,
+        "root": root,
+    }
+
+
+def write_systemd_service(
+    workspace_root: str | Path,
+    config_path: str | Path = "~/.openclaw/super-memory.yaml",
+    output_path: str | Path = "~/.config/systemd/user/super-memory-api.service",
+    api_bind: str = "127.0.0.1:8765",
+    overwrite: bool = False,
+) -> Path:
+    """Write systemd user service file.
+
+    Args:
+        workspace_root: OpenClaw workspace root path.
+        config_path: Super Memory YAML config path.
+        output_path: Systemd unit file output path.
+        api_bind: API bind address (host:port).
+        overwrite: Overwrite existing file if True.
+
+    Returns:
+        Path to written service file.
+    """
+    out = Path(output_path).expanduser()
+    if out.exists() and not overwrite:
+        raise FileExistsError(f"Systemd unit exists: {out}. Use overwrite=True or delete first.")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    content = generate_systemd_service(workspace_root, config_path, api_bind)
+    out.write_text(content, encoding="utf-8")
+    return out
+
+
 def setup_instructions(config_path: str | Path) -> str:
     path = Path(config_path)
     return "\n".join(

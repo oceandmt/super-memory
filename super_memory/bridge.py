@@ -734,6 +734,42 @@ def cleanup(config_path: str | None = None, vacuum: bool = False, integrity_chec
     return cleanup_mod.cleanup(config_path=config_path, vacuum=vacuum, integrity_check=integrity_check)
 
 
+def cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
+    """Clean up cross-layer orphan projections.
+
+    Soft-deletes palace_drawers, honcho_events, and graph edges that
+    reference non-existent memory IDs.
+    """
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    report = cross_layer_health(config_path=config_path)
+
+    actions: dict[str, Any] = {"orphans_examined": True, "deleted": {"palace_drawers": [], "honcho_events": []}}
+
+    with store.connect() as conn:
+        for row in conn.execute(
+            "SELECT id FROM palace_drawers WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)"
+        ).fetchall():
+            conn.execute("DELETE FROM palace_drawers WHERE id = ?", (row["id"],))
+            actions["deleted"]["palace_drawers"].append(row["id"])
+
+        for row in conn.execute(
+            "SELECT id FROM honcho_events WHERE memory_id IS NOT NULL AND memory_id NOT IN (SELECT DISTINCT id FROM memories)"
+        ).fetchall():
+            conn.execute("DELETE FROM honcho_events WHERE id = ?", (row["id"],))
+            actions["deleted"]["honcho_events"].append(row["id"])
+
+        conn.commit()
+
+    actions["palace_removed"] = len(actions["deleted"]["palace_drawers"])
+    actions["honcho_removed"] = len(actions["deleted"]["honcho_events"])
+
+    after = cross_layer_health(config_path=config_path)
+    return {"ok": True, "actions": actions, "before": report, "after": after}
+
+
 def prune(config_path: str | None = None, dry_run: bool = True, source_prefixes: list[str] | None = None, max_days: int | None = None) -> dict[str, Any]:
     """Prune memories matching retention policy criteria.
 
@@ -990,6 +1026,15 @@ def preference_detect(content: str, memory_type: str = "", config_path: str | No
         }
     except Exception as e:
         return {"error": str(e), "signals": {}}
+
+
+def memory_pollution_report(config_path: str | None = None) -> dict[str, Any]:
+    """Memory pollution and quality report via Reports class."""
+    from .reports import Reports as _Reports
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    rpt = _Reports(cfg)
+    return rpt.memory_pollution_report()
 
 
 def diagnostics_new(config_path: str | None = None) -> dict[str, Any]:

@@ -115,6 +115,13 @@ def get_quality_handlers() -> list[ToolHandler]:
             properties={"content": _str("Content to match"), "config_path": CFG},
             required=["content"],
         ),
+        # P5: Memory Pollution Report
+        SimpleHandler(
+            "super_memory_memory_pollution_report",
+            "Memory pollution and quality report.",
+            bridge.memory_pollution_report,
+            properties={"config_path": CFG},
+        ),
         # P2: Spaced Repetition
         SimpleHandler(
             "super_memory_spaced_repetition_due",
