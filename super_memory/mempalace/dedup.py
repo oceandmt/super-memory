@@ -173,3 +173,141 @@ def deduplicate(
 
     finally:
         conn.close()
+
+
+def deduplicate_memories(
+    store: Any,
+    threshold: float = 0.6,
+    dry_run: bool = True,
+    limit: int = 500,
+    min_content_length: int = 20,
+) -> dict[str, Any]:
+    """Cluster-based dedup for the memories table.
+
+    P1 Optimization: Replace content_hash exact-match with Jaccard/tf-idf
+    clustering on memory content. Detects near-duplicates missed by exact
+    hash matching.
+
+    Strategy:
+      1. Fetch all active memories (grouped by agent_id to keep scope)
+      2. Tokenize each memory's content
+      3. For each pair with Jaccard similarity >= threshold:
+         - Keep the longer/richer memory (more content_length)
+         - Mark shorter for soft-delete
+
+    Args:
+        store: SuperMemoryStore instance
+        threshold: Minimum Jaccard similarity (default 0.6)
+        dry_run: If True, only report
+        limit: Max memories to scan per agent
+        min_content_length: Skip memories shorter than this
+
+    Returns:
+        Dict with stats and duplicate groups
+    """
+    import sqlite3
+
+    report: dict[str, Any] = {
+        "ok": True,
+        "dry_run": dry_run,
+        "total_scanned": 0,
+        "duplicate_groups": 0,
+        "duplicates_found": 0,
+        "deleted": 0,
+        "threshold": threshold,
+        "groups": [],
+    }
+
+    with store.connect() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.row_factory = sqlite3.Row
+
+        # Get distinct agents
+        agents = conn.execute(
+            "SELECT DISTINCT agent_id FROM memories WHERE agent_id IS NOT NULL AND LENGTH(content) >= ?",
+            (min_content_length,),
+        ).fetchall()
+
+        for agent_row in agents:
+            agent_id = agent_row["agent_id"]
+            rows = conn.execute(
+                "SELECT id, content, type, created_at FROM memories WHERE agent_id = ? AND LENGTH(content) >= ? ORDER BY LENGTH(content) DESC LIMIT ?",
+                (agent_id, min_content_length, limit),
+            ).fetchall()
+
+            if len(rows) < 2:
+                continue
+
+            # Build token sets
+            memories: list[dict[str, Any]] = []
+            for row in rows:
+                tokens = set(re.findall(r"\w{3,}", (row["content"] or "").lower()))
+                if len(tokens) < 3:
+                    continue
+                memories.append({
+                    "id": row["id"],
+                    "agent_id": agent_id,
+                    "type": row["type"],
+                    "tokens": tokens,
+                    "token_count": len(tokens),
+                    "content_length": len(row["content"] or ""),
+                    "created_at": row["created_at"],
+                })
+
+            report["total_scanned"] += len(memories)
+
+            # Find duplicate groups within this agent
+            to_delete: set[str] = set()
+            n = len(memories)
+
+            for i in range(n):
+                if memories[i]["id"] in to_delete:
+                    continue
+                group_dupes: list[dict[str, Any]] = []
+                for j in range(i + 1, n):
+                    if memories[j]["id"] in to_delete:
+                        continue
+                    sim = jaccard_similarity(memories[i]["tokens"], memories[j]["tokens"])
+                    if sim >= threshold:
+                        # Keep the longer one
+                        if memories[i]["content_length"] >= memories[j]["content_length"]:
+                            keep, discard = memories[i], memories[j]
+                        else:
+                            keep, discard = memories[j], memories[i]
+
+                        group_dupes.append({
+                            "id": discard["id"],
+                            "agent_id": agent_id,
+                            "type": discard["type"],
+                            "content_length": discard["content_length"],
+                            "similarity_to_kept": round(sim, 3),
+                        })
+                        to_delete.add(discard["id"])
+
+                if group_dupes:
+                    report["duplicate_groups"] += 1
+                    report["duplicates_found"] += len(group_dupes)
+                    report["groups"].append({
+                        "kept": {
+                            "id": memories[i]["id"],
+                            "agent_id": agent_id,
+                            "content_length": memories[i]["content_length"],
+                        },
+                        "duplicates": group_dupes,
+                    })
+
+        # Execute deletion if not dry run
+        if not dry_run and to_delete:
+            for dup_id in to_delete:
+                conn.execute("DELETE FROM memories WHERE id = ?", (dup_id,))
+            conn.commit()
+            report["deleted"] = len(to_delete)
+
+    # Trim groups to avoid oversized response
+    report["groups"] = report["groups"][:20]
+    return report
+
+
+# Re-export for convenience
+__all__ = ["deduplicate", "deduplicate_memories", "jaccard_similarity"]

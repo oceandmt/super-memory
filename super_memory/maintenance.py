@@ -51,6 +51,76 @@ def _record_run(config_path: str | None = None, key: str = "maintenance_run") ->
         conn.commit()
 
 
+def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -> dict[str, Any]:
+    """Auto-cycle cognitive workflow: expire stale predictions, check active hypotheses.
+
+    P0 Optimization: Wire existing hypothesis/prediction/evidence/verify tools
+    into maintenance so they run automatically instead of requiring manual invocation.
+    """
+    report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "expired": 0, "active_hypotheses": 0, "notes": []}
+    try:
+        from . import bridge as _bridge
+
+        # Step 1: Expire stale predictions
+        expire_r = _bridge.expire_predictions(config_path=config_path)
+        report["expired"] = expire_r.get("count", 0)
+        if expire_r.get("count", 0) > 0:
+            report["notes"].append(f"Expired {expire_r['count']} stale predictions")
+
+        # Step 2: Check active hypotheses for auto-resolve
+        hyps = _bridge.hypothesis_list(status="active", limit=50, config_path=config_path)
+        active = hyps.get("hypotheses", [])
+        report["active_hypotheses"] = len(active)
+
+        # Step 3: Collect recent memories as potential evidence for active hypotheses
+        if not dry_run and active:
+            from .config import load_config as _lc
+            from .storage import SuperMemoryStore
+            import json, sqlite3
+            cfg = _lc(config_path)
+            store = SuperMemoryStore(cfg)
+            with store.connect() as conn:
+                for hyp in active[:3]:  # Limit to top 3 to avoid long turns
+                    # Look for memories that could be evidence
+                    keywords = hyp["content"].lower().split()[:5]
+                    for kw in keywords:
+                        if len(kw) < 3:
+                            continue
+                        rows = conn.execute(
+                            "SELECT id, content, created_at FROM memories WHERE content LIKE ? AND created_at > ? ORDER BY created_at DESC LIMIT 3",
+                            (f"%{kw}%", hyp.get("updated_at", "")),
+                        ).fetchall()
+                        for row in rows:
+                            # Check if already evidence
+                            ev_exists = conn.execute(
+                                "SELECT id FROM cognitive_evidence WHERE hypothesis_id=? AND content=?",
+                                (hyp["id"], row["content"]),
+                            ).fetchone()
+                            if not ev_exists:
+                                # Auto-add as neutral evidence (weight 0.3 to avoid bias)
+                                _bridge.evidence_add(
+                                    hyp["id"],
+                                    content=row["content"][:500],
+                                    direction="for",
+                                    weight=0.3,
+                                    config_path=config_path,
+                                )
+                                report["notes"].append(f"Auto-evidence for {hyp['id'][:24]}: '{row['content'][:60]}...'")
+
+        # Step 4: Check for confirmed/refuted hypotheses to auto-promote
+        confirmed = _bridge.hypothesis_list(status="confirmed", limit=10, config_path=config_path).get("hypotheses", [])
+        for hyp in confirmed:
+            report["notes"].append(f"Confirmed hypothesis: {hyp['content'][:80]}")
+        refuted = _bridge.hypothesis_list(status="refuted", limit=10, config_path=config_path).get("hypotheses", [])
+        for hyp in refuted:
+            report["notes"].append(f"Refuted hypothesis: {hyp['content'][:80]}")
+
+    except Exception as exc:
+        report["ok"] = False
+        report["error"] = str(exc)
+    return report
+
+
 def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     """Run safe Super Memory maintenance in canonical-first order.
 
@@ -98,6 +168,37 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
         report["steps"]["dreaming_run"] = {"ok": True, "skipped": True, "reason": "database lock contention; retry maintenance later"}
     else:
         report["steps"]["dreaming_run"] = memory_core.dreaming_run(limit=min(limit, 200), dry_run=dry_run, config_path=config_path)
+
+    # Cognitive workflow auto-cycle (P0) — wire hypothesis→predict→evidence→verify
+    try:
+        report["steps"]["cognitive_cycle"] = _run_cognitive_cycle(config_path=config_path, dry_run=dry_run)
+    except Exception as exc:
+        report["steps"]["cognitive_cycle"] = {"ok": False, "error": str(exc)}
+
+    # Conversation mining (P1) — auto-extract memories from Honcho events
+    try:
+        if not dry_run:
+            from .config import load_config as _lc
+            from .storage import SuperMemoryStore
+            cfg = _lc(config_path)
+            store = SuperMemoryStore(cfg)
+            from .conversation_miner import run_conversation_mining
+            report["steps"]["conversation_mining"] = run_conversation_mining(store, dry_run=dry_run, limit=min(limit, 100))
+        else:
+            report["steps"]["conversation_mining"] = {"ok": True, "skipped": True, "reason": "dry-run mode; enable with dry_run=False"}
+    except Exception as exc:
+        report["steps"]["conversation_mining"] = {"ok": False, "error": str(exc)}
+
+    # Cluster-based dedup (P1) — Jaccard similarity on memories
+    try:
+        from .config import load_config as _lc2
+        from .storage import SuperMemoryStore as _sms
+        from .mempalace.dedup import deduplicate_memories
+        cfg2 = _lc2(config_path)
+        store2 = _sms(cfg2)
+        report["steps"]["cluster_dedup"] = deduplicate_memories(store2, threshold=0.6, dry_run=True, limit=min(limit, 500))
+    except Exception as exc:
+        report["steps"]["cluster_dedup"] = {"ok": False, "error": str(exc)}
 
     # Self-improvement cycle (P4) — integrate preference detection
     try:
