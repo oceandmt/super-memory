@@ -1767,3 +1767,448 @@ def build_memory_proof(memory_id: str, config_path: str | None = None) -> dict[s
 
     memories = [dict(r) for r in rows]
     return _bmp(memories, memory_id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# P0: Unified Confidence, Fidelity, Retrieval Pipeline (v1.6.0 P5 roadmap)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def compute_confidence(
+    retrieval_score: float = 0.5,
+    sufficiency_confidence: float = 0.5,
+    quality_score: float = 5.0,
+    fidelity_layer: str = "detail",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Compute unified ConfidenceScore for recall quality assessment."""
+    from .confidence import compute_confidence as _cc, ConfidenceWeights
+    cs = _cc(
+        retrieval_score=retrieval_score,
+        sufficiency_confidence=sufficiency_confidence,
+        quality_score=quality_score,
+        fidelity_layer=fidelity_layer,
+    )
+    return {
+        "overall": cs.overall,
+        "retrieval": cs.retrieval,
+        "content_quality": cs.content_quality,
+        "fidelity": cs.fidelity,
+        "freshness": cs.freshness,
+        "familiarity_penalty": cs.familiarity_penalty,
+        "components": cs.components,
+    }
+
+
+def fidelity_extract(content: str, config_path: str | None = None) -> dict[str, Any]:
+    """Extract essence and classify fidelity layer from content."""
+    from .fidelity import extract_essence, classify_fidelity_layer
+    essence = extract_essence(content)
+    layer = classify_fidelity_layer(content)
+    return {
+        "essence": essence,
+        "fidelity_layer": layer,
+        "content_length": len(content),
+    }
+
+
+def retrieval_pipeline(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Run full composable retrieval pipeline.
+
+    Parses query, retrieves candidates, reranks, computes confidence,
+    and formats context for LLM injection.
+    """
+    from .retrieval_pipeline import RetrievalPipeline, RetrievalConfig
+    from .spreading_activation import recall as _recall
+
+    cfg = load_config(config_path)
+
+    def _retrieve(q: str, max_c: int) -> list[dict]:
+        from .sanitize import sanitize_prompt
+        q = sanitize_prompt(q)
+        hits = _recall(q, limit=max_c, config=cfg)
+        candidates = []
+        seen = set()
+        for hit in hits:
+            nid = hit.get("neuron_id", hit.get("id", ""))
+            if nid and nid not in seen:
+                seen.add(nid)
+                candidates.append({
+                    "neuron_id": nid,
+                    "content": hit.get("content", ""),
+                    "score": hit.get("score", 0.5),
+                })
+        return candidates
+
+    pipeline = RetrievalPipeline()
+    result = pipeline.run(
+        query=query,
+        retrieve_fn=_retrieve,
+        limit=limit,
+    )
+
+    return {
+        "query": result.query,
+        "intent": {
+            "depth": int(result.intent.depth),
+            "topics": result.intent.topics,
+            "entities": result.intent.entities,
+            "is_question": result.intent.is_question,
+            "is_temporal": result.intent.is_temporal,
+            "is_causal": result.intent.is_causal,
+        },
+        "expanded_query": result.expanded_query,
+        "expansion_terms": result.expansion_terms,
+        "reranked": [
+            {
+                "neuron_id": r.neuron_id,
+                "score": r.score,
+                "bm25_score": r.bm25_score,
+                "semantic_score": r.semantic_score,
+                "crossencoder_score": r.crossencoder_score,
+            }
+            for r in result.reranked[:limit]
+        ],
+        "confidences": [
+            {
+                "overall": cs.overall,
+                "retrieval": cs.retrieval,
+                "content_quality": cs.content_quality,
+                "fidelity": cs.fidelity,
+                "freshness": cs.freshness,
+            }
+            for cs in result.confidences
+        ],
+        "formatted_context": result.formatted_context,
+        "raw_candidate_count": len(result.raw_candidates),
+    }
+
+
+# ── P1: Hippocampal Replay ───────────────────────────────────────────────────
+
+def run_hippocampal_replay(
+    config_path: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Run hippocampal replay consolidation cycle."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .hippocampal_replay import run_hippocampal_replay as _run, HippocampalReplayConfig
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    hc = HippocampalReplayConfig(dry_run=dry_run)
+    result = _run(store, hc)
+    return {
+        "ok": True,
+        "patterns_selected": result.patterns_selected,
+        "synapses_strengthened": result.synapses_strengthened,
+        "clusters_consolidated": result.clusters_consolidated,
+        "summary_fibers_created": result.summary_fibers_created,
+        "elapsed_ms": result.elapsed_ms,
+        "skipped_reason": result.skipped_reason,
+    }
+
+
+# ── P1: Pipeline Steps (Modular Execution) ───────────────────────────────────
+
+def pipeline_steps_run(
+    query: str,
+    step_names: list[str] | None = None,
+    limit: int = 10,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Run selected pipeline steps as a composed pipeline."""
+    from .config import load_config
+    from .pipeline_steps import (
+        StepContext, StepRegistry, create_default_pipeline,
+        parse_step, expand_step, retrieve_step, fuse_step,
+        score_step, format_step, annotate_step, filter_step,
+    )
+    from .spreading_activation import recall as _recall
+    from .sanitize import sanitize_prompt
+
+    cfg = load_config(config_path)
+    query = sanitize_prompt(query)
+
+    registry, steps = create_default_pipeline(step_names)
+    ctx = StepContext(query=query)
+
+    # Step 1: Parse
+    if "parse" in steps:
+        intent = parse_step(query, context=ctx)
+
+    # Step 2: Expand
+    if "expand" in steps:
+        expand_step(query, ctx.intent, context=ctx)
+
+    # Step 3: Retrieve
+    if "retrieve" in steps:
+        def _retrieve(q: str, max_c: int) -> list[dict]:
+            hits = _recall(q, limit=max_c, config=cfg)
+            candidates = []
+            seen = set()
+            for hit in hits:
+                nid = hit.get("neuron_id", hit.get("id", ""))
+                if nid and nid not in seen:
+                    seen.add(nid)
+                    candidates.append({
+                        "neuron_id": nid,
+                        "content": hit.get("content", ""),
+                        "score": hit.get("score", 0.5),
+                    })
+            return candidates
+        retrieve_step(ctx.expanded_query or query, _retrieve, limit=50, context=ctx)
+
+    # Step 4: Fuse
+    if "fuse" in steps:
+        fuse_step(query, ctx.raw_candidates, limit=limit, context=ctx)
+
+    # Step 5: Score
+    if "score" in steps:
+        score_step(ctx.reranked, limit=limit, context=ctx)
+
+    # Step 6: Format
+    if "format" in steps:
+        format_step(ctx.reranked, ctx.confidences, query=query, context=ctx)
+
+    return ctx.to_pipeline_result_dict()
+
+
+# ── P1: Storage Mixins (Tag/Leitner/Priority queries) ────────────────────────
+
+def storage_mixin_query(
+    action: str = "tag_frequencies",
+    tag: str = "",
+    tags: list[str] | None = None,
+    min_priority: int = 7,
+    hours: int = 24,
+    limit: int = 50,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Query storage using mixin capabilities."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .storage_mixins import TagMixin, LeitnerMixin, PriorityMixin, TemporalMixin, StatsMixin
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+
+    # Create a composite class dynamically
+    class CompositeStore(TagMixin, LeitnerMixin, PriorityMixin, TemporalMixin, StatsMixin):
+        def __init__(self, base):
+            self._base = base
+        def connect(self):
+            return self._base.connect()
+
+    cs = CompositeStore(store)
+
+    if action == "tag_frequencies":
+        return {"tags": cs.get_tag_frequencies()}
+    elif action == "memories_by_tag":
+        return {"memories": cs.get_memories_by_tag(tag, limit)}
+    elif action == "memories_by_tags_all":
+        return {"memories": cs.get_memories_by_tags_all(tags or [], limit)}
+    elif action == "memories_by_tags_any":
+        return {"memories": cs.get_memories_by_tags_any(tags or [], limit)}
+    elif action == "review_distribution":
+        return cs.get_review_distribution()
+    elif action == "high_priority":
+        return {"memories": cs.get_high_priority(min_priority, limit)}
+    elif action == "recent":
+        return {"memories": cs.get_recent_memories(hours, limit)}
+    elif action == "type_distribution":
+        return cs.get_type_distribution()
+    elif action == "layer_distribution":
+        return cs.get_layer_distribution()
+    elif action == "daily_counts":
+        return {"daily": cs.get_daily_creation_counts(days=30)}
+    elif action == "fts":
+        from .storage_mixins import SearchMixin
+        class FTSStore(SearchMixin):
+            def __init__(self, base):
+                self._base = base
+            def connect(self):
+                return self._base.connect()
+        sc = FTSStore(store)
+        return {"results": sc.fts_search(tag, limit)}
+    else:
+        return {"error": f"unknown action: {action}"}
+
+
+# ── P2: Schema Assimilation ──────────────────────────────────────────────────
+
+def run_schema_assimilation(
+    config_path: str | None = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Run schema assimilation analysis cycle."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .schema_assimilation import run_schema_assimilation as _run, SchemaAssimilatorConfig
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    sac = SchemaAssimilatorConfig(dry_run=dry_run)
+    return _run(store, sac)
+
+
+def schema_match(
+    content: str,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Match content against registered schemas."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .schema_assimilation import SchemaAssimilator
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    assimilator = SchemaAssimilator(store)
+    match = assimilator.match_memory(content)
+    return {
+        "matched": match.matched,
+        "schema_id": match.schema_id,
+        "schema_name": match.schema_name,
+        "schema_type": match.schema_type,
+        "similarity": match.similarity,
+        "field_overlap": match.field_overlap,
+    }
+
+
+# ── P2: Spaced Repetition (SM-2 enhanced) ────────────────────────────────────
+
+def spaced_repetition_get_due(
+    limit: int = 50,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Get items due for review with retention estimates."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .spaced_repetition import SpacedRepetitionEngine
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    engine = SpacedRepetitionEngine(store)
+    items = engine.get_due(limit)
+    return {
+        "ok": True,
+        "due_count": len(items),
+        "items": [
+            {
+                "memory_id": i.memory_id,
+                "content": i.content[:200],
+                "type": i.type,
+                "box": i.box,
+                "ease_factor": i.ease_factor,
+                "interval_days": i.interval_days,
+                "retention_probability": i.retention_probability,
+                "overdue_days": i.overdue_days,
+            }
+            for i in items
+        ],
+    }
+
+
+def spaced_repetition_review(
+    memory_id: str,
+    grade: int,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Record a spaced repetition review grade (SM-2)."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .spaced_repetition import SpacedRepetitionEngine
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    engine = SpacedRepetitionEngine(store)
+    result = engine.record_review(memory_id, grade)
+    return {
+        "ok": result.success,
+        "memory_id": result.memory_id,
+        "grade": result.grade,
+        "quality_label": result.quality_label,
+        "new_box": result.new_box,
+        "new_ease_factor": result.new_ease_factor,
+        "new_interval_days": result.new_interval_days,
+        "next_review": result.next_review,
+        "retention_change": result.retention_change,
+    }
+
+
+def spaced_repetition_stats(config_path: str | None = None) -> dict[str, Any]:
+    """Get spaced repetition statistics."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .spaced_repetition import SpacedRepetitionEngine
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    engine = SpacedRepetitionEngine(store)
+    return engine.get_stats()
+
+
+# ── P2: Token Budget Management ──────────────────────────────────────────────
+
+def token_budget_estimate(
+    text: str,
+) -> dict[str, Any]:
+    """Estimate token count for text."""
+    from .token_budget import estimate_tokens, compute_budget_allocation
+    tokens = estimate_tokens(text)
+    return {"text_length": len(text), "estimated_tokens": tokens}
+
+
+def token_budget_select(
+    memories: list[dict[str, Any]],
+    budget_tokens: int = 3000,
+    min_items: int = 1,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Select value-dense memories within token budget."""
+    from .token_budget import select_value_dense, estimate_tokens
+    selected = select_value_dense(memories, budget_tokens, min_items)
+    total_selected_tokens = sum(m.get("_tokens", estimate_tokens(m.get("content", ""))) for m in selected)
+    return {
+        "selected_count": len(selected),
+        "total_tokens": total_selected_tokens,
+        "budget": budget_tokens,
+        "selections": [
+            {
+                "id": m.get("neuron_id", m.get("id", "")),
+                "score": m.get("score", 0.5),
+                "tokens": m.get("_tokens", estimate_tokens(m.get("content", ""))),
+                "value_per_token": m.get("_value_per_token", 0),
+            }
+            for m in selected
+        ],
+    }
+
+
+# ── P2: Query Expander ───────────────────────────────────────────────────────
+
+def query_expand(
+    query: str,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Expand query with synonyms, graph neighbors, and embedding terms."""
+    from .config import load_config
+    from .storage import SuperMemoryStore
+    from .query_expander import QueryExpander
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    expander = QueryExpander(store)
+    result = expander.expand(query)
+    return {
+        "original": result.original,
+        "expanded": result.expanded,
+        "added_terms": result.added_terms,
+        "expansions": result.expansions,
+        "confidence_boost": result.confidence_boost,
+    }

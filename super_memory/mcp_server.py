@@ -103,6 +103,10 @@ NORMAL_TOOLS = {
     "super_memory_reflex_list",
     "super_memory_preference_detect",
     "super_memory_diagnostics_new",
+    # P0: New (v1.6.0 P5 roadmap)
+    "super_memory_confidence",
+    "super_memory_fidelity",
+    "super_memory_retrieval_pipeline",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote", "super_memory_spreading_activation"}
 ADVANCED_TOOLS = {
@@ -655,6 +659,28 @@ for _name, _desc, _props, _required in [
     ("super_memory_reflex_list", "List all reflex-pinned neurons.", {}, []),
     ("super_memory_preference_detect", "Analyze memory content for preference signals (tech, topics, workflows).", {"content": {"type": "string"}, "memory_type": {"type": "string", "default": ""}}, ["content"]),
     ("super_memory_diagnostics_new", "Runtime diagnostics — component health + milestones (v1.6.0+).", {"config_path": {"type": "string"}}, []),
+    # P0: Unified Confidence Scoring (v1.6.0 P5 roadmap)
+    ("super_memory_confidence", "Compute unified confidence score for recall results.", {"retrieval_score": {"type": "number", "default": 0.5}, "sufficiency_confidence": {"type": "number", "default": 0.5}, "quality_score": {"type": "number", "default": 5.0}, "fidelity_layer": {"type": "string", "default": "detail"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_fidelity", "Extract single-sentence essence and classify fidelity layer from content.", {"content": {"type": "string"}}, ["content"]),
+    ("super_memory_retrieval_pipeline", "Run full composable retrieval pipeline: parse → expand → rerank → confidence → format.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
+    # P1: Hippocampal Replay
+    ("super_memory_hippocampal_replay", "Run hippocampal replay consolidation: strengthen synapses from recent patterns.", {"config_path": {"type": "string"}, "dry_run": {"type": "boolean", "default": True}}, []),
+    # P1: Pipeline Steps (modular)
+    ("super_memory_pipeline_steps_run", "Run selected pipeline steps as a composed pipeline (parse/expand/retrieve/fuse/score/format).", {"query": {"type": "string"}, "step_names": {"type": "array", "items": {"type": "string"}}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
+    # P1: Storage Mixins
+    ("super_memory_storage_mixin_query", "Query storage using mixins: tag_frequencies, memories_by_tag, high_priority, recent, type_distribution, fts.", {"action": {"type": "string", "default": "tag_frequencies"}, "tag": {"type": "string", "default": ""}, "tags": {"type": "array", "items": {"type": "string"}}, "min_priority": {"type": "integer", "default": 7}, "hours": {"type": "integer", "default": 24}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
+    # P2: Schema Assimilation
+    ("super_memory_schema_assimilation", "Run schema assimilation analysis: detect patterns from recent memories.", {"config_path": {"type": "string"}, "dry_run": {"type": "boolean", "default": True}}, []),
+    ("super_memory_schema_match", "Match content against registered schemas.", {"content": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
+    # P2: Spaced Repetition (SM-2)
+    ("super_memory_spaced_repetition_due", "Get items due for review with SM-2 retention estimates.", {"limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
+    ("super_memory_spaced_repetition_review", "Record a spaced repetition review grade (SM-2 0-5).", {"memory_id": {"type": "string"}, "grade": {"type": "integer"}, "config_path": {"type": "string"}}, ["memory_id", "grade"]),
+    ("super_memory_spaced_repetition_stats", "Get spaced repetition statistics.", {"config_path": {"type": "string"}}, []),
+    # P2: Token Budget
+    ("super_memory_token_budget_estimate", "Estimate token count for text.", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_token_budget_select", "Select value-dense memories within token budget.", {"memories": {"type": "array", "items": {"type": "object"}}, "budget_tokens": {"type": "integer", "default": 3000}, "min_items": {"type": "integer", "default": 1}, "config_path": {"type": "string"}}, ["memories"]),
+    # P2: Query Expander
+    ("super_memory_query_expand", "Expand query with synonyms, graph neighbors, and embedding terms.", {"query": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
@@ -1274,6 +1300,90 @@ def handle(request: JSON) -> JSON | None:
         )
     if name == "super_memory_diagnostics_new":
         return bridge.diagnostics_new(config_path=args.get("config_path"))
+    if name == "super_memory_confidence":
+        return bridge.compute_confidence(
+            retrieval_score=args.get("retrieval_score", 0.5),
+            sufficiency_confidence=args.get("sufficiency_confidence", 0.5),
+            quality_score=args.get("quality_score", 5.0),
+            fidelity_layer=args.get("fidelity_layer", "detail"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_fidelity":
+        return bridge.fidelity_extract(content=args["content"], config_path=args.get("config_path"))
+    if name == "super_memory_retrieval_pipeline":
+        return bridge.retrieval_pipeline(
+            query=args["query"],
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+        )
+    # P1: Hippocampal Replay
+    if name == "super_memory_hippocampal_replay":
+        return bridge.run_hippocampal_replay(
+            config_path=args.get("config_path"),
+            dry_run=args.get("dry_run", True),
+        )
+    # P1: Pipeline Steps
+    if name == "super_memory_pipeline_steps_run":
+        return bridge.pipeline_steps_run(
+            query=args["query"],
+            step_names=args.get("step_names"),
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+        )
+    # P1: Storage Mixins
+    if name == "super_memory_storage_mixin_query":
+        return bridge.storage_mixin_query(
+            action=args.get("action", "tag_frequencies"),
+            tag=args.get("tag", ""),
+            tags=args.get("tags"),
+            min_priority=args.get("min_priority", 7),
+            hours=args.get("hours", 24),
+            limit=args.get("limit", 50),
+            config_path=args.get("config_path"),
+        )
+    # P2: Schema Assimilation
+    if name == "super_memory_schema_assimilation":
+        return bridge.run_schema_assimilation(
+            config_path=args.get("config_path"),
+            dry_run=args.get("dry_run", True),
+        )
+    if name == "super_memory_schema_match":
+        return bridge.schema_match(
+            content=args["content"],
+            config_path=args.get("config_path"),
+        )
+    # P2: Spaced Repetition
+    if name == "super_memory_spaced_repetition_due":
+        return bridge.spaced_repetition_get_due(
+            limit=args.get("limit", 50),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_spaced_repetition_review":
+        return bridge.spaced_repetition_review(
+            memory_id=args["memory_id"],
+            grade=args["grade"],
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_spaced_repetition_stats":
+        return bridge.spaced_repetition_stats(
+            config_path=args.get("config_path"),
+        )
+    # P2: Token Budget
+    if name == "super_memory_token_budget_estimate":
+        return bridge.token_budget_estimate(text=args["text"])
+    if name == "super_memory_token_budget_select":
+        return bridge.token_budget_select(
+            memories=args["memories"],
+            budget_tokens=args.get("budget_tokens", 3000),
+            min_items=args.get("min_items", 1),
+            config_path=args.get("config_path"),
+        )
+    # P2: Query Expander
+    if name == "super_memory_query_expand":
+        return bridge.query_expand(
+            query=args["query"],
+            config_path=args.get("config_path"),
+        )
 
 class _StdoutToStderr:
     """Redirect accidental library logs/prints away from MCP stdout.

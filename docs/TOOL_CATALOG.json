@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 190,
+  "total_tools": 198,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -4812,6 +4812,192 @@
       "name": "super_memory_run_auto_deep",
       "category": "other",
       "description": "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_quality_score",
+      "category": "other",
+      "description": "Run quality assessment on memory content — fidelity, sufficiency, importance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "memory_type": {
+            "type": "string",
+            "default": "context"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_rerank",
+      "category": "other",
+      "description": "Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "query",
+          "candidates"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_priming_boosts",
+      "category": "other",
+      "description": "Get priming boost multipliers for neurons in a session.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "neuron_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "session_id",
+          "neuron_ids"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reflex_pin",
+      "category": "knowledge_mgmt",
+      "description": "Pin a neuron as always-on reflex for boosted recall.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "neuron_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "neuron_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reflex_unpin",
+      "category": "knowledge_mgmt",
+      "description": "Unpin a neuron from reflex status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "neuron_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "neuron_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reflex_list",
+      "category": "knowledge_mgmt",
+      "description": "List all reflex-pinned neurons.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_preference_detect",
+      "category": "other",
+      "description": "Analyze memory content for preference signals (tech, topics, workflows).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "memory_type": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_diagnostics_new",
+      "category": "core",
+      "description": "Runtime diagnostics — component health + milestones (v1.6.0+).",
       "inputSchema": {
         "type": "object",
         "properties": {

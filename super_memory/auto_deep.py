@@ -32,6 +32,9 @@ P0_MODULES = {
     "spreading_activation": "super_memory.spreading_activation",
     "dedup.config": "super_memory.dedup.config",
     "dedup.pipeline": "super_memory.dedup.pipeline",
+    "confidence": "super_memory.confidence",
+    "fidelity": "super_memory.fidelity",
+    "retrieval_pipeline": "super_memory.retrieval_pipeline",
 }
 
 P1_MODULES = {
