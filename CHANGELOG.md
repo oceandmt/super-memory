@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.0 (2026-06-22)
+
+### Added
+
+- **P0 — Foundation**: Entity extraction, memory stage maturation pipeline, consolidation strategies (prune/merge/mature/infer/enrich), hybrid RRF recall fusing 4 layers
+- **P1 — Intelligence**: SimHash near-dup detection (64-bit, Hamming ≤3), goal-directed recall bias (1-3x boost), graph query expansion, semantic discovery auto-linking, Bayesian hypothesis engine
+- **P2 — Polish**: Leitner spaced repetition auto-seed on save (priority types: DECISION, INSTRUCTION, WORKFLOW, REFERENCE), Knowledge Surface compact prompt context (~500 tokens), abstract storage backend (CoreStorage ABC + SQLiteCoreStorage factory), depth prior adaptive recall depth (0-3 levels)
+
+### Fixed
+
+- `MemoryType` missing `INSTRUCTION` and `REFERENCE` enum values — Leitner auto-seed never triggered for priority types
+- `sanitize.py` stale aliases `instruction→doctrine`, `reference→context` causing silent type corruption during save
+- `bridge.py` simhash block missing `json` import — every save logged non-blocking error
+- **693 orphan graph neurons** referencing soft-deleted memories — cleaned via `graph_cleanup_orphans()` (reduced graph 33%)
+- **7 SQLite-only IDs** missing workspace_markdown rows — backfilled
+
+### Changed
+
+- `MemoryType`: 11→13 types (added `instruction`, `reference`)
+- `sanitize._TYPE_ALIASES`: removed stale `instruction→doctrine`, `reference→context`; added `ref→reference`, `inst→instruction`
+- `bridge.remember()`: integrated SimHash fingerprinting, entity extraction, memory stage assignment, and Leitner auto-seed into save pipeline
+- `hybrid_recall.cross_scope_recall()`: integrated depth prior adaptive depth
+- `models.py`: extended MemoryType enum, MemoryRecord metadata fields
+- `pyproject.toml`: version 1.4.1→1.5.0
+
 ## 0.2.0 (2026-06-20)
 
 ### Fixed

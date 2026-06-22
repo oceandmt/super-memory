@@ -31,6 +31,8 @@ class MemoryType(str, Enum):
     DOCTRINE = "doctrine"
     LESSON = "lesson"
     EVENT = "event"
+    INSTRUCTION = "instruction"
+    REFERENCE = "reference"
 
 
 class MemoryScope(str, Enum):
@@ -87,6 +89,50 @@ class SaveResult(BaseModel):
     pending_canonical_sync: bool = False
 
 
+# ── Sub-config groups for rationalized configuration ──────────────────────
+
+class RecallConfig(BaseModel):
+    """Recall and retrieval configuration."""
+    spreading_activation_depth: int = 2
+    spreading_activation_top_k: int = 20
+    spreading_activation_seed_limit: int = 30
+    graph_expansion_enabled: bool = True
+    graph_expansion_max_neighbors: int = 10
+    graph_expansion_min_weight: float = 0.3
+    goal_directed_recall_enabled: bool = True
+    rrf_k: float = 60.0
+    recall_max_tokens: int = 2000
+
+class VectorConfig(BaseModel):
+    """Vector embedding configuration."""
+    enabled: bool = False
+    provider: str = "ollama"
+    model: str = "nomic-embed-text"
+    endpoint: str = "http://127.0.0.1:11434/api/embed"
+    dimension: int = 768
+    batch_size: int = 8
+    retry_on_failure: bool = True
+
+class ConsolidationConfig(BaseModel):
+    """Consolidation and lifecycle configuration."""
+    prune_weight_threshold: float = 0.05
+    prune_min_inactive_days: float = 7.0
+    dedup_threshold: float = 0.85
+    semantic_discovery_enabled: bool = True
+    semantic_discovery_min_weight: float = 0.25
+    stage_promotion_enabled: bool = True
+    mature_enabled: bool = True
+    enrich_enabled: bool = True
+    dreaming_enabled: bool = True
+    short_term_repair_enabled: bool = True
+
+class SimHashConfig(BaseModel):
+    """SimHash near-dup detection."""
+    enabled: bool = True
+    threshold: int = 3
+    index_limit: int = 500
+
+
 class SuperMemoryConfig(BaseModel):
     # Fresh installs must not silently attach to a live OpenClaw workspace.
     # Operators can still opt in explicitly with SUPER_MEMORY_WORKSPACE_ROOT
@@ -108,9 +154,17 @@ class SuperMemoryConfig(BaseModel):
     neural_memory_embed_llm_mode: str = "optional"  # optional|disabled|external
     api_token: str = ""  # Bearer token for REST API auth; empty = no auth (backward compat)
     db_backend: str = "sqlite"  # Database backend: "sqlite" (default) or "postgres" (experimental)
-    vector_enabled: bool = False  # Enable vector embedding recall (requires sqlite-vec)
-    embedding_provider: str = "ollama"  # ollama|disabled
-    embedding_model: str = "nomic-embed-text"
-    embedding_endpoint: str = "http://127.0.0.1:11434/api/embed"
-    embedding_dimension: int = 768
     legacy_graph_edges: bool = True  # dual-write to graph_edges for backward compat; set False to disable
+
+    # Backward-compat aliases (mapped from flat config)
+    vector_enabled: bool = False  # Maps to vector.enabled
+    embedding_provider: str = "ollama"  # Maps to vector.provider
+    embedding_model: str = "nomic-embed-text"  # Maps to vector.model
+    embedding_endpoint: str = "http://127.0.0.1:11434/api/embed"  # Maps to vector.endpoint
+    embedding_dimension: int = 768  # Maps to vector.dimension
+
+    # Sub-config groups
+    recall: RecallConfig = Field(default_factory=RecallConfig)
+    vector: VectorConfig = Field(default_factory=VectorConfig)
+    consolidation: ConsolidationConfig = Field(default_factory=ConsolidationConfig)
+    simhash: SimHashConfig = Field(default_factory=SimHashConfig)

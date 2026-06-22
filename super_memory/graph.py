@@ -48,6 +48,10 @@ DEFAULT_ACTIVATION_DEPTH = 2
 DEFAULT_ACTIVATION_TOP_K = 20
 DEFAULT_ACTIVATION_SEED_LIMIT = 30
 
+# Graph query expansion config
+EXPANSION_MAX_NEIGHBORS = 10
+EXPANSION_MIN_WEIGHT = 0.3
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -273,6 +277,46 @@ def neighbors(neuron_or_memory_id: str, direction: str = "out", limit: int = 20,
         else:
             rows = conn.execute("SELECT s.*, n.content target_content, n.kind target_kind FROM cognitive_synapses s JOIN cognitive_neurons n ON n.id=s.target_neuron_id WHERE s.source_neuron_id=? LIMIT ?", (node_id, limit)).fetchall()
     return {"ok": True, "query": neuron_or_memory_id, "node_id": node_id, "neighbors": [{"synapse_id": r["id"], "relation": r["relation"], "weight": r["weight"], "confidence": r["confidence"], "target_content": r["target_content"], "target_kind": r["target_kind"]} for r in rows]}
+
+
+def expand_query(query: str, config_path: str | None = None, max_neighbors: int = EXPANSION_MAX_NEIGHBORS, min_weight: float = EXPANSION_MIN_WEIGHT) -> dict[str, Any]:
+    """Expand a query with related terms from the cognitive graph.
+
+    Uses seed neurons matching the query, then retrieves their top-weighted
+    graph neighbors to suggest additional search terms.
+    """
+    store = _store(config_path)
+    graph_index = _load_graph_index(store)
+    neurons = graph_index["neurons"]
+    outgoing = graph_index["outgoing"]
+    if not neurons:
+        return {"ok": True, "original_query": query, "expansions": [], "exact_terms": [], "related_terms": []}
+    q_lower = query.lower()
+    q_tokens = {t for t in re.split(r"[^a-zA-Z0-9_]+", q_lower) if len(t) > 2}
+    seed_ids: list[str] = []
+    for nid, nd in neurons.items():
+        content = (nd.get("content", "") or "").lower()
+        if any(token in content for token in q_tokens) or q_lower in content:
+            seed_ids.append(nid)
+    if not seed_ids:
+        return {"ok": True, "original_query": query, "expansions": [], "exact_terms": [], "related_terms": []}
+    expansions: dict[str, float] = {}
+    for seed_id in seed_ids:
+        for edge in outgoing.get(seed_id, []):
+            weight = edge.get("weight", 0.5)
+            if weight < min_weight:
+                continue
+            neighbor_id = edge["target"]
+            neighbor = neurons.get(neighbor_id, {})
+            content = neighbor.get("content", "")
+            if content and len(content) > 2 and content.lower() not in q_lower:
+                score = weight * edge.get("confidence", 0.5)
+                if content not in expansions or score > expansions[content]:
+                    expansions[content] = score
+    sorted_terms = sorted(expansions.items(), key=lambda x: -x[1])
+    related_terms = [term for term, score in sorted_terms[:max_neighbors]]
+    exact_terms = list(q_tokens)
+    return {"ok": True, "original_query": query, "expansions": sorted_terms[:max_neighbors], "exact_terms": exact_terms, "related_terms": related_terms, "seed_count": len(seed_ids)}
 
 
 def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:

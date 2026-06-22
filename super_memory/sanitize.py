@@ -33,10 +33,11 @@ _KEY_ALIASES = {
 }
 _TYPE_ALIASES = {
     "decision-memory": "decision",
-    "instruction": "doctrine",
+    "insight-memory": "insight",
     "error": "blocker",
-    "reference": "context",
     "task": "todo",
+    "ref": "reference",
+    "inst": "instruction",
 }
 _SCOPE_ALIASES = {
     "agent_local": "agent-local",

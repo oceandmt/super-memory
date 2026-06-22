@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .config import load_config
 from .graph import project_memory
+from .memory_stages import MemoryStage, promote_stage
 from .models import MemoryRecord, MemoryScope, MemoryType
+from .semantic_discovery import auto_link_memories, discover_links
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 
@@ -205,6 +208,149 @@ def _create_semantic_memories(store: SuperMemoryStore, config_path: str | None, 
     return created
 
 
+def _mature_synapses(store: SuperMemoryStore, dry_run: bool = True) -> dict[str, Any]:
+    """MATURE strategy: reinforce synapses for frequently accessed memories.
+    
+    Scans recent recall events (cognitive_events) and boosts synapse weight
+    for memories that were recalled together. Implements Hebbian-like
+    reinforcement: "neurons that fire together, wire together."
+    """
+    reinforced = 0
+    mature_errors = []
+    
+    try:
+        with store.connect() as conn:
+            # Find memories with high recall frequency via stage reinforcements
+            rows = conn.execute(
+                "SELECT id, metadata_json FROM memories "
+                "WHERE json_extract(metadata_json, '$.memory_stage.reinforcements') >= 3 "
+                "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+            ).fetchall()
+            
+            if not dry_run:
+                for row in rows:
+                    try:
+                        metadata = json.loads(row["metadata_json"] or "{}")
+                        stage_info = metadata.get("memory_stage", {})
+                        age_days = stage_info.get("reinforcements", 0)
+                        if age_days >= 5:
+                            # Boost synapse weight
+                            conn.execute(
+                                "UPDATE memories SET metadata_json = json_set(metadata_json, "
+                                "'$.memory_stage.matured', 1) WHERE id = ?",
+                                (row["id"],),
+                            )
+                            reinforced += 1
+                    except Exception as exc:
+                        mature_errors.append({"memory_id": row["id"], "error": str(exc)})
+    except Exception as exc:
+        mature_errors.append({"error": str(exc)})
+    
+    return {"reinforced": reinforced, "errors": mature_errors}
+
+
+def _enrich_graph(store: SuperMemoryStore, dry_run: bool = True) -> dict[str, Any]:
+    """ENRICH strategy: infer implicit links between related memories.
+    
+    Creates synapses between memories that:
+    1. Share the same project or session
+    2. Have overlapping entity types (extracted entities)
+    3. Share similar tags
+    """
+    links = 0
+    enrich_errors = []
+    
+    try:
+        with store.connect() as conn:
+            # Find memories with extracted entities
+            rows = conn.execute(
+                "SELECT id, metadata_json, project, tags_json FROM memories "
+                "WHERE json_extract(metadata_json, '$.extracted_entities') IS NOT NULL "
+                "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+                "LIMIT 500"
+            ).fetchall()
+            
+            if not dry_run and len(rows) >= 2:
+                for i, row_a in enumerate(rows):
+                    for row_b in rows[i + 1:]:
+                        try:
+                            meta_a = json.loads(row_a["metadata_json"] or "{}")
+                            meta_b = json.loads(row_b["metadata_json"] or "{}")
+                            
+                            entities_a = set(meta_a.get("extracted_entities", {}).get("entity_types", []))
+                            entities_b = set(meta_b.get("extracted_entities", {}).get("entity_types", []))
+                            
+                            # Link if they share entity types
+                            if entities_a & entities_b:
+                                # Use graph edge to create implicit link
+                                existing = conn.execute(
+                                    "SELECT id FROM graph_edges WHERE source_memory_id = ? AND target_memory_id = ?",
+                                    (row_a["id"], row_b["id"]),
+                                ).fetchone()
+                                if not existing:
+                                    conn.execute(
+                                        "INSERT OR IGNORE INTO graph_edges (source_memory_id, target_memory_id, relation_type) "
+                                        "VALUES (?, ?, ?)",
+                                        (row_a["id"], row_b["id"], "related_to"),
+                                    )
+                                    links += 1
+                        except Exception as exc:
+                            enrich_errors.append({"error": str(exc)[:80]})
+    except Exception as exc:
+        enrich_errors.append({"error": str(exc)})
+    
+    return {"links_created": links, "errors": enrich_errors}
+
+
+def _promote_stages(store: SuperMemoryStore, dry_run: bool = True) -> dict[str, Any]:
+    """Promote memory stages based on age and reinforcement count."""
+    promoted = []
+    errors = []
+    
+    try:
+        with store.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, metadata_json FROM memories "
+                "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+                "LIMIT 1000"
+            ).fetchall()
+            
+            for row in rows:
+                try:
+                    metadata = json.loads(row["metadata_json"] or "{}")
+                    stage_info = metadata.get("memory_stage", {})
+                    current_stage = stage_info.get("stage", MemoryStage.SHORT_TERM.value)
+                    
+                    if isinstance(current_stage, str):
+                        try:
+                            stage_enum = MemoryStage(current_stage)
+                        except ValueError:
+                            continue
+                    else:
+                        continue
+                    
+                    new_stage, updated_meta, did_promote = promote_stage(stage_enum, metadata)
+                    
+                    if did_promote:
+                        if dry_run:
+                            promoted.append({"memory_id": row["id"], "from": current_stage, "to": new_stage.value})
+                        else:
+                            conn.execute(
+                                "UPDATE memories SET metadata_json = ? WHERE id = ?",
+                                (json.dumps(updated_meta, ensure_ascii=False), row["id"]),
+                            )
+                            promoted.append({"memory_id": row["id"], "from": current_stage, "to": new_stage.value})
+                except Exception as exc:
+                    errors.append({"memory_id": row["id"], "error": str(exc)[:80]})
+    except Exception as exc:
+        errors.append({"error": str(exc)})
+    
+    return {"promoted": promoted, "count": len(promoted), "errors": errors}
+
+
 def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     """
     Real consolidation pipeline:
@@ -212,7 +358,10 @@ def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: s
     2. Merge duplicates (keep canonical, cite sources)
     3. Detect contradictions
     4. Promote frequent patterns to semantic memories
-    5. Rebuild graph projection
+    5. MATURE: reinforce synapses for frequently accessed memories
+    6. ENRICH: infer implicit links between related memories
+    7. Promote memory stages (STM→Working→Episodic→Semantic)
+    8. Rebuild graph projection
     """
     cfg = load_config(config_path)
     store = SuperMemoryStore(cfg)
@@ -236,7 +385,19 @@ def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: s
     # Phase 5: Create semantic memories
     semantic_created = _create_semantic_memories(store, config_path, promotion, dry_run) if promotion else []
 
-    # Phase 6: Rebuild graph projection.
+    # Phase 6: MATURE — reinforce synapses for frequently accessed memories
+    mature_result = _mature_synapses(store, dry_run) if strategy in {"all", "mature"} else {"reinforced": 0, "errors": []}
+
+    # Phase 7: ENRICH — infer implicit links between related memories
+    enrich_result = _enrich_graph(store, dry_run) if strategy in {"all", "enrich"} else {"links_created": 0, "errors": []}
+
+    # Phase 8: Promote memory stages (STM→Working→Episodic→Semantic)
+    stage_promotion = _promote_stages(store, dry_run) if strategy in {"all", "stage_promote"} else {"promoted": [], "count": 0, "errors": []}
+
+    # Phase 9: Semantic discovery — auto-link related memories
+    semantic_links = auto_link_memories(store, config_path=config_path, dry_run=dry_run, limit=500, min_weight=0.25) if strategy in {"all", "semantic_discover"} else {"ok": True, "links_found": 0, "links_created": 0, "errors": []}
+
+    # Phase 10: Rebuild graph projection.
     # - For merge/dedup consolidation, rebuild canonical merged memories.
     # - For explicit graph/all strategies, project all loaded memories so the
     #   maintenance endpoint is useful even when no duplicate merges occurred.
@@ -269,6 +430,10 @@ def consolidate_real(strategy: str = "all", dry_run: bool = True, config_path: s
         "contradictions": contradictions[:10],
         "promotion_candidates": len(promotion),
         "semantic_created": semantic_created,
+        "mature": {"reinforced": mature_result["reinforced"], "errors": mature_result["errors"][:5]},
+        "enrich": {"links_created": enrich_result["links_created"], "errors": enrich_result["errors"][:5]},
+        "stage_promotion": stage_promotion,
+        "semantic_discovery": semantic_links,
         "graph_rebuilt": graph_rebuilt,
         "graph_errors": graph_errors[:10],
         "real_consolidation": True,

@@ -7,6 +7,8 @@ from typing import Any
 
 from .config import load_config
 from .db import DBMixin, validate_agent_scope, validate_session_scope
+from .goals import compute_goal_boost, get_goal_manager
+from .depth_prior import expected_depth as dp_expected_depth, record_outcome as dp_record_outcome
 from .vector import VectorStore, rerank_by_embedding
 
 
@@ -58,42 +60,98 @@ def _query_to_pseudo_vector(query: str, dim: int = 128) -> list[float]:
     return vec
 
 
+# ── Reciprocal Rank Fusion ──────────────────────────────────────────────────
+# RRF combines ranked lists from multiple retrieval backends.
+# Each backend contributes 1/(k + rank) to the final score.
+# k=60 is the standard default from the original RRF paper.
+RRF_K = 60.0
+
+def _rrf_fuse(lists: list[list[dict[str, Any]]], k: float = RRF_K) -> list[dict[str, Any]]:
+    """Fuse multiple ranked lists using Reciprocal Rank Fusion.
+
+    Each list must have items with an 'id' field.
+    Returns items sorted by RRF score descending.
+    """
+    scores: dict[str, float] = {}
+    items_by_id: dict[str, dict[str, Any]] = {}
+
+    for ranked_list in lists:
+        for rank, item in enumerate(ranked_list):
+            item_id = item.get("id")
+            if not item_id:
+                continue
+            items_by_id[item_id] = item
+            # RRF contribution: 1 / (k + rank)
+            # rank is 0-indexed, add 1 for 1-based ranking
+            scores[item_id] = scores.get(item_id, 0.0) + 1.0 / (k + rank + 1)
+
+    # Sort by RRF score descending
+    ranked = sorted(items_by_id.values(), key=lambda x: scores.get(x.get("id", ""), 0), reverse=True)
+    return ranked
+
+
 class HybridRecall(DBMixin):
 
     def cross_scope_recall(self, query: str, agent_scope: str = "current", session_scope: str = "recent", source_layers: list[str] | None = None, max_tokens: int = 2000, limit: int = 10) -> dict[str, Any]:
         validate_agent_scope(agent_scope)
         validate_session_scope(session_scope)
+
+        # Depth Prior: auto-adjust search depth based on query type
+        depth = dp_expected_depth(query, self._store() if hasattr(self, '_store') else None)
+        candidate_limit = max(limit * (depth + 2) * 2, 50)
+
         layers = source_layers or ["all"]
         allowed_layers = {"all", "markdown", "honcho", "mempalace", "graph"}
         if any(layer not in allowed_layers for layer in layers):
             raise ValueError(f"invalid source_layers: {layers}")
         if "all" in layers:
             layers = ["markdown", "honcho", "mempalace", "graph"]
-        candidate_limit = max(limit * 5, 50)
-        results: list[dict[str, Any]] = []
+        ranked_lists: list[list[dict[str, Any]]] = []
         with self._conn() as conn:
             if "markdown" in layers and self._has(conn, "memories"):
-                results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "markdown")
+                ranked_lists.append(self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "markdown"))
                 if self.config.vector_enabled:
-                    results += self._search_semantic_memories(conn, query, agent_scope, session_scope, candidate_limit)
+                    ranked_lists.append(self._search_semantic_memories(conn, query, agent_scope, session_scope, candidate_limit))
             if "honcho" in layers and self._has(conn, "honcho_events"):
-                results += self._search_honcho(conn, query, agent_scope, session_scope, candidate_limit)
+                ranked_lists.append(self._search_honcho(conn, query, agent_scope, session_scope, candidate_limit))
             if "mempalace" in layers and self._has(conn, "palace_drawers"):
-                results += self._search_palace(conn, query, candidate_limit)
+                ranked_lists.append(self._search_palace(conn, query, candidate_limit))
             if "graph" in layers and self._has(conn, "memories") and self._has(conn, "cognitive_neurons"):
-                results += self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "graph", graph=True)
-        merged = self._dedup(results)
-        ranked = sorted(merged, key=lambda r: self._score(r, query, agent_scope, session_scope), reverse=True)
+                ranked_lists.append(self._search_memories(conn, query, agent_scope, session_scope, candidate_limit, "graph", graph=True))
 
-        # Native sqlite-vec semantic reranking (optional). Query text is embedded
-        # with the configured provider, then matched against the sqlite-vec index.
+        # RRF fusion: combine all ranked lists using Reciprocal Rank Fusion
+        fused = _rrf_fuse(ranked_lists)
+        merged = self._dedup(fused)
+
+        # Goal-directed boost: apply bias from active goals
+        goal_mgr = get_goal_manager()
+        active_goals = goal_mgr.get_active_goals()
+        if active_goals:
+            for item in merged:
+                tags = item.get("tags", item.get("metadata", {}).get("tags", []))
+                if isinstance(tags, str):
+                    try:
+                        import json as _json
+                        tags = _json.loads(tags)
+                    except Exception:
+                        tags = []
+                content = item.get("content", "")
+                item["_goal_boost"] = goal_mgr.compute_goal_boost(tags, content)
+            merged.sort(key=lambda x: x.get("_goal_boost", 1.0), reverse=True)
+
+        # Native sqlite-vec semantic reranking (optional)
         if self.config.vector_enabled:
             try:
-                ranked = rerank_by_embedding(ranked, query, top_k=limit * 2, config=self.config)
+                merged = rerank_by_embedding(merged, query, top_k=limit * 2, config=self.config)
             except Exception:
-                pass  # Vector reranking is best-effort
+                pass
 
-        return {"ok": True, "query": query, "results": self._truncate(ranked[:limit], max_tokens), "count": min(len(ranked), limit)}
+        return {"ok": True, "query": query, "results": self._truncate(merged[:limit], max_tokens), "count": min(len(merged), limit), "depth_prior": depth}
+
+    def _store(self):
+        """Get SuperMemoryStore instance for depth prior."""
+        from .storage import SuperMemoryStore
+        return SuperMemoryStore(self.config)
 
     def _search_semantic_memories(self, conn, query, agent_scope, session_scope, limit):
         """Search memories through sqlite-vec semantic index, then hydrate rows."""

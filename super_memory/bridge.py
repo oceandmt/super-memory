@@ -6,6 +6,12 @@ from typing import Any
 from . import cleanup as cleanup_mod
 from . import code_index, cognitive, durable_pack as durable_pack_mod, graph, intelligence, leitner, lifecycle, memory_core, phase8, reasoning, safe_flows
 from .compat import memory_get_compatible, memory_search_compatible
+from .entity_extractor import extract_metadata
+from .memory_stages import record_reinforcement, MemoryStage
+from .simhash import compute_content_hash, hamming_distance, simhash_dedup_check
+from .goals import create_goal, get_goal_manager
+from .semantic_discovery import auto_link_memories as auto_link_semantic
+from .leitner import auto_seed as leitner_auto_seed
 from .config import load_config
 from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
@@ -61,14 +67,10 @@ def remember(payload: dict[str, Any], config_path: str | None = None, defer: boo
         }
 
     # Dedup check: skip save when an active record with the same content_hash
-    # already exists. This prevents duplicate test, contract, and benchmark
-    # memories from accumulating across sessions.
+    # already exists.
     dedup = svc.dedup_check(record)
     if dedup["skipped"]:
         logger.debug("remember dedup hit — skipping save", memory_id=record.id, matched_id=dedup["matched_id"])
-        # Return the existing canonical record id on dedup. Callers frequently
-        # use result.record.id for follow-up show/get queries; returning the
-        # unsaved candidate id makes those follow-ups look like data loss.
         matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
         out_record = matched or record
         return {
@@ -77,7 +79,66 @@ def remember(payload: dict[str, Any], config_path: str | None = None, defer: boo
             "results": [],
             "graph_projection": None,
         }
+
+    # SimHash near-dup check: detect fuzzy duplicates using Hamming distance
+    # on fingerprint hashes. Near-duplicates are saved but annotated for downstream.
+    try:
+        import json as _json
+        simhash_fp = compute_content_hash(record.content)
+        if simhash_fp:
+            record.metadata["simhash_fingerprint"] = simhash_fp
+            with svc.store.connect() as conn:
+                recent = conn.execute(
+                    "SELECT id, metadata_json FROM memories "
+                    "WHERE json_extract(metadata_json, '$.simhash_fingerprint') IS NOT NULL "
+                    "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                    "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+                    "ORDER BY rowid DESC LIMIT 500"
+                ).fetchall()
+            min_dist = 999
+            nearest_id = None
+            for row in recent:
+                meta = _json.loads(row["metadata_json"] or "{}")
+                existing_fp = meta.get("simhash_fingerprint", 0)
+                if existing_fp:
+                    dist = hamming_distance(simhash_fp, existing_fp)
+                    if dist < min_dist:
+                        min_dist = dist
+                        nearest_id = row["id"]
+            if min_dist <= 3:
+                record.metadata["simhash_near_dup"] = {
+                    "is_near_dup": True,
+                    "nearest_id": nearest_id,
+                    "hamming_distance": min_dist,
+                }
+                logger.debug("simhash near-dup detected", memory_id=record.id, nearest_id=nearest_id, distance=min_dist)
+    except Exception as exc:
+        logger.debug("simhash check failed (non-blocking)", error=str(exc))
+    # Entity extraction: enrich metadata for better recall
+    entity_meta = extract_metadata(record.content)
+    if entity_meta:
+        record.metadata.setdefault("extracted_entities", {})
+        record.metadata["extracted_entities"] = entity_meta
+
+    # Memory stage: new memories start at SHORT_TERM
+    record.metadata.setdefault("memory_stage", {
+        "stage": MemoryStage.SHORT_TERM.value,
+        "created_at": record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at),
+        "promoted_at": [],
+        "reinforcements": 0,
+        "distinct_reinforcement_dates": [],
+        "last_reinforced_at": "",
+    })
+
     results = svc.save(record)
+
+    # Leitner auto-seed: assign box=0 to priority memories for spaced repetition
+    try:
+        if record.type in (MemoryType.DECISION, MemoryType.INSTRUCTION, MemoryType.WORKFLOW, MemoryType.REFERENCE):
+            leitner_auto_seed(config_path=config_path, limit=5)
+    except Exception as exc:
+        logger.debug("leitner auto-seed failed (non-blocking)", error=str(exc))
+
     graph_projection = None
     try:
         graph_projection = graph.project_memory(record, config_path=config_path)
@@ -105,6 +166,11 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             trust_score=payload.get("trust_score"),
             metadata=payload.get("metadata", {}),
         )
+        # Entity extraction for batch items
+        entity_meta = extract_metadata(record.content)
+        if entity_meta:
+            record.metadata.setdefault("extracted_entities", {})
+            record.metadata["extracted_entities"] = entity_meta
         dedup = svc.dedup_check(record)
         if dedup["skipped"]:
             matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
