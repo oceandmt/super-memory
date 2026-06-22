@@ -1,3 +1,4 @@
+from __future__ import annotations
 # MemPalace - Spatial Memory Intelligence Layer
 # Inspired by mempalace/mempalace (GitHub) but local, no LLM cost
 

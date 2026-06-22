@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Activation cache — thermal state save/load for warm-start recall.
 
 Ported from neural-memory v4.58.0 cache/.

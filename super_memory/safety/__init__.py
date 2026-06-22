@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Safety subsystem — input firewall, freshness, brain scanner, encryption.
 
 Ported from neural-memory v4.58.0 safety/.

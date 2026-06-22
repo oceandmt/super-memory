@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Super Memory: local multi-layer memory app for OpenClaw multi-agents."""
 
 __version__ = "1.6.0"

@@ -1,3 +1,4 @@
+from __future__ import annotations
 # Honcho - Conversational Memory Intelligence Layer
 # Inspired by plastic-labs/honcho but local, no backend required
 

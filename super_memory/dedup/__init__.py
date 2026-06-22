@@ -1,3 +1,4 @@
+from __future__ import annotations
 """3-tier dedup pipeline: SimHash → Embedding → LLM.
 """
 from .config import DedupConfig

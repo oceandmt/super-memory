@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Super Memory extraction module: relation extraction and structure detection."""
 
 from .relations import RelationCandidate, RelationType, extract_relations

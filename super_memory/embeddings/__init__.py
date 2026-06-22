@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Multi-provider embeddings — OpenAI, Gemini, OpenRouter, Ollama."""
 from .provider import get_embedding_provider, EmbeddingProvider, EmbeddingResult
 
