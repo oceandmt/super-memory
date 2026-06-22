@@ -255,3 +255,19 @@ def classify_fidelity_layer(content: str) -> FidelityLayer:
 
     # Essence: single sentence
     return FIDELITY_ESSENCE
+
+# ── Safe wrapper ─────────────────────────────────────────────────────────────
+
+def extract_fidelity_safe(content: str) -> dict:
+    """Safe wrapper for extract_fidelity with error handling."""
+    try:
+        result = extract_fidelity(content)
+        return {
+            "essence": result.essence,
+            "layer": result.layer.value,
+            "confidence": result.confidence,
+            "tokens_saved": result.tokens_saved,
+        }
+    except Exception as e:
+        logger.error("extract_fidelity failed: %s", e, exc_info=True)
+        return {"essence": "", "layer": "detail", "confidence": 0.0, "error": str(e)}

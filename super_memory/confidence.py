@@ -166,3 +166,21 @@ def compute_confidence(
         familiarity_penalty=round(familiarity_penalty, 4),
         components=components,
     )
+
+# ── Safe wrapper ─────────────────────────────────────────────────────────────
+
+def compute_confidence_safe(*args, **kwargs) -> dict:
+    """Safe wrapper for compute_confidence with error handling."""
+    try:
+        result = compute_confidence(*args, **kwargs)
+        return {
+            "overall": result.overall,
+            "retrieval": result.retrieval,
+            "sufficiency": result.sufficiency,
+            "freshness": result.freshness,
+            "fidelity": result.fidelity,
+            "familiarity": result.familiarity,
+        }
+    except Exception as e:
+        logger.error("compute_confidence failed: %s", e, exc_info=True)
+        return {"overall": 0.0, "error": str(e)}

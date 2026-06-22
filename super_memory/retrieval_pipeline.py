@@ -454,3 +454,14 @@ class RetrievalPipeline:
             confidences=confidences,
             formatted_context=formatted,
         )
+
+# ── Safe wrapper ─────────────────────────────────────────────────────────────
+
+def run_pipeline_safe(query: str, limit: int = 10, config_path: str | None = None) -> dict:
+    """Safe wrapper for run_pipeline with error handling."""
+    try:
+        result = run_pipeline(query, limit=limit, config_path=config_path)
+        return result
+    except Exception as e:
+        logger.error("retrieval_pipeline failed: %s", e, exc_info=True)
+        return {"results": [], "error": str(e), "query": query}
