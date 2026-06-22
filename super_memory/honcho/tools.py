@@ -46,10 +46,8 @@ class HonchoTools:
         return {"ok": True, **self.context_builder.build(session_id=session_id, peer_id=peer_id, max_tokens=max_tokens)}
 
     def honcho_profile(self, peer_id: str = "boss", role: str = "human", facts: list[str] | None = None, merge: bool = True) -> dict[str, Any]:
-        """Read or update peer profile."""
+        """Read or update peer profile. Creates peer if not found."""
         peer = self.peer_store.get(peer_id)
-        if peer is None and not facts:
-            return {"ok": False, "error": f"Peer not found: {peer_id}", "peer_id": peer_id}
         if peer is None:
             peer = self.peer_store.get_or_create(peer_id, role=PeerRole(role), display_name=peer_id)
         if facts:

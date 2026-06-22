@@ -147,7 +147,13 @@ class MemPalaceTools:
     def palace_summary(self) -> dict[str, Any]:
         """Quick spatial overview."""
         summary = self.navigator.summary()
-        return {"ok": True, "summary": summary}
+        return {
+            "ok": True, "summary": summary,
+            "wings": summary.get("total_wings", 0),
+            "rooms": summary.get("total_rooms", 0),
+            "halls": summary.get("total_halls", 0),
+            "drawers": summary.get("total_drawers", 0),
+        }
 
     # ── Entity Registry Tools ────────────────────────────────────────────
 
