@@ -68,6 +68,30 @@ class SuperMemoryService:
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
 
+        # P0 Firewall: check content before saving
+        try:
+            from .pipeline_integration import run_safety_firewall, enrich_with_relations, check_triggers
+            fw = run_safety_firewall(record.content)
+            if fw["blocked"]:
+                logger.warning("save.firewall_blocked", reason=fw["reason"], memory_id=record.id)
+                record.metadata["firewall_blocked"] = True
+                record.metadata["firewall_reason"] = fw["reason"]
+            # P1 Relations/Structure/Trigger enrichment (non-blocking)
+            meta = record.metadata
+            enrich_with_relations(meta, record.content)
+        except Exception as exc:
+            logger.debug("save.pipeline_enrich_failed", error=f"{type(exc).__name__}: {exc}")
+
+        # P0 Dedup & freshness metadata
+        try:
+            from .safety.freshness import evaluate_freshness
+            from datetime import timezone
+            fr = evaluate_freshness(record.created_at)
+            record.metadata["freshness_level"] = fr.level.value
+            record.metadata["freshness_score"] = fr.score
+        except Exception:
+            pass
+
         # Enrich with arousal/valence
         arousal_log: dict | None = None
         try:
@@ -298,6 +322,33 @@ class SuperMemoryService:
             record_outcome(query, hit_count=total_hits, store=self.store)
         except Exception as exc:
             logger.warning("recall.outcome_failed", error=f"{type(exc).__name__}: {exc}")
+
+        # P1 Freshness annotation on recall results
+        try:
+            from .safety.freshness import evaluate_freshness
+            from datetime import timezone
+            for layer, records in out.items():
+                for r in records:
+                    if r.created_at:
+                        fr = evaluate_freshness(r.created_at)
+                        r.metadata["_freshness"] = {
+                            "level": fr.level.value, "score": fr.score,
+                            "age_days": fr.age_days, "should_verify": fr.should_verify,
+                        }
+        except Exception as exc:
+            logger.debug("recall.freshness_annotate_failed", error=f"{type(exc).__name__}: {exc}")
+
+        # P2 Warm cache save for future recall
+        try:
+            from .pipeline_integration import save_warm_cache
+            act_map: dict[str, float] = {}
+            for layer, records in out.items():
+                for idx, r in enumerate(records):
+                    rid = getattr(r, "id", None) or str(idx)
+                    act_map[rid] = 1.0 - (idx * 0.05)
+            save_warm_cache(self.store, act_map)
+        except Exception as exc:
+            logger.debug("recall.cache_save_failed", error=f"{type(exc).__name__}: {exc}")
 
         return out
 

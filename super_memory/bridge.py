@@ -1441,3 +1441,106 @@ def stabilize(
     cfg = _lc(config_path)
     store = SuperMemoryStore(cfg)
     return _st(store, dry_run=dry_run, prune_stale_synapses=prune_stale_synapses, weight_threshold=weight_threshold)
+
+
+# ── Phase 4: P0-P3 Endpoints ────────────────────────────────────────────────
+
+def run_safety_firewall(text: str) -> dict[str, Any]:
+    """Check content against input firewall."""
+    from .pipeline_integration import run_safety_firewall as _fw
+    return _fw(text)
+
+
+def evaluate_freshness(days_old: float = 0.0) -> dict[str, Any]:
+    """Evaluate memory freshness by age in days."""
+    from .safety.freshness import evaluate_freshness as _ef
+    from datetime import datetime, timezone, timedelta
+    dt = datetime.now(timezone.utc) - timedelta(days=days_old)
+    fr = _ef(dt)
+    return {"level": fr.level.value, "score": fr.score, "age_days": fr.age_days, "warning": fr.warning}
+
+
+def encrypt_content(content: str, key: str | None = None) -> dict[str, Any]:
+    """Encrypt memory content."""
+    from .safety.encryption import MemoryEncryptor
+    from base64 import b64decode
+    k = b64decode(key) if key else MemoryEncryptor.generate_key()
+    enc = MemoryEncryptor(k)
+    return {"encrypted": enc.encrypt(content), "available": enc.available}
+
+
+def extract_relations(text: str) -> list[dict[str, Any]]:
+    """Extract relation candidates from text."""
+    from .pipeline_integration import extract_relations as _er
+    return _er(text)
+
+
+def check_triggers(text: str) -> list[dict[str, Any]]:
+    """Check content against auto-capture trigger patterns."""
+    from .pipeline_integration import check_triggers as _ct
+    return _ct(text)
+
+
+def detect_structure(text: str) -> dict[str, Any] | None:
+    """Detect structured content format."""
+    from .pipeline_integration import detect_structure as _ds
+    return _ds(text)
+
+
+def run_spreading_activation(
+    query: str,
+    anchor_neurons: list[str] | None = None,
+    max_hops: int = 3,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Run spreading activation for associative recall."""
+    from .pipeline_integration import run_spreading_activation as _sa
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _sa(query, store, cfg, anchor_neurons=anchor_neurons, max_hops=max_hops)
+
+
+def get_eternal_context(level: int = 1, config_path: str | None = None) -> str:
+    """Get session-start context injection."""
+    from .pipeline_integration import get_eternal_context as _ec
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    return _ec(store, level=level)
+
+
+def dedup_check_content(content: str, config_path: str | None = None) -> dict[str, Any]:
+    """Check content against dedup pipeline."""
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    from .dedup.pipeline import DedupPipeline, DedupConfig
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    dp = DedupPipeline(DedupConfig(), store)
+    r = dp.check_duplicate(content)
+    return {"is_duplicate": r.is_duplicate, "tier": r.tier, "similarity": r.similarity_score, "reason": r.reason}
+
+
+def load_warm_cache(config_path: str | None = None) -> dict[str, Any]:
+    """Load activation cache for warm-start recall."""
+    from .pipeline_integration import load_warm_cache as _lwc
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    cache = _lwc(store)
+    return {"entries": len(cache), "top": sorted(cache.items(), key=lambda x: -x[1])[:5]}
+
+
+def run_auto_deep(config_path: str | None = None) -> dict[str, Any]:
+    """Run full Auto Deep Engine: Audit → Qualify → Debug → Improve."""
+    from .auto_deep import run_deep_engine as _de
+    result = _de()
+    return {
+        "audit_summary": result.audit.summary,
+        "qualify_grade": result.qualify.grade,
+        "debug_fixes": len(result.debug.fixes_applied),
+        "improvements": len(result.improve.improvements_made),
+        "total_ms": result.total_duration_ms,
+    }

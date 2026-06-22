@@ -1,12 +1,12 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 173,
+  "total_tools": 175,
   "tools": [
     {
       "name": "super_memory_remember",
       "category": "core",
-      "description": "Save a memory through Super Memory canonical-first layer order.",
+      "description": "Save a memory through Super Memory canonical-first layer order. Supports defer=True for batch queuing.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -45,6 +45,10 @@
           },
           "metadata": {
             "type": "object"
+          },
+          "defer": {
+            "type": "boolean",
+            "default": false
           },
           "config_path": {
             "type": "string"
@@ -384,6 +388,56 @@
             "default": false
           },
           "integrity_check": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_expire_by_age",
+      "category": "other",
+      "description": "Soft-delete memories past their expires_days TTL (e.g. todos, ephemeral notes). Safe by default (dry_run=True).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "max_days": {
+            "type": "integer",
+            "default": 90
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_expire_by_valid_until",
+      "category": "other",
+      "description": "Soft-delete memories past their valid_until window (scheduled rules, time-bounded API keys). Safe by default (dry_run=True).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "dry_run": {
             "type": "boolean",
             "default": true
           }

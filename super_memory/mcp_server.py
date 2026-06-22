@@ -78,8 +78,19 @@ NORMAL_TOOLS = {
     # Lifecycle: Expiration
     "super_memory_expire_by_age",
     "super_memory_expire_by_valid_until",
+    # P0-P3: Safety & Recall
+    "super_memory_safety_firewall",
+    "super_memory_evaluate_freshness",
+    "super_memory_encrypt_content",
+    "super_memory_extract_relations",
+    "super_memory_check_triggers",
+    "super_memory_detect_structure",
+    "super_memory_get_eternal_context",
+    "super_memory_dedup_check_content",
+    "super_memory_load_warm_cache",
+    "super_memory_run_auto_deep",
 }
-ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
+ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote", "super_memory_spreading_activation"}
 ADVANCED_TOOLS = {
     "super_memory_conflicts",
     "super_memory_provenance",
@@ -600,6 +611,19 @@ for _name, _desc, _props, _required in [
     ("super_memory_watch_scan", "One-shot file watch scan; no daemon.", {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["directory"]),
     ("super_memory_sync_status", "Show sync status only; cloud disabled.", {"config_path": {"type": "string"}}, []),
     ("super_memory_store_status", "Show store status only; community store disabled.", {"config_path": {"type": "string"}}, []),
+
+    # Phase 4: P0-P3 Endpoints
+    ("super_memory_safety_firewall", "Check content against input firewall (P0).", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_evaluate_freshness", "Evaluate memory freshness by age in days (P0).", {"days_old": {"type": "number", "default": 0.0}}, []),
+    ("super_memory_encrypt_content", "Encrypt memory content using Fernet key (P0).", {"content": {"type": "string"}, "key": {"type": "string"}}, ["content"]),
+    ("super_memory_extract_relations", "Extract causal/comparative/sequential relations from text (P1).", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_check_triggers", "Check content against auto-capture trigger patterns (P1).", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_detect_structure", "Detect structured content format — JSON/CSV/KV/Table (P1).", {"text": {"type": "string"}}, ["text"]),
+    ("super_memory_spreading_activation", "Run spreading activation for associative graph recall (P0).", {"query": {"type": "string"}, "anchor_neurons": {"type": "array", "items": {"type": "string"}}, "max_hops": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_get_eternal_context", "Get session-start context injection (P1).", {"level": {"type": "integer", "default": 1}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dedup_check_content", "Check content against 3-tier dedup pipeline (P0).", {"content": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
+    ("super_memory_load_warm_cache", "Load activation cache for warm-start recall (P1).", {"config_path": {"type": "string"}}, []),
+    ("super_memory_run_auto_deep", "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).", {"config_path": {"type": "string"}}, []),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
@@ -1128,6 +1152,35 @@ def handle(request: JSON) -> JSON | None:
         return _response(request_id, {"contents": [{"uri": uri, "mimeType": "application/json", "text": json.dumps(bridge.status(), ensure_ascii=False, indent=2)}]})
     return _error(request_id, -32601, f"method not found: {method}")
 
+
+    # P0-P3 dispatch handlers
+    if name == "super_memory_safety_firewall":
+        return bridge.run_safety_firewall(text=args["text"])
+    if name == "super_memory_evaluate_freshness":
+        return bridge.evaluate_freshness(days_old=args.get("days_old", 0.0))
+    if name == "super_memory_encrypt_content":
+        return bridge.encrypt_content(content=args["content"], key=args.get("key"))
+    if name == "super_memory_extract_relations":
+        return bridge.extract_relations(text=args["text"])
+    if name == "super_memory_check_triggers":
+        return bridge.check_triggers(text=args["text"])
+    if name == "super_memory_detect_structure":
+        return bridge.detect_structure(text=args["text"])
+    if name == "super_memory_spreading_activation":
+        return bridge.run_spreading_activation(
+            query=args["query"],
+            anchor_neurons=args.get("anchor_neurons"),
+            max_hops=args.get("max_hops", 3),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_get_eternal_context":
+        return bridge.get_eternal_context(level=args.get("level", 1), config_path=args.get("config_path"))
+    if name == "super_memory_dedup_check_content":
+        return bridge.dedup_check_content(content=args["content"], config_path=args.get("config_path"))
+    if name == "super_memory_load_warm_cache":
+        return bridge.load_warm_cache(config_path=args.get("config_path"))
+    if name == "super_memory_run_auto_deep":
+        return bridge.run_auto_deep(config_path=args.get("config_path"))
 
 class _StdoutToStderr:
     """Redirect accidental library logs/prints away from MCP stdout.

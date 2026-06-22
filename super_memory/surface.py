@@ -200,12 +200,16 @@ def to_prompt_block(surface: dict[str, Any] | None = None, max_tokens: int = DEF
     """Format Knowledge Surface as a compact prompt block.
 
     If surface is None, generates a fresh one.
+    Trims to fit within max_tokens using token budget.
     """
     if surface is None:
         surface = generate(max_tokens=max_tokens)
 
     if not surface.get("ok"):
         return "[Knowledge Surface unavailable]"
+
+    # Apply token budget trimming
+    surface = _trim_surface_to_budget(surface, max_tokens)
 
     lines: list[str] = ["[Knowledge Surface]", ""]
 
@@ -241,7 +245,39 @@ def to_prompt_block(surface: dict[str, Any] | None = None, max_tokens: int = DEF
         for w in workflows:
             lines.append(f"  {w['content']}")
 
+    # Clusters (new: auto-inferred group names)
+    clusters = surface.get("clusters", [])
+    if clusters:
+        lines.append("")
+        lines.append("Clusters:")
+        for c in clusters[:3]:
+            lines.append(f"  - {c}")
+
     return "\n".join(lines)
+
+
+def _trim_surface_to_budget(surface: dict, budget: int) -> dict:
+    """Trim surface to fit within token budget (priority-based)."""
+    current_tokens = len(str(surface)) // 3
+    if current_tokens <= budget:
+        return surface
+    result = dict(surface)
+    # Truncate lists
+    if "top_tags" in result and len(result["top_tags"]) > 5:
+        result["top_tags"] = result["top_tags"][:5]
+    if "top_entities" in result and len(result["top_entities"]) > 3:
+        result["top_entities"] = result["top_entities"][:3]
+    if "recent_decisions" in result and len(result["recent_decisions"]) > 3:
+        result["recent_decisions"] = result["recent_decisions"][:3]
+    if "active_workflows" in result and len(result["active_workflows"]) > 2:
+        result["active_workflows"] = result["active_workflows"][:2]
+    # Truncate content fields
+    for key in ["recent_decisions", "active_workflows"]:
+        if key in result:
+            for item in result[key]:
+                if "content" in item and len(item["content"]) > 60:
+                    item["content"] = item["content"][:60] + "..."
+    return result
 
 
 def invalidate_cache(config_path: str | None = None) -> bool:
