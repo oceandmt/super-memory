@@ -13,6 +13,7 @@ from .claim_extractor import CLAIM_EXTRACTOR_TOOLS, ClaimExtractor
 from .config import load_config
 from .cross_agent import CROSS_AGENT_TOOLS, CrossAgentTools
 from .handoff import HANDOFF_TOOLS, HandoffTools
+from .handlers import get_handler_map
 from .honcho.tools import HONCHO_TOOLS, HonchoTools
 from .hooks import HOOKS_TOOLS, HookManager
 from .hybrid_recall import HYBRID_RECALL_TOOLS, HybridRecall
@@ -713,12 +714,25 @@ def _tool_descriptors(profile: str | None = None) -> list[JSON]:
     _DESCRIPTOR_CACHE[effective] = result
     return result
 
+_REGISTRY_CACHE: dict[str, Any] | None = None
 _DESCRIPTOR_CACHE: dict[str, list[JSON]] = {}
+
+
+def _get_registry():
+    global _REGISTRY_CACHE
+    if _REGISTRY_CACHE is None:
+        _REGISTRY_CACHE = get_handler_map()
+    return _REGISTRY_CACHE
 
 
 def _call_tool(name: str, args: JSON) -> Any:
     if name not in _allowed_tools():
         raise PermissionError(f"tool not exposed in {MCP_PROFILE!r} MCP profile: {name}")
+    # ── Handler registry (handler-per-tool pattern) ──────────────────────
+    registered = _get_registry().get(name)
+    if registered is not None:
+        return registered.handle(args)
+    # ── Fallback: class-based dispatchers below ──────────────────────────
     if name == "super_memory_remember":
         config_path = args.pop("config_path", None)
         defer = args.pop("defer", False)

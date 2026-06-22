@@ -2212,3 +2212,55 @@ def query_expand(
         "expansions": result.expansions,
         "confidence_boost": result.confidence_boost,
     }
+
+
+# ── Wrappers for handler-per-tool refactor ────────────────────────────────────
+
+def select_warm_activations(
+    query: str,
+    top_k: int = 20,
+    min_similarity: float = 0.3,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Select warm activations ranked by embedding similarity."""
+    from .cache.selector import select_warm_activations as _select, _embed_query
+    from .pipeline_integration import load_warm_cache as _lwc
+    from .config import load_config as _lc
+    from .storage import SuperMemoryStore
+    cfg = _lc(config_path)
+    store = SuperMemoryStore(cfg)
+    emb = _embed_query(query)
+    cache = _lwc(store)
+    selected = _select(emb, cache, top_k=top_k, min_similarity=min_similarity, query=query)
+    return {"entries": len(selected), "selected": dict(sorted(selected.items(), key=lambda x: -x[1])[:10])}
+
+
+def normalize_memory(
+    memory: dict[str, Any],
+    auto_capture: bool = False,
+) -> dict[str, Any]:
+    """Normalize a memory payload schema without saving."""
+    from .sanitize import normalize_memory_payload as _norm
+    return _norm(memory, auto_capture=auto_capture)
+
+
+def _nmem_recall_compat(
+    query: str,
+    depth: int = 2,
+    top_k: int = 20,
+    seed_limit: int = 30,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Compatibility alias: neural-memory-style recall with wrapped response."""
+    from .spreading_activation import recall as _recall
+    from .config import load_config as _lc
+    cfg = _lc(config_path)
+    result = _recall(query, limit=top_k, config=cfg, depth=depth)
+    return {
+        "answer": result.get("results", []),
+        "confidence": 1.0 if result.get("results") else 0.0,
+        "neurons_activated": result.get("total_activated", 0),
+        "depth_used": result.get("depth", depth),
+        "elapsed_ms": result.get("elapsed_ms", 0),
+        "raw": result,
+    }
