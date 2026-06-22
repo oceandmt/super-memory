@@ -61,36 +61,40 @@ class FirewallResult:
 
 def check_content(text: str) -> FirewallResult:
     """Run all firewall checks on content destined for auto-capture."""
-    if not text or not isinstance(text, str):
-        return FirewallResult(blocked=True, reason="empty or non-string content")
-    if len(text) > MAX_AUTO_CAPTURE_CHARS:
-        return FirewallResult(blocked=True, reason=f"oversized ({len(text)} chars)")
-    if len(text.strip()) < MIN_CONTENT_CHARS:
-        return FirewallResult(blocked=True, reason="too short")
-    control_matches = _CONTROL_SEQ_RE.findall(text)
-    if len(control_matches) >= 2:
-        return FirewallResult(blocked=True, reason=f"{len(control_matches)} control sequences")
-    threat_matches = _THREAT_PATTERNS_RE.findall(text)
-    if threat_matches:
-        return FirewallResult(blocked=True, reason=f"threat pattern: {threat_matches[0][:40]}")
-    metadata_matches = _METADATA_INJECTION_RE.findall(text)
-    if len(metadata_matches) >= 2:
-        return FirewallResult(blocked=True, reason="chat metadata patterns")
-    base64_blocks = _BASE64_BLOCK_RE.findall(text)
-    base64_chars = sum(len(b) for b in base64_blocks)
-    if base64_chars > len(text) * 0.3:
-        return FirewallResult(blocked=True, reason="mostly base64/binary")
-    if _is_highly_repetitive(text):
-        return FirewallResult(blocked=True, reason="highly repetitive")
-    entropy = _char_entropy(text)
-    if entropy < _MIN_ENTROPY_THRESHOLD and len(text) > 100:
-        return FirewallResult(blocked=True, reason=f"low entropy ({entropy:.2f})")
-    sanitized = _NM_CONTEXT_NOISE_RE.sub("", text)
-    sanitized = _CONTROL_SEQ_RE.sub("", sanitized)
-    sanitized = re.sub(r"\n{3,}", "\n\n", sanitized).strip()
-    if len(sanitized.strip()) < MIN_CONTENT_CHARS:
-        return FirewallResult(blocked=True, reason="too short after noise removal")
-    return FirewallResult(blocked=False, sanitized=sanitized)
+    try:
+        if not text or not isinstance(text, str):
+            return FirewallResult(blocked=True, reason="empty or non-string content")
+        if len(text) > MAX_AUTO_CAPTURE_CHARS:
+            return FirewallResult(blocked=True, reason=f"oversized ({len(text)} chars)")
+        if len(text.strip()) < MIN_CONTENT_CHARS:
+            return FirewallResult(blocked=True, reason="too short")
+        control_matches = _CONTROL_SEQ_RE.findall(text)
+        if len(control_matches) >= 2:
+            return FirewallResult(blocked=True, reason=f"{len(control_matches)} control sequences")
+        threat_matches = _THREAT_PATTERNS_RE.findall(text)
+        if threat_matches:
+            return FirewallResult(blocked=True, reason=f"threat pattern: {threat_matches[0][:40]}")
+        metadata_matches = _METADATA_INJECTION_RE.findall(text)
+        if len(metadata_matches) >= 2:
+            return FirewallResult(blocked=True, reason="chat metadata patterns")
+        base64_blocks = _BASE64_BLOCK_RE.findall(text)
+        base64_chars = sum(len(b) for b in base64_blocks)
+        if base64_chars > len(text) * 0.3:
+            return FirewallResult(blocked=True, reason="mostly base64/binary")
+        if _is_highly_repetitive(text):
+            return FirewallResult(blocked=True, reason="highly repetitive")
+        entropy = _char_entropy(text)
+        if entropy < _MIN_ENTROPY_THRESHOLD and len(text) > 100:
+            return FirewallResult(blocked=True, reason=f"low entropy ({entropy:.2f})")
+        sanitized = _NM_CONTEXT_NOISE_RE.sub("", text)
+        sanitized = _CONTROL_SEQ_RE.sub("", sanitized)
+        sanitized = re.sub(r"\n{3,}", "\n\n", sanitized).strip()
+        if len(sanitized.strip()) < MIN_CONTENT_CHARS:
+            return FirewallResult(blocked=True, reason="too short after noise removal")
+        return FirewallResult(blocked=False, sanitized=sanitized)
+    except Exception as e:
+        logger.warning(f"firewall.check_content error: {e}")
+        return FirewallResult(blocked=True, reason=f"internal error: {e}")
 
 
 def strip_nm_context_noise(text: str) -> str:

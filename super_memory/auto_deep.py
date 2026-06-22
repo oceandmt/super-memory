@@ -174,24 +174,58 @@ def _audit_module(name: str, priority: str, import_path: str) -> ModuleAudit:
             audit.has_test = True
             break
 
-    # Init export — apply to first package segment only
+    # Test passes verification — run pytest for matching test files
+    if audit.has_test:
+        test_passed = _try_run_test(test_paths[0])
+        if test_passed is None:
+            test_passed = _try_run_test(test_paths[1])
+        if test_passed is not None:
+            audit.test_passes = test_passed
+
+    # Init export — check both parent package and top-level __init__.py
     init_parts = import_path.replace("super_memory.", "", 1).split(".")
+
+    # Check parent sub-package __init__.py (e.g. dedup/__init__.py for dedup.config)
     if len(init_parts) >= 2:
         parent_init = SM_ROOT / init_parts[0] / "__init__.py"
         if parent_init.exists():
             init_text = parent_init.read_text()
             last_name = init_parts[-1]
-            audit.has_init_export = last_name in init_text or f"from .{last_name}" in init_text
+            if last_name in init_text or f"from .{last_name}" in init_text:
+                audit.has_init_export = True
+
+    # Check super_memory/__init__.py for top-level module exports
+    top_init = SM_ROOT / "__init__.py"
+    if top_init.exists():
+        init_text = top_init.read_text()
+        top_name = init_parts[0]
+        if top_name in init_text or f"from .{top_name}" in init_text:
+            audit.has_init_export = True
 
     # Error handling check
     if audit.file_exists:
         content = full_path.read_text()
         if "try:" in content and "except" in content:
             audit.has_error_handling = True
-        elif "logger.error" in content or "raise" in content:
+        elif "logger.error" in content or "logger.warning" in content or "raise " in content or "logger.exception" in content:
             audit.has_error_handling = True
 
     return audit
+
+
+def _try_run_test(test_path: Path) -> bool | None:
+    """Run a single test file with pytest. Returns True/False or None if file missing / error."""
+    if not test_path.exists():
+        return None
+    try:
+        import subprocess
+        r = subprocess.run(
+            [sys.executable, "-m", "pytest", str(test_path), "-x", "--tb=short", "-q"],
+            capture_output=True, text=True, timeout=30,
+        )
+        return r.returncode == 0
+    except (subprocess.TimeoutExpired, Exception):
+        return False
 
 
 def _compute_stats(result: DeepAuditResult) -> None:

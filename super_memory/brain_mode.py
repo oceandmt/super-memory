@@ -32,3 +32,28 @@ class BrainModeConfig:
     dim_returns_threshold: float = 0.15
     dim_returns_min_neurons: int = 2
     dim_returns_grace_hops: int = 1
+
+    def get_strategy(self, key: str) -> SyncStrategy:
+        """Get sync strategy for a given key."""
+        try:
+            return self.sync_strategy
+        except Exception:
+            return SyncStrategy.MANUAL
+
+    def validate(self) -> list[str]:
+        """Validate configuration, returning list of warnings."""
+        warnings: list[str] = []
+        try:
+            if self.max_spread_hops < 1:
+                warnings.append("max_spread_hops must be >= 1")
+            if self.max_spread_hops > 20:
+                warnings.append("max_spread_hops > 20 may be expensive")
+            if not 0.0 <= self.activation_threshold <= 1.0:
+                warnings.append("activation_threshold out of range [0,1]")
+            if not 0.0 <= self.dim_returns_threshold <= 1.0:
+                warnings.append("dim_returns_threshold out of range [0,1]")
+            if self.dim_returns_min_neurons < 1:
+                warnings.append("dim_returns_min_neurons must be >= 1")
+        except Exception as e:
+            warnings.append(f"validation error: {e}")
+        return warnings

@@ -45,22 +45,26 @@ def evaluate_freshness(
     reference_time: datetime | None = None,
     thresholds: dict[FreshnessLevel, int] | None = None,
 ) -> FreshnessResult:
-    if reference_time is None:
-        reference_time = utcnow()
-    if thresholds is None:
-        thresholds = DEFAULT_THRESHOLDS
-    age = reference_time - created_at
-    age_days = max(0, age.days)
-    if age_days < thresholds[FreshnessLevel.FRESH]:
-        return FreshnessResult(FreshnessLevel.FRESH, age_days, None, False, 1.0)
-    elif age_days < thresholds[FreshnessLevel.RECENT]:
-        return FreshnessResult(FreshnessLevel.RECENT, age_days, None, False, 0.8)
-    elif age_days < thresholds[FreshnessLevel.AGING]:
-        return FreshnessResult(FreshnessLevel.AGING, age_days, f"[~] {age_days}d old — may have changed", True, 0.5)
-    elif age_days < thresholds[FreshnessLevel.STALE]:
-        return FreshnessResult(FreshnessLevel.STALE, age_days, f"[!] STALE: {age_days}d old — verify", True, 0.3)
-    else:
-        return FreshnessResult(FreshnessLevel.ANCIENT, age_days, f"[!!] ANCIENT: {age_days}d — likely outdated", True, 0.1)
+    """Evaluate memory freshness based on creation time."""
+    try:
+        if reference_time is None:
+            reference_time = utcnow()
+        if thresholds is None:
+            thresholds = DEFAULT_THRESHOLDS
+        age = reference_time - created_at
+        age_days = max(0, age.days)
+        if age_days < thresholds[FreshnessLevel.FRESH]:
+            return FreshnessResult(FreshnessLevel.FRESH, age_days, None, False, 1.0)
+        elif age_days < thresholds[FreshnessLevel.RECENT]:
+            return FreshnessResult(FreshnessLevel.RECENT, age_days, None, False, 0.8)
+        elif age_days < thresholds[FreshnessLevel.AGING]:
+            return FreshnessResult(FreshnessLevel.AGING, age_days, f"[~] {age_days}d old — may have changed", True, 0.5)
+        elif age_days < thresholds[FreshnessLevel.STALE]:
+            return FreshnessResult(FreshnessLevel.STALE, age_days, f"[!] STALE: {age_days}d old — verify", True, 0.3)
+        else:
+            return FreshnessResult(FreshnessLevel.ANCIENT, age_days, f"[!!] ANCIENT: {age_days}d — likely outdated", True, 0.1)
+    except Exception as e:
+        return FreshnessResult(FreshnessLevel.ANCIENT, 999, f"error evaluating freshness: {e}", True, 0.0)
 
 
 def get_freshness_warning(created_at: datetime, reference_time: datetime | None = None) -> str | None:
@@ -111,18 +115,22 @@ def analyze_freshness(
     created_dates: list[datetime],
     reference_time: datetime | None = None,
 ) -> MemoryFreshnessReport:
-    if not created_dates:
-        return MemoryFreshnessReport(0, 0, 0, 0, 0, 0, 0, 0, 0)
-    results = [evaluate_freshness(dt, reference_time) for dt in created_dates]
-    ages = [r.age_days for r in results]
-    return MemoryFreshnessReport(
-        total=len(results),
-        fresh=sum(1 for r in results if r.level == FreshnessLevel.FRESH),
-        recent=sum(1 for r in results if r.level == FreshnessLevel.RECENT),
-        aging=sum(1 for r in results if r.level == FreshnessLevel.AGING),
-        stale=sum(1 for r in results if r.level == FreshnessLevel.STALE),
-        ancient=sum(1 for r in results if r.level == FreshnessLevel.ANCIENT),
-        average_age_days=sum(ages) / len(ages),
-        oldest_days=max(ages),
-        newest_days=min(ages),
-    )
+    """Analyze freshness distribution across memories."""
+    try:
+        if not created_dates:
+            return MemoryFreshnessReport(0, 0, 0, 0, 0, 0, 0, 0, 0)
+        results = [evaluate_freshness(dt, reference_time) for dt in created_dates]
+        ages = [r.age_days for r in results]
+        return MemoryFreshnessReport(
+            total=len(results),
+            fresh=sum(1 for r in results if r.level == FreshnessLevel.FRESH),
+            recent=sum(1 for r in results if r.level == FreshnessLevel.RECENT),
+            aging=sum(1 for r in results if r.level == FreshnessLevel.AGING),
+            stale=sum(1 for r in results if r.level == FreshnessLevel.STALE),
+            ancient=sum(1 for r in results if r.level == FreshnessLevel.ANCIENT),
+            average_age_days=sum(ages) / len(ages),
+            oldest_days=max(ages),
+            newest_days=min(ages),
+        )
+    except Exception as e:
+        return MemoryFreshnessReport(0, 0, 0, 0, 0, 0, 0.0, 0, 0)

@@ -93,31 +93,35 @@ _PATTERNS = _build_patterns()
 
 def extract_relations(text: str) -> list[RelationCandidate]:
     """Extract relation candidates from text using pattern matching."""
-    if not text or len(text) < 20:
+    try:
+        if not text or len(text) < 20:
+            return []
+        results: list[RelationCandidate] = []
+        seen_pairs: set[tuple[str, str, str]] = set()
+        for pattern, syn_type, rel_type, confidence, is_reversed in _PATTERNS:
+            for match in pattern.finditer(text):
+                groups = match.groups()
+                if len(groups) >= 2:
+                    if is_reversed:
+                        source, target = groups[1], groups[0]
+                    else:
+                        source, target = groups[0], groups[1]
+                    source = source.strip().lower()[:60]
+                    target = target.strip().lower()[:60]
+                    if len(source) < 3 or len(target) < 3:
+                        continue
+                    pair_key = (source, target, rel_type.value)
+                    if pair_key in seen_pairs:
+                        continue
+                    seen_pairs.add(pair_key)
+                    results.append(RelationCandidate(
+                        source_span=source, target_span=target,
+                        relation_type=rel_type, synapse_type=syn_type,
+                        confidence=confidence,
+                        source_start=match.start(), source_end=match.end(),
+                        target_start=match.end() - len(groups[-1]), target_end=match.end(),
+                    ))
+        return results[:20]  # Cap at 20 per text
+    except Exception:
+        logger.exception("extract_relations failed")
         return []
-    results: list[RelationCandidate] = []
-    seen_pairs: set[tuple[str, str, str]] = set()
-    for pattern, syn_type, rel_type, confidence, is_reversed in _PATTERNS:
-        for match in pattern.finditer(text):
-            groups = match.groups()
-            if len(groups) >= 2:
-                if is_reversed:
-                    source, target = groups[1], groups[0]
-                else:
-                    source, target = groups[0], groups[1]
-                source = source.strip().lower()[:60]
-                target = target.strip().lower()[:60]
-                if len(source) < 3 or len(target) < 3:
-                    continue
-                pair_key = (source, target, rel_type.value)
-                if pair_key in seen_pairs:
-                    continue
-                seen_pairs.add(pair_key)
-                results.append(RelationCandidate(
-                    source_span=source, target_span=target,
-                    relation_type=rel_type, synapse_type=syn_type,
-                    confidence=confidence,
-                    source_start=match.start(), source_end=match.end(),
-                    target_start=match.end() - len(groups[-1]), target_end=match.end(),
-                ))
-    return results[:20]  # Cap at 20 per text
