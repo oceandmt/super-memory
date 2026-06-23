@@ -244,6 +244,28 @@ ADVANCED_TOOLS = {
     # P0 fixes: forget + edit
     "super_memory_forget",
     "super_memory_edit",
+    # P0: MemoryEnvelope
+    "super_memory_build_envelope",
+    "super_memory_remember_through_envelope",
+    # P0: SourceAdapter
+    "super_memory_ingest_through_adapter",
+    "super_memory_list_source_adapters",
+    "super_memory_ingest_and_remember",
+    # P0: Semantic Closets/Drawers
+    "super_memory_build_closets",
+    "super_memory_rebuild_all_closets",
+    "super_memory_search_closets",
+    "super_memory_hydrate_drawers",
+    "super_memory_closet_stats",
+    # P0: Recall Arbitration v3
+    "super_memory_recall_arbitrate_v3",
+    "super_memory_recall_quick",
+    # P0: Recall Feedback Loop
+    "super_memory_recall_record_event",
+    "super_memory_recall_record_feedback",
+    "super_memory_recall_record_correction",
+    "super_memory_recall_feedback_stats",
+    "super_memory_recall_generate_training_cases",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -765,6 +787,28 @@ for _name, _desc, _props, _required in [
     ("super_memory_capture_failed_recall", "Capture a failed recall/correction into self-training queue and recall regression case.", {"query": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_project_state_update", "Append a structured project-state update to canonical project memory markdown.", {"project": {"type": "string"}, "summary": {"type": "string"}, "facts": {"type": "object"}, "config_path": {"type": "string"}}, []),
     ("super_memory_issue_memory_update", "Write/update a canonical issue memory markdown file.", {"title": {"type": "string"}, "status": {"type": "string"}, "cause": {"type": "string"}, "fix": {"type": "string"}, "verification": {"type": "string"}, "config_path": {"type": "string"}}, ["title"]),
+    # P0: MemoryEnvelope
+    ("super_memory_build_envelope", "Build a MemoryEnvelope v1 with quality/trust/provenance/lifecycle metadata.", {"content": {"type": "string"}, "memory_type": {"type": "string"}, "scope": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "session_id": {"type": "string"}, "project": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "source_adapter": {"type": "string", "default": "direct"}, "trust_score": {"type": "number"}, "lifecycle_tier": {"type": "string", "default": "warm"}, "auto_pin": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["content"]),
+    ("super_memory_remember_through_envelope", "Build envelope + save through canonical bridge.remember().", {"content": {"type": "string"}, "memory_type": {"type": "string"}, "scope": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "session_id": {"type": "string"}, "project": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}, "source_adapter": {"type": "string", "default": "direct"}, "trust_score": {"type": "number"}, "lifecycle_tier": {"type": "string", "default": "warm"}, "auto_pin": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["content"]),
+    # P0: SourceAdapter
+    ("super_memory_ingest_through_adapter", "Ingest a source through the best matching SourceAdapter (chat/file/url).", {"source_path": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "session_id": {"type": "string"}, "project": {"type": "string"}, "config_path": {"type": "string"}}, ["source_path"]),
+    ("super_memory_list_source_adapters", "List all registered SourceAdapters with versions and transformations.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_ingest_and_remember", "Ingest through adapter + save all payloads via canonical bridge.", {"source_path": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "session_id": {"type": "string"}, "project": {"type": "string"}, "config_path": {"type": "string"}}, ["source_path"]),
+    # P0: Semantic Closets/Drawers
+    ("super_memory_build_closets", "Build semantic closet/drawer entries for one memory.", {"memory_id": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
+    ("super_memory_rebuild_all_closets", "Rebuild closets for all active workspace_markdown memories.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_search_closets", "Search semantic closets by keyword.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_hydrate_drawers", "Hydrate verbatim content from closet/drawer references with neighbor expansion.", {"drawer_ids": {"type": "array", "items": {"type": "string"}}, "closet_ids": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, []),
+    ("super_memory_closet_stats", "Get closet/drawer statistics.", {"config_path": {"type": "string"}}, []),
+    # P0: Recall Arbitration v3
+    ("super_memory_recall_arbitrate_v3", "Unified recall arbitration v3 with explanations, layer votes, and citations.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}, "min_score": {"type": "number", "default": 0.0}}, ["query"]),
+    ("super_memory_recall_quick", "Lightweight quick search (lexical only, no graph).", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 5}, "config_path": {"type": "string"}}, ["query"]),
+    # P0: Recall Feedback Loop
+    ("super_memory_recall_record_event", "Record a recall event for feedback tracking.", {"query": {"type": "string"}, "selected_memory_ids": {"type": "array", "items": {"type": "string"}}, "shown_to_user": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["query", "selected_memory_ids"]),
+    ("super_memory_recall_record_feedback", "Record outcome feedback for a recall event (used/ignored/corrected/contradicted/missed).", {"recall_event_id": {"type": "string"}, "memory_id": {"type": "string"}, "outcome": {"type": "string"}, "confidence": {"type": "number", "default": 1.0}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["recall_event_id", "memory_id", "outcome"]),
+    ("super_memory_recall_record_correction", "Record a correction + generate training case.", {"query": {"type": "string"}, "memory_id": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_recall_feedback_stats", "Get recall feedback statistics (success/correction rates).", {"config_path": {"type": "string"}}, []),
+    ("super_memory_recall_generate_training_cases", "Generate benchmark training cases from corrected recall events.", {"min_corrections": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, []),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 

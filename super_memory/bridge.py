@@ -1038,3 +1038,267 @@ def sync_interval_stop() -> dict[str, Any]:
     from .sync.sync_ops import create_sync_manager
     mgr = create_sync_manager()
     return mgr.stop_interval()
+
+
+# ── P0: MemoryEnvelope v1 ──────────────────────────────────────────────────
+
+
+def build_envelope(
+    content: str,
+    *,
+    memory_type: str | None = None,
+    scope: str | None = None,
+    agent_id: str = "lucas",
+    session_id: str | None = None,
+    project: str | None = None,
+    tags: list[str] | None = None,
+    source_adapter: str = "direct",
+    trust_score: float | None = None,
+    lifecycle_tier: str = "warm",
+    auto_pin: bool = False,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Build a MemoryEnvelope v1 for a memory.
+
+    Wraps content with quality/trust/provenance/lifecycle metadata
+    before canonical save. Uses existing quality_gate for scoring.
+    """
+    from .core.envelope import build_envelope as _build
+    env = _build(
+        content=content,
+        memory_type=memory_type,
+        scope=scope,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        tags=tags,
+        source_adapter=source_adapter,
+        trust_score=trust_score,
+        lifecycle_tier=lifecycle_tier,
+        auto_pin=auto_pin,
+    )
+    return {"ok": True, "envelope": env.__dict__, "memory_record": env.to_memory_record()}
+
+
+def remember_through_envelope(
+    content: str,
+    *,
+    memory_type: str | None = None,
+    scope: str | None = None,
+    agent_id: str = "lucas",
+    session_id: str | None = None,
+    project: str | None = None,
+    tags: list[str] | None = None,
+    source_adapter: str = "direct",
+    trust_score: float | None = None,
+    lifecycle_tier: str = "warm",
+    auto_pin: bool = False,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Build envelope + save through canonical bridge.remember()."""
+    env_result = build_envelope(
+        content=content,
+        memory_type=memory_type,
+        scope=scope,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        tags=tags,
+        source_adapter=source_adapter,
+        trust_score=trust_score,
+        lifecycle_tier=lifecycle_tier,
+        auto_pin=auto_pin,
+        config_path=config_path,
+    )
+    if not env_result.get("ok"):
+        return env_result
+    record = env_result["memory_record"]
+    saved = remember(record, config_path=config_path)
+    return {"ok": saved.get("record", {}).get("id") is not None, "envelope": env_result["envelope"], "saved": saved}
+
+
+# ── P0: SourceAdapter Manifest ─────────────────────────────────────────────
+
+
+def ingest_through_adapter(
+    source_path: str,
+    *,
+    agent_id: str = "lucas",
+    session_id: str | None = None,
+    project: str | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Ingest a source through the best matching SourceAdapter."""
+    from .ingest import ingest_through_adapter as _ingest, list_adapters
+    adapters = list_adapters()
+    payloads = _ingest(source_path, agent_id=agent_id, session_id=session_id, project=project)
+    return {
+        "ok": len(payloads) > 0,
+        "source_path": source_path,
+        "payloads": payloads,
+        "count": len(payloads),
+        "available_adapters": {k: {"version": v.version, "transformations": v.declared_transformations} for k, v in adapters.items()},
+    }
+
+
+def list_source_adapters(config_path: str | None = None) -> dict[str, Any]:
+    """List all registered SourceAdapters."""
+    from .ingest import list_adapters
+    adapters = list_adapters()
+    return {
+        "ok": True,
+        "adapters": {k: {"version": v.version, "transformations": v.declared_transformations, "privacy_class": v.default_privacy_class} for k, v in adapters.items()},
+    }
+
+
+def ingest_and_remember(
+    source_path: str,
+    *,
+    agent_id: str = "lucas",
+    session_id: str | None = None,
+    project: str | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Ingest through adapter + save all payloads via canonical bridge."""
+    result = ingest_through_adapter(
+        source_path,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        config_path=config_path,
+    )
+    if not result["ok"]:
+        return result
+    saved = remember_batch(result["payloads"], config_path=config_path)
+    return {"ok": saved.get("ok", False), "source": result, "saved": saved}
+
+
+# ── P0: Semantic Closets/Drawers ───────────────────────────────────────────
+
+
+def build_closets_for_memory(
+    memory_id: str,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Build closet/drawer entries for one memory."""
+    from .projections.closet import build_closets
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    record = store.get_memory(memory_id)
+    if not record:
+        return {"ok": False, "error": f"memory not found: {memory_id}"}
+    return build_closets(memory_id, record.content, record.type.value, config_path=config_path)
+
+
+def rebuild_all_closets(
+    limit: int = 500,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Rebuild closets for all active workspace_markdown memories."""
+    from .projections.closet import rebuild_closets
+    return rebuild_closets(limit=limit, config_path=config_path)
+
+
+def search_closets(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Search semantic closets by keyword."""
+    from .projections.closet import search_closets
+    return search_closets(query, limit=limit, config_path=config_path)
+
+
+def hydrate_drawers(
+    drawer_ids: list[str] | None = None,
+    closet_ids: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Hydrate verbatim content from closet/drawer references."""
+    from .projections.closet import hydrate_closets
+    return hydrate_closets(drawer_ids=drawer_ids, closet_ids=closet_ids, config_path=config_path)
+
+
+def closet_stats(config_path: str | None = None) -> dict[str, Any]:
+    """Get closet/drawer statistics."""
+    from .projections.closet import closet_stats
+    return closet_stats(config_path=config_path)
+
+
+# ── P0: Recall Arbitration v3 ──────────────────────────────────────────────
+
+
+def recall_arbitrate_v3(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+    min_score: float = 0.0,
+) -> dict[str, Any]:
+    """Recall Arbitration v3 with explanations, layer votes, and citations."""
+    from .recall import arbitrate_v3
+    return arbitrate_v3(query, limit=limit, config_path=config_path, min_score=min_score)
+
+
+def recall_quick(query: str, limit: int = 5, config_path: str | None = None) -> dict[str, Any]:
+    """Lightweight quick search (lexical only, no graph)."""
+    from .recall import quick_search
+    return quick_search(query, limit=limit, config_path=config_path)
+
+
+# ── P0: Recall Feedback Loop ──────────────────────────────────────────────
+
+
+def recall_record_event(
+    query: str,
+    selected_memory_ids: list[str],
+    *,
+    shown_to_user: bool = True,
+    source: str = "recall_v3",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Record a recall event for feedback tracking."""
+    from .recall.feedback import record_recall_event
+    return record_recall_event(query, selected_memory_ids, shown_to_user=shown_to_user, source=source, config_path=config_path)
+
+
+def recall_record_feedback(
+    recall_event_id: str,
+    memory_id: str,
+    outcome: str,
+    *,
+    confidence: float = 1.0,
+    notes: str = "",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Record outcome feedback for a recall event."""
+    from .recall.feedback import record_feedback
+    return record_feedback(recall_event_id, memory_id, outcome, confidence=confidence, notes=notes, config_path=config_path)
+
+
+def recall_record_correction(
+    query: str,
+    memory_id: str,
+    *,
+    wrong_answer: str = "",
+    expected_answer: str = "",
+    notes: str = "",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Record a correction + generate training case."""
+    from .recall.feedback import record_correction
+    return record_correction(query, memory_id, wrong_answer=wrong_answer, expected_answer=expected_answer, notes=notes, config_path=config_path)
+
+
+def recall_feedback_stats(config_path: str | None = None) -> dict[str, Any]:
+    """Get recall feedback statistics."""
+    from .recall.feedback import feedback_stats
+    return feedback_stats(config_path=config_path)
+
+
+def recall_generate_training_cases(
+    min_corrections: int = 3,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Generate training cases from corrected recall events."""
+    from .recall.feedback import generate_training_cases
+    return generate_training_cases(min_corrections=min_corrections, config_path=config_path)
