@@ -46,6 +46,11 @@ NORMAL_TOOLS = {
     "super_memory_memory_search",
     "super_memory_memory_get",
     "super_memory_status",
+    "super_memory_index_sessions",
+    "super_memory_session_index_status",
+    "super_memory_search_sessions",
+    "super_memory_cooldown_status",
+    "super_memory_cooldown_clear",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -382,6 +387,31 @@ TOOLS: dict[str, JSON] = {
         "description": "Show Super Memory local status.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
+    "super_memory_index_sessions": {
+        "description": "Index all session transcript files into FTS5 for corpus='sessions' search.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_session_index_status": {
+        "description": "Get session transcript index health status (files indexed, chunks, chars).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_search_sessions": {
+        "description": "Search session transcripts via FTS5 index, returning memory-core compatible results.",
+        "inputSchema": _schema({
+            "query": {"type": "string"},
+            "max_results": {"type": "integer", "default": 5},
+            "min_score": {"type": "number", "default": 0.0},
+            "config_path": {"type": "string"},
+        }, ["query"]),
+    },
+    "super_memory_cooldown_status": {
+        "description": "Get cooldown manager status (active entries count).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_cooldown_clear": {
+        "description": "Clear all cooldown entries (reset unavailable state).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
 }
 
 for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
@@ -562,6 +592,21 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.promote(args["memory_id"], config_path=args.get("config_path"))
     if name == "super_memory_status":
         return bridge.status(config_path=args.get("config_path"))
+    if name == "super_memory_index_sessions":
+        return bridge.index_sessions(config_path=args.get("config_path"))
+    if name == "super_memory_session_index_status":
+        return bridge.session_index_status(config_path=args.get("config_path"))
+    if name == "super_memory_search_sessions":
+        return bridge.search_sessions(
+            args["query"],
+            max_results=args.get("max_results", 5),
+            min_score=args.get("min_score", 0.0),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_cooldown_status":
+        return bridge.cooldown_status(config_path=args.get("config_path"))
+    if name == "super_memory_cooldown_clear":
+        return bridge.cooldown_clear(config_path=args.get("config_path"))
     if name == "super_memory_conflicts":
         return bridge.conflicts(content=args.get("content"), memory_id=args.get("memory_id"), config_path=args.get("config_path"))
     if name == "super_memory_provenance":

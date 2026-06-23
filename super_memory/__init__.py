@@ -54,6 +54,10 @@ from . import (
     telemetry,
     agent_isolation,
 
+    # P0 — Memory-Slot Contract
+    cooldown,
+    session_index,
+
     # Dev Tools
     auto_deep,
     diagnostics,
@@ -77,6 +81,8 @@ __all__ = [
     "token_budget", "query_expander",
     # P3
     "sync", "telemetry", "agent_isolation",
+    # P0
+    "cooldown", "session_index",
     # Dev
     "auto_deep", "diagnostics",
 ]

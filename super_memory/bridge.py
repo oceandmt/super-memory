@@ -13,7 +13,7 @@ from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize
 from .quality_gate import apply_quality_gate
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown
 
 
 
@@ -703,3 +703,36 @@ def durable_pack_status(pack_name: str = "openclaw-super-memory-durable-pack-v1"
 
 def durable_pack_audit(pack_name: str = "openclaw-super-memory-durable-pack-v1", project: str = "super-memory", fix: bool = False, config_path: str | None = None) -> dict[str, Any]:
     return {"ok": True, "before": {"duplicates_count": 0}, "after": {"duplicates_count": 0}, "cross_layer_after": {"total": 6, "unique": 6, "duplicates": 0}}
+
+
+# ── P0: Memory-Slot Contract ─────────────────────────────────────────────
+
+
+def index_sessions(config_path: str | None = None) -> dict[str, Any]:
+    """Index all session transcript files into FTS5 for corpus='sessions' search."""
+    return session_index.index_all_sessions(config_path=config_path)
+
+
+def session_index_status(config_path: str | None = None) -> dict[str, Any]:
+    """Get session index health status."""
+    return session_index.session_index_status(config_path=config_path)
+
+
+def search_sessions(query: str, max_results: int = 5, min_score: float = 0.0, config_path: str | None = None) -> dict[str, Any]:
+    """Search session transcript index, returning memory-core compatible results."""
+    return session_index.search_sessions(
+        query, max_results=max_results, min_score=min_score, config_path=config_path
+    )
+
+
+def cooldown_status(config_path: str | None = None) -> dict[str, Any]:
+    """Get cooldown manager status (active entries, etc.)."""
+    mgr = cooldown.get_cooldown_manager()
+    return {"ok": True, "active_cooldowns": mgr.active_count}
+
+
+def cooldown_clear(config_path: str | None = None) -> dict[str, Any]:
+    """Clear all cooldown entries."""
+    mgr = cooldown.get_cooldown_manager()
+    mgr.clear()
+    return {"ok": True, "cleared": True}

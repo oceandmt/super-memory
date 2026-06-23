@@ -388,6 +388,19 @@ class SuperMemoryService:
 
         return out
 
+    def search_layer(self, layer: MemoryLayer, query: str, limit: int = 10) -> list[MemoryRecord]:
+        """Search a single memory layer via FTS5, returning MemoryRecord list.
+
+        Added for P0 memory-slot contract compliance — allows compat.py to
+        query individual layers directly with FTS.
+        """
+        try:
+            backend = self.backends[layer]
+            records = backend.recall(query, limit=limit)
+            return list(records)
+        except Exception:
+            return []
+
     def sync_turn(self, context: TurnContext) -> list[SaveResult]:
         """Store a compact post-turn event using the canonical save order.
 
