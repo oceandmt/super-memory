@@ -22,9 +22,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..config import load_config
-from ..ingest import resolve_adapter, ingest_through_adapter
-from ..projections.drift_repair import register_projection
+from .config import load_config
+from .ingest import resolve_adapter, ingest_through_adapter
+from .projections.drift_repair import register_projection
 from .watcher import FileWatcher, SettleQueue, get_settle_queue
 
 logger = logging.getLogger("super-memory.watcher_adapter")
@@ -46,7 +46,7 @@ def adapter_scan_once(
     5. Build closets/drawers if applicable
     """
     cfg = load_config(config_path)
-    from ..bridge import remember_batch, build_closets_for_memory
+    from .bridge import remember_batch, build_closets_for_memory
 
     watcher = FileWatcher(config_path=config_path)
     for d in directories or []:
@@ -89,7 +89,7 @@ def adapter_scan_once(
     closets_built = 0
     if ingested:
         try:
-            from ..projections.closet import rebuild_closets
+            from .projections.closet import rebuild_closets
             result = rebuild_closets(limit=len(ingested), config_path=config_path)
             closets_built = result.get("total_closets", 0)
         except Exception:
