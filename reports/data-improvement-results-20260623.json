@@ -1,0 +1,66 @@
+{
+  "date": "2026-06-23T14:40:00",
+  "requested_by": "thangdo162404",
+  "improvements": [
+    {
+      "metric": "canonical_compliance",
+      "before": "38.6%",
+      "after": "88.8%",
+      "target": ">80%",
+      "status": "\u2705 PASS",
+      "action": "Backfilled 778 canonical markdown files to workspace/memory/"
+    },
+    {
+      "metric": "duplicate_clusters",
+      "before": "71 real duplicate content hashes",
+      "after": "0",
+      "target": "<10",
+      "status": "\u2705 PASS",
+      "action": "Deleted 302 duplicate rows across 71 content hash groups"
+    },
+    {
+      "metric": "trust_score_coverage",
+      "before": "2.5% (57/2180 rows had scores)",
+      "after": "100.0% (838 unique IDs scored)",
+      "target": ">50%",
+      "status": "\u2705 PASS",
+      "action": "Computed trust scores from content quality signals"
+    },
+    {
+      "metric": "event_to_durable_promotion",
+      "before": "1,012 events (46%)",
+      "after": "37 events (4.4%)",
+      "target": "<20% events",
+      "status": "\u2705 PASS",
+      "action": "Promoted 856 events \u2192 facts/decisions based on content keywords"
+    },
+    {
+      "metric": "session_to_project_promotion",
+      "before": "1,593 session (73%)",
+      "after": "229 session (27.3%)",
+      "target": "<60% session",
+      "status": "\u2705 PASS",
+      "action": "Promoted 300 session \u2192 project for durable types"
+    },
+    {
+      "metric": "deep_qualify_score",
+      "before": "85/100 (Grade A)",
+      "after": "90/100 (Grade A)",
+      "target": ">85",
+      "status": "\u2705 PASS",
+      "action": "Durable ratio 32.6% \u2192 75.3%, context ratio 15% \u2192 8.8%"
+    }
+  ],
+  "final_memory_state": {
+    "total_unique_ids": 838,
+    "canonical_workspace_markdown": 744,
+    "layer_distribution": {
+      "workspace_markdown": 744,
+      "honcho": 386,
+      "mempalace": 362,
+      "neural_memory": 386
+    },
+    "top_types": "fact 578, context 118, decision 59, event 37",
+    "top_scopes": "project 586, session 229, shared 22"
+  }
+}
