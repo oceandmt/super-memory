@@ -58,16 +58,13 @@ def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -
     into maintenance so they run automatically instead of requiring manual invocation.
     """
     report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "expired": 0, "active_hypotheses": 0, "notes": []}
-    try:
-        from . import bridge, telemetry
+    from . import bridge as _bridge, telemetry as _telemetry, config as _config, storage as _storage
 
     # Telemetry collection (P3 #9)
     try:
-        report["steps"]["telemetry"] = telemetry.telemetry_status()
+        report["steps"]["telemetry"] = _telemetry.telemetry_status()
     except Exception as exc:
         report["steps"]["telemetry"] = {"ok": False, "error": str(exc)}
-
-    from . import bridge, dream_engine as _bridge
 
         # Step 1: Expire stale predictions
         expire_r = _bridge.expire_predictions(config_path=config_path)
