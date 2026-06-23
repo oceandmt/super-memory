@@ -1,7 +1,7 @@
 from __future__ import annotations
 """Super Memory: local multi-layer memory app for OpenClaw multi-agents."""
 
-__version__ = "1.9.0"
+__version__ = "2.0.0"
 
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType
 from .service import SuperMemoryService
@@ -16,6 +16,7 @@ from . import (
     retrieval_pipeline,
     reranker,
     spreading_activation as spreading,
+    dream_engine,
 
     # P1 — Core Infrastructure
     extraction,
@@ -39,8 +40,10 @@ from . import (
     token_budget,
     query_expander,
 
-    # P3 — Sync Foundation
+    # P3 — Sync Foundation & Observability
     sync,
+    telemetry,
+    agent_isolation,
 
     # Dev Tools
     auto_deep,
@@ -52,7 +55,7 @@ __all__ = [
     "SuperMemoryService",
     # P0
     "safety", "dedup", "confidence", "fidelity", "retrieval_pipeline",
-    "reranker", "spreading",
+    "reranker", "spreading", "dream_engine",
     # P1
     "extraction", "embeddings", "cache", "triggers", "eternal_context",
     "brain_mode", "pipeline_integration", "hippocampal_replay",
@@ -61,7 +64,7 @@ __all__ = [
     "preference_detector", "schema_assimilation", "spaced_repetition",
     "token_budget", "query_expander",
     # P3
-    "sync",
+    "sync", "telemetry", "agent_isolation",
     # Dev
     "auto_deep", "diagnostics",
 ]

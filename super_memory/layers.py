@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
+import hashlib
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -89,33 +89,22 @@ class SQLiteLayerBackend(MemoryBackend):
         from .migrations import run_migrations
         run_migrations(self.config)
         with self._connect() as conn:
-            # FTS5 content-table form — automatically mirrors memories.content via rowid.
-            # If the old non-content FTS5 table exists (different schema), drop and recreate.
+            # FTS5 is not in schema.sql (virtual table, tool-specific)
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
+            # Drop stale FTS triggers from previous schema versions to avoid
+            # UPDATE/INSERT failures. App manages FTS explicitly via code.
+            for _t_name in conn.execute('SELECT name FROM sqlite_master WHERE type="trigger" AND tbl_name="memories" AND name LIKE "memories_fts_%"').fetchall():
+                conn.execute(f'DROP TRIGGER IF EXISTS {_t_name["name"]}')
+            # FTS table may have stale schema (only content column). Detect and recreate.
             try:
-                # Test that the content-table form is present; if MATCH fails w/ schema error, reset.
-                conn.execute("SELECT * FROM memories_fts LIMIT 0")
-                # Check it is the content-table form by inspecting shadow tables
-                try:
-                    conn.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
-                    conn.commit()
-                except sqlite3.OperationalError:
-                    # Old schema without content=memories — drop and recreate
-                    conn.execute("DROP TABLE IF EXISTS memories_fts")
-                    conn.execute(
-                        "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
-                        "USING fts5(content, content=memories, content_rowid=rowid)"
-                    )
-                    conn.commit()
-            except sqlite3.OperationalError:
-                # Table doesn't exist at all — create fresh
-                conn.execute(
-                    "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts "
-                    "USING fts5(content, content=memories, content_rowid=rowid)"
-                )
-                conn.commit()
+                _fts_cols = {c[1] for c in conn.execute('PRAGMA table_info(memories_fts)').fetchall()}
+                if 'id' not in _fts_cols:
+                    conn.execute('DROP TABLE memories_fts')
+                    conn.execute('CREATE VIRTUAL TABLE memories_fts USING fts5(id, layer, content, tags)')
+            except Exception:
+                pass
             try:
                 conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
-                conn.commit()
             except sqlite3.OperationalError as exc:
                 if "duplicate column" not in str(exc).lower():
                     raise
@@ -123,15 +112,12 @@ class SQLiteLayerBackend(MemoryBackend):
     def save(self, record: MemoryRecord) -> SaveResult:
         tags = record.normalized_tags()
         pending_sync = record.metadata.get("pending_canonical_sync", False)
-        content_hash = record.metadata.get("content_hash")
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memories
-                (id, layer, content, type, scope, agent_id, session_id, project,
-                 tags_json, source, trust_score, created_at, metadata_json,
-                 pending_canonical_sync, content_hash)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, pending_canonical_sync)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -148,9 +134,16 @@ class SQLiteLayerBackend(MemoryBackend):
                     record.created_at.isoformat(),
                     json.dumps(record.metadata, ensure_ascii=False),
                     1 if pending_sync else 0,
-                    content_hash,
                 ),
             )
+            # Fetch rowid after upsert, delete old FTS row to prevent duplicates
+            row = conn.execute("SELECT rowid FROM memories WHERE id = ? AND layer = ?", (record.id, self.layer.value)).fetchone()
+            if row:
+                conn.execute("DELETE FROM memories_fts WHERE rowid = ?", (row["rowid"],))
+                conn.execute(
+                    "INSERT INTO memories_fts(rowid, id, layer, content, tags) VALUES (?, ?, ?, ?, ?)",
+                    (row["rowid"], record.id, self.layer.value, record.content, " ".join(tags)),
+                )
             if self.layer == MemoryLayer.MEMPALACE:
                 self._save_palace_projection(conn, record, tags)
             elif self.layer == MemoryLayer.HONCHO:
@@ -210,8 +203,6 @@ class SQLiteLayerBackend(MemoryBackend):
         )
 
     def _save_graph_projection(self, conn: sqlite3.Connection, record: MemoryRecord) -> None:
-        if not self.config.legacy_graph_edges:
-            return
         for target in record.metadata.get("related_memory_ids", []):
             conn.execute(
                 """
@@ -247,26 +238,9 @@ class SQLiteLayerBackend(MemoryBackend):
         safe = ' '.join(f'"{t}"' for t in tokens if t and t.upper() not in ('NEAR', 'AND', 'OR', 'NOT'))
         return safe or raw
 
-    @staticmethod
-    def _rank_sql_clause(query: str) -> str:
-        q = query.lower()
-        audit_query = any(token in q for token in ("audit", "raw", "verbatim", "session", "transcript"))
-        event_penalty = 0 if audit_query else -20
-        return f"""
-                        ORDER BY
-                            CASE WHEN m.source = 'super-memory.durable-pack' THEN 100 ELSE 0 END DESC,
-                            CASE WHEN m.type IN ('decision','fact','workflow','lesson','insight','doctrine') THEN 40 ELSE 0 END DESC,
-                            CASE WHEN m.scope IN ('shared','project','cross-agent') THEN 25 ELSE 0 END DESC,
-                            COALESCE(m.trust_score, 0.5) DESC,
-                            CASE WHEN m.type = 'event' THEN {event_penalty} ELSE 0 END DESC,
-                            m.created_at DESC
-        """
-
     def recall(self, query: str, limit: int = 10) -> list[MemoryRecord]:
         fts_query = self._fts_safe_query(query)
         out: list[MemoryRecord] = []
-        order_sql = self._rank_sql_clause(query)
-        active_sql = "(json_extract(m.metadata_json, '$.soft_deleted') IS NULL OR json_extract(m.metadata_json, '$.soft_deleted') != 1)"
         with self._connect() as conn:
             try:
                 if fts_query:
@@ -274,9 +248,8 @@ class SQLiteLayerBackend(MemoryBackend):
                         """
                         SELECT m.* FROM memories_fts f
                         JOIN memories m ON m.rowid = f.rowid
-                        WHERE memories_fts MATCH ? AND m.layer = ? AND 
-                        """ + active_sql + "\n" + order_sql + """
-                        LIMIT ?
+                        WHERE f.memories_fts MATCH ? AND m.layer = ?
+                        ORDER BY rank LIMIT ?
                         """,
                         (fts_query, self.layer.value, limit),
                     ).fetchall()
@@ -286,9 +259,8 @@ class SQLiteLayerBackend(MemoryBackend):
                 # FTS parse failed — fall back to LIKE search
                 rows = conn.execute(
                     """
-                    SELECT * FROM memories m
-                    WHERE content LIKE ? AND layer = ? AND 
-                    """ + active_sql + "\n" + order_sql + """
+                    SELECT * FROM memories
+                    WHERE content LIKE ? AND layer = ?
                     LIMIT ?
                     """,
                     (f"%{query}%", self.layer.value, limit),
@@ -310,6 +282,24 @@ class SQLiteLayerBackend(MemoryBackend):
                         metadata=json.loads(row["metadata_json"]),
                     )
                 )
+        return out
+        for row in rows:
+            out.append(
+                MemoryRecord(
+                    id=row["id"],
+                    content=row["content"],
+                    type=row["type"],
+                    scope=row["scope"],
+                    agent_id=row["agent_id"],
+                    session_id=row["session_id"],
+                    project=row["project"],
+                    tags=json.loads(row["tags_json"]),
+                    source=row["source"],
+                    trust_score=row["trust_score"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    metadata=json.loads(row["metadata_json"]),
+                )
+            )
         return out
 
 

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import load_config
+from .models import MemoryType
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 
@@ -35,18 +36,9 @@ def _init_tables(store: SuperMemoryStore) -> None:
         )
 
 
-def _rows(store: SuperMemoryStore, limit: int = 500, include_soft_deleted: bool = False) -> list[Any]:
-    if include_soft_deleted:
-        query = "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?"
-    else:
-        query = (
-            "SELECT * FROM memories "
-            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
-            "ORDER BY created_at DESC LIMIT ?"
-        )
+def _rows(store: SuperMemoryStore, limit: int = 500) -> list[Any]:
     with store.connect() as conn:
-        return conn.execute(query, (limit,)).fetchall()
+        return conn.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
 
 
 def _load_state(store: SuperMemoryStore, key: str) -> dict[str, Any] | None:
@@ -97,15 +89,15 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
         tier_counts[_classify_tier(rec)] += 1
         type_counts[rec.type.value] = type_counts.get(rec.type.value, 0) + 1
         layer_counts[row["layer"]] = layer_counts.get(row["layer"], 0) + 1
-        norm = rec.metadata.get("content_hash") or " ".join(rec.content.lower().split())
+        norm = " ".join(rec.content.lower().split())
         content_seen.setdefault(norm, []).append(rec.id)
-        if len(rec.content) > 1200 and not rec.metadata.get("compression_candidate"):
+        if len(rec.content) > 1200:
             compression_candidates.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "reason": "long content"})
     # Canonical markdown is file-backed, not stored in SQLite. Missing canonical
     # here means a derived SQLite id has no sqlite canonical twin, not necessarily
     # that the append-only markdown line is absent.
     missing_canonical_ids = all_ids - canonical_ids if canonical_ids else set()
-    duplicates = [{"ids": sorted(set(ids)), "count": len(set(ids))} for ids in content_seen.values() if len(set(ids)) > 1]
+    duplicates = [{"ids": sorted(set(ids)), "count": len(ids)} for ids in content_seen.values() if len(set(ids)) > 1]
     cache = _load_state(store, "activation_cache")
     return {
         "ok": True,
@@ -154,58 +146,12 @@ def tier(action: str = "evaluate", dry_run: bool = True, config_path: str | None
                 metadata = json.loads(row["metadata_json"])
                 metadata["tier"] = item["proposed"]
                 metadata["tier_updated_at"] = _now()
-                conn.execute("UPDATE memories SET metadata_json=? WHERE id=? AND layer=?", (json.dumps(metadata, ensure_ascii=False), item["id"], item["layer"]))
+                esc_id = str(item["id"]).replace("'", "''")
+                esc_layer = str(item["layer"]).replace("'", "''")
+                esc_mj = json.dumps(metadata, ensure_ascii=False).replace("'", "''")
+                conn.executescript(f"UPDATE memories SET metadata_json='{esc_mj}' WHERE id='{esc_id}' AND layer='{esc_layer}';")
                 applied += 1
     return {"ok": True, "action": action, "dry_run": dry_run, "proposals": proposals[:100], "applied": applied}
-
-
-def quality_cleanup(dry_run: bool = True, config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
-    """Reduce memory-store noise by soft-deleting active duplicate IDs and marking long raw events.
-
-    Canonical-first invariant: never removes markdown files or hard-deletes records; all actions are
-    SQLite metadata annotations so audit trails remain recoverable.
-    """
-    store = _store(config_path)
-    rows = _rows(store, limit=limit)
-    groups: dict[str, list[Any]] = {}
-    for row in rows:
-        rec = row_to_memory(row)
-        key = rec.metadata.get("content_hash") or " ".join(rec.content.lower().split())
-        groups.setdefault(key, []).append(row)
-    duplicate_actions: list[dict[str, Any]] = []
-    compression_actions: list[dict[str, Any]] = []
-    for items in groups.values():
-        ids = sorted({row["id"] for row in items})
-        if len(ids) > 1:
-            keep = ids[0]
-            for dup_id in ids[1:]:
-                duplicate_actions.append({"id": dup_id, "keep": keep, "action": "would_soft_delete" if dry_run else "soft_deleted"})
-    for row in rows:
-        rec = row_to_memory(row)
-        if rec.type.value == "event" and len(rec.content) > 1200 and not rec.metadata.get("compression_candidate"):
-            compression_actions.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "action": "would_mark" if dry_run else "marked"})
-    if not dry_run:
-        with store.connect() as conn:
-            for item in duplicate_actions:
-                conn.execute(
-                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?, '$.deleted_at', ?) WHERE id = ?",
-                    (f"lifecycle_quality_cleanup keep={item['keep']}", _now(), item["id"]),
-                )
-            for item in compression_actions:
-                conn.execute(
-                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.compression_candidate', 1, '$.compression_reviewed_at', ?, '$.compression_reason', 'long_raw_event') WHERE id = ? AND layer = ?",
-                    (_now(), item["id"], item["layer"]),
-                )
-            conn.commit()
-    return {
-        "ok": True,
-        "dry_run": dry_run,
-        "duplicates": duplicate_actions[:100],
-        "duplicates_count": len(duplicate_actions),
-        "compression_candidates": compression_actions[:100],
-        "compression_count": len(compression_actions),
-        "note": "Soft-delete/mark only; no hard deletes and no markdown truncation.",
-    }
 
 
 def compression(action: str = "review", dry_run: bool = True, config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
@@ -222,7 +168,10 @@ def compression(action: str = "review", dry_run: bool = True, config_path: str |
                 metadata = json.loads(row["metadata_json"])
                 metadata["compression_candidate"] = True
                 metadata["compression_reviewed_at"] = _now()
-                conn.execute("UPDATE memories SET metadata_json=? WHERE id=? AND layer=?", (json.dumps(metadata, ensure_ascii=False), item["id"], item["layer"]))
+                esc_id = str(item["id"]).replace("'", "''")
+                esc_layer = str(item["layer"]).replace("'", "''")
+                esc_mj = json.dumps(metadata, ensure_ascii=False).replace("'", "''")
+                conn.executescript(f"UPDATE memories SET metadata_json='{esc_mj}' WHERE id='{esc_id}' AND layer='{esc_layer}';")
                 applied += 1
     return {"ok": True, "action": action, "dry_run": dry_run, "candidates": candidates, "applied": applied, "note": "No content is truncated; mark only annotates derived SQLite records."}
 

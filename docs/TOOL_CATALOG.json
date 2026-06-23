@@ -1,12 +1,12 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 198,
+  "total_tools": 155,
   "tools": [
     {
       "name": "super_memory_remember",
       "category": "core",
-      "description": "Save a memory through Super Memory canonical-first layer order. Supports defer=True for batch queuing.",
+      "description": "Save a memory through Super Memory canonical-first layer order.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -45,10 +45,6 @@
           },
           "metadata": {
             "type": "object"
-          },
-          "defer": {
-            "type": "boolean",
-            "default": false
           },
           "config_path": {
             "type": "string"
@@ -236,44 +232,6 @@
       ]
     },
     {
-      "name": "super_memory_cross_layer_health",
-      "category": "other",
-      "description": "Audit cross-layer consistency: canonical markdown rows, projection orphans, content drift, and pending sync.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_backfill_markdown_sqlite",
-      "category": "other",
-      "description": "Admin repair: backfill missing workspace_markdown SQLite rows from existing derived-layer records.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "limit": {
-            "type": "integer",
-            "default": 2000
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
       "name": "super_memory_memory_slot_contract",
       "category": "other",
       "description": "Run Phase 8 memory-slot replacement contract: save/search/get/show/graph projection.",
@@ -337,109 +295,6 @@
         "properties": {
           "config_path": {
             "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_auto_compact",
-      "category": "core",
-      "description": "Auto-compact soft-deleted records when ratio exceeds threshold (default 20%). Safe by default (dry_run=True).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "threshold": {
-            "type": "number",
-            "default": 0.2
-          },
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "config_path": {
-            "type": "string"
-          }
-        }
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_cleanup",
-      "category": "other",
-      "description": "Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          },
-          "vacuum": {
-            "type": "boolean",
-            "default": false
-          },
-          "integrity_check": {
-            "type": "boolean",
-            "default": true
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_expire_by_age",
-      "category": "other",
-      "description": "Soft-delete memories past their expires_days TTL (e.g. todos, ephemeral notes). Safe by default (dry_run=True).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          },
-          "max_days": {
-            "type": "integer",
-            "default": 90
-          },
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_expire_by_valid_until",
-      "category": "other",
-      "description": "Soft-delete memories past their valid_until window (scheduled rules, time-bounded API keys). Safe by default (dry_run=True).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          },
-          "dry_run": {
-            "type": "boolean",
-            "default": true
           }
         },
         "required": []
@@ -598,109 +453,6 @@
           },
           "metadata": {
             "type": "object"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_durable_pack",
-      "category": "other",
-      "description": "Install curated shared/project durable memories for OpenClaw agents, then auto-qualify and debug recall.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "pack_name": {
-            "type": "string",
-            "default": "openclaw-super-memory-durable-pack-v1"
-          },
-          "project": {
-            "type": "string",
-            "default": "super-memory"
-          },
-          "agents": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "qualify": {
-            "type": "boolean",
-            "default": true
-          },
-          "debug": {
-            "type": "boolean",
-            "default": true
-          },
-          "dedupe": {
-            "type": "boolean",
-            "default": true
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_durable_pack_status",
-      "category": "other",
-      "description": "Audit whether the curated OpenClaw durable memory pack is installed, qualified, and duplicate-free.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "pack_name": {
-            "type": "string",
-            "default": "openclaw-super-memory-durable-pack-v1"
-          },
-          "project": {
-            "type": "string",
-            "default": "super-memory"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_durable_pack_audit",
-      "category": "other",
-      "description": "Deep audit the OpenClaw durable memory pack; with fix=true, soft-delete duplicates and backfill SQLite-only canonical rows.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "pack_name": {
-            "type": "string",
-            "default": "openclaw-super-memory-durable-pack-v1"
-          },
-          "project": {
-            "type": "string",
-            "default": "super-memory"
-          },
-          "fix": {
-            "type": "boolean",
-            "default": false
           },
           "config_path": {
             "type": "string"
@@ -2101,28 +1853,6 @@
       ]
     },
     {
-      "name": "super_memory_sync_archive_to_honcho",
-      "category": "knowledge_mgmt",
-      "description": "Sync a session archive's decisions/blockers as Honcho conclusions",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "session_id": {
-            "type": "string"
-          },
-          "observer_peer_id": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "session_id"
-        ]
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
       "name": "super_memory_create_session_summary",
       "category": "p0_p5",
       "description": "Create a compressed session archive",
@@ -3338,31 +3068,6 @@
       ]
     },
     {
-      "name": "super_memory_lifecycle_quality_cleanup",
-      "category": "lifecycle",
-      "description": "Soft-delete active duplicate memory IDs and mark long raw event transcripts for compression without hard deletion.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "limit": {
-            "type": "integer",
-            "default": 500
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
       "name": "super_memory_lifecycle_cache",
       "category": "lifecycle",
       "description": "Manage local activation cache status/save/load/clear.",
@@ -3442,537 +3147,6 @@
       ]
     },
     {
-      "name": "super_memory_embedding_doctor",
-      "category": "other",
-      "description": "Inspect embedding/semantic provider health and recommend FTS or semantic mode.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_embedding_auto_select",
-      "category": "other",
-      "description": "Choose the healthiest local recall backend using doctor metadata.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_semantic_doctor",
-      "category": "other",
-      "description": "Run semantic sqlite-vec/Ollama doctor checks.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "default": "semantic recall smoke test"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_semantic_index",
-      "category": "other",
-      "description": "Incrementally index canonical workspace memories into sqlite-vec.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "rebuild": {
-            "type": "boolean",
-            "default": false
-          },
-          "batch_size": {
-            "type": "integer",
-            "default": 8
-          },
-          "limit": {
-            "type": "integer"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_semantic_verify",
-      "category": "other",
-      "description": "Verify semantic KNN recall and hydrate canonical memories.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "default": "semantic recall smoke test"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 5
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_semantic_quality_audit",
-      "category": "other",
-      "description": "Check known durable queries rank high in semantic retrieval.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_maintenance_run",
-      "category": "other",
-      "description": "Run safe maintenance: cleanup, semantic index, short-term policy, dreaming, health checks.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "limit": {
-            "type": "integer",
-            "default": 500
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_short_term_audit",
-      "category": "other",
-      "description": "Audit short-term event memories for promotion candidates.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "limit": {
-            "type": "integer",
-            "default": 500
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_short_term_repair",
-      "category": "other",
-      "description": "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "limit": {
-            "type": "integer",
-            "default": 500
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_short_term_mark_reviewed",
-      "category": "other",
-      "description": "Mark a short-term promotion cluster as reviewed/promoted/deferred/ignored.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "cluster_key": {
-            "type": "string"
-          },
-          "decision": {
-            "type": "string",
-            "default": "deferred"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "cluster_key"
-        ]
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_dreaming_audit",
-      "category": "other",
-      "description": "Audit inputs for dreaming/sleep consolidation artifacts.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_dreaming_run",
-      "category": "other",
-      "description": "Create a deterministic dreaming consolidation artifact and optional insight memory.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "limit": {
-            "type": "integer",
-            "default": 200
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_dreaming_repair",
-      "category": "other",
-      "description": "Inspect dreaming artifacts and recommend non-destructive repair/run actions.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_write_queue_flush",
-      "category": "other",
-      "description": "Flush the deferred write queue (batch save pending records).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "queue_key": {
-            "type": "string",
-            "default": "default"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_write_queue_defer",
-      "category": "other",
-      "description": "Defer a memory record to the write queue for batch flush.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "type_": {
-            "type": "string",
-            "default": "context"
-          },
-          "scope": {
-            "type": "string",
-            "default": "session"
-          },
-          "agent_id": {
-            "type": "string",
-            "default": "lucas"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "content"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_depth_prior_status",
-      "category": "other",
-      "description": "Show depth prior adaptation state (query type depths, success rates).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_detect_conflicts",
-      "category": "other",
-      "description": "Detect conflicting memories via negation/temporal analysis.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "min_similarity": {
-            "type": "number",
-            "default": 0.3
-          },
-          "limit": {
-            "type": "integer",
-            "default": 50
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_resolve_conflict",
-      "category": "other",
-      "description": "Resolve a detected conflict.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "conflict_key": {
-            "type": "string"
-          },
-          "resolution": {
-            "type": "string",
-            "enum": [
-              "keep_both",
-              "keep_a",
-              "keep_b",
-              "supersede"
-            ]
-          },
-          "reason": {
-            "type": "string",
-            "default": ""
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "conflict_key",
-          "resolution"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_version_create",
-      "category": "knowledge_mgmt",
-      "description": "Create a brain version snapshot for safe rollback.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "default": "snapshot"
-          },
-          "description": {
-            "type": "string",
-            "default": ""
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_version_list",
-      "category": "knowledge_mgmt",
-      "description": "List all version snapshots.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_version_diff",
-      "category": "knowledge_mgmt",
-      "description": "Diff two version snapshots.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "from_version": {
-            "type": "string"
-          },
-          "to_version": {
-            "type": "string"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "from_version",
-          "to_version"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_version_rollback_dry_run",
-      "category": "knowledge_mgmt",
-      "description": "Preview rollback to a snapshot (non-destructive dry-run).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "version_id": {
-            "type": "string"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "version_id"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
       "name": "super_memory_leitner",
       "category": "other",
       "description": "Leitner 5-box: queue|mark|schedule|stats|auto_seed.",
@@ -4006,259 +3180,6 @@
       },
       "profiles": [
         "admin"
-      ]
-    },
-    {
-      "name": "super_memory_leitner_due",
-      "category": "other",
-      "description": "Return count of Leitner-due memories without loading full queue.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_causal_chain",
-      "category": "other",
-      "description": "Trace causal chain through LEADS_TO/CAUSED_BY synapses.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "memory_id": {
-            "type": "string"
-          },
-          "direction": {
-            "type": "string",
-            "default": "forward",
-            "enum": [
-              "forward",
-              "backward"
-            ]
-          },
-          "max_depth": {
-            "type": "integer",
-            "default": 6
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "memory_id"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_event_sequence",
-      "category": "other",
-      "description": "Get chronological event sequence within optional time window.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string"
-          },
-          "end": {
-            "type": "string"
-          },
-          "types": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "limit": {
-            "type": "integer",
-            "default": 20
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_temporal_range",
-      "category": "other",
-      "description": "Get memories within a time window.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string"
-          },
-          "end": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 20
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "start",
-          "end"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_topic_narrative",
-      "category": "other",
-      "description": "Build coherent narrative from memories related to a topic.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "topic": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "integer",
-            "default": 10
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "topic"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_classify_affect",
-      "category": "other",
-      "description": "Classify arousal (0.0-1.0) and valence (positive/negative/neutral) of text.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_recall_by_affect",
-      "category": "core",
-      "description": "Recall memories filtered by arousal threshold or valence.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "min_arousal": {
-            "type": "number"
-          },
-          "valence": {
-            "type": "string",
-            "enum": [
-              "positive",
-              "negative",
-              "neutral"
-            ]
-          },
-          "limit": {
-            "type": "integer",
-            "default": 20
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_graph_health",
-      "category": "graph",
-      "description": "Run full graph health check: neurons, synapses, orphans, duplicates.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_stabilize",
-      "category": "other",
-      "description": "Run full graph stabilization: health check, repair orphans, dedup, prune stale.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "dry_run": {
-            "type": "boolean",
-            "default": true
-          },
-          "prune_stale_synapses": {
-            "type": "boolean",
-            "default": true
-          },
-          "weight_threshold": {
-            "type": "number",
-            "default": 0.05
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
       ]
     },
     {
@@ -4480,60 +3401,55 @@
       ]
     },
     {
-      "name": "super_memory_build_merkle_root",
+      "name": "super_memory_forget",
       "category": "other",
-      "description": "Build Merkle root hash for all active memories.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_diff_merkle_trees",
-      "category": "other",
-      "description": "Diff local vs remote Merkle states.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "local_root": {
-            "type": "string"
-          },
-          "remote_root": {
-            "type": "string"
-          },
-          "remote_buckets": {
-            "type": "object"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_build_memory_proof",
-      "category": "other",
-      "description": "Build Merkle proof for a specific memory.",
+      "description": "Delete a memory. Soft delete by default. Hard delete cascades to graph and projections.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "memory_id": {
+            "type": "string"
+          },
+          "hard": {
+            "type": "boolean",
+            "default": false
+          },
+          "reason": {
+            "type": "string",
+            "default": ""
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_edit",
+      "category": "other",
+      "description": "Edit a memory's content, type, priority, or tier. Preserves all synapses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "tier": {
             "type": "string"
           },
           "config_path": {
@@ -4545,197 +3461,142 @@
         ]
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_select_warm_activations",
+      "name": "super_memory_dream_insight_generation",
       "category": "other",
-      "description": "Select warm activations ranked by embedding similarity.",
+      "description": "Dream Phase 1: Generate synthetic insight memories from cross-domain bridges.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "query": {
-            "type": "string"
-          },
-          "top_k": {
+          "limit": {
             "type": "integer",
-            "default": 20
+            "default": 200
           },
-          "min_similarity": {
-            "type": "number",
-            "default": 0.3
+          "dry_run": {
+            "type": "boolean",
+            "default": true
           },
           "config_path": {
             "type": "string"
-          }
-        },
-        "required": [
-          "query"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_safety_firewall",
-      "category": "other",
-      "description": "Check content against input firewall (P0).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_evaluate_freshness",
-      "category": "other",
-      "description": "Evaluate memory freshness by age in days (P0).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "days_old": {
-            "type": "number",
-            "default": 0.0
           }
         },
         "required": []
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_encrypt_content",
+      "name": "super_memory_dream_weak_tie_reinforcement",
       "category": "other",
-      "description": "Encrypt memory content using Fernet key (P0).",
+      "description": "Dream Phase 2: Strengthen weak graph synapses.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "content": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "content"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_extract_relations",
-      "category": "other",
-      "description": "Extract causal/comparative/sequential relations from text (P1).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_check_triggers",
-      "category": "other",
-      "description": "Check content against auto-capture trigger patterns (P1).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_detect_structure",
-      "category": "other",
-      "description": "Detect structured content format — JSON/CSV/KV/Table (P1).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_spreading_activation",
-      "category": "graph",
-      "description": "Run spreading activation for associative graph recall (P0).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "anchor_neurons": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "max_hops": {
+          "limit": {
             "type": "integer",
-            "default": 3
+            "default": 200
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dream_pattern_summary",
+      "category": "other",
+      "description": "Dream Phase 3: Generate pattern-summary memories from repetitive content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dream_full_cycle",
+      "category": "other",
+      "description": "Run full Dream Engine cycle (insight -> weak tie -> pattern).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_telemetry_record_event",
+      "category": "other",
+      "description": "Record a telemetry event for usage tracking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "number"
+          },
+          "success": {
+            "type": "boolean",
+            "default": true
+          },
+          "detail": {
+            "type": "object"
           },
           "config_path": {
             "type": "string"
           }
         },
         "required": [
-          "query"
+          "kind"
         ]
       },
       "profiles": [
@@ -4743,15 +3604,15 @@
       ]
     },
     {
-      "name": "super_memory_get_eternal_context",
+      "name": "super_memory_telemetry_stats",
       "category": "other",
-      "description": "Get session-start context injection (P1).",
+      "description": "Get telemetry usage statistics for recent days.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "level": {
+          "days": {
             "type": "integer",
-            "default": 1
+            "default": 7
           },
           "config_path": {
             "type": "string"
@@ -4760,39 +3621,13 @@
         "required": []
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_dedup_check_content",
+      "name": "super_memory_telemetry_aggregate_daily",
       "category": "other",
-      "description": "Check content against 3-tier dedup pipeline (P0).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "content"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_load_warm_cache",
-      "category": "other",
-      "description": "Load activation cache for warm-start recall (P1).",
+      "description": "Aggregate today's telemetry into daily rollup.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -4803,201 +3638,78 @@
         "required": []
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_run_auto_deep",
+      "name": "super_memory_isolation_set_rules",
       "category": "other",
-      "description": "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).",
+      "description": "Set per-agent isolation rules for memory scoping.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "config_path": {
-            "type": "string"
-          }
-        },
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_quality_score",
-      "category": "other",
-      "description": "Run quality assessment on memory content — fidelity, sufficiency, importance.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "content": {
+          "agent_id": {
             "type": "string"
           },
-          "memory_type": {
-            "type": "string",
-            "default": "context"
-          }
-        },
-        "required": [
-          "content"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_rerank",
-      "category": "other",
-      "description": "Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "candidates": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "query",
-          "candidates"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_priming_boosts",
-      "category": "other",
-      "description": "Get priming boost multipliers for neurons in a session.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "session_id": {
-            "type": "string"
-          },
-          "neuron_ids": {
+          "allowed_scopes": {
             "type": "array",
             "items": {
               "type": "string"
             }
-          }
-        },
-        "required": [
-          "session_id",
-          "neuron_ids"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_reflex_pin",
-      "category": "knowledge_mgmt",
-      "description": "Pin a neuron as always-on reflex for boosted recall.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "neuron_id": {
-            "type": "string"
           },
-          "content": {
-            "type": "string",
-            "default": ""
-          }
-        },
-        "required": [
-          "neuron_id"
-        ]
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_reflex_unpin",
-      "category": "knowledge_mgmt",
-      "description": "Unpin a neuron from reflex status.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "neuron_id": {
+          "allowed_agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "blocked_agents": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "read_others": {
+            "type": "boolean"
+          },
+          "config_path": {
             "type": "string"
           }
         },
         "required": [
-          "neuron_id"
+          "agent_id"
         ]
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_reflex_list",
-      "category": "knowledge_mgmt",
-      "description": "List all reflex-pinned neurons.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "required": []
-      },
-      "profiles": [
-        "user",
-        "admin",
-        "readonly"
-      ]
-    },
-    {
-      "name": "super_memory_preference_detect",
+      "name": "super_memory_isolation_get_rules",
       "category": "other",
-      "description": "Analyze memory content for preference signals (tech, topics, workflows).",
+      "description": "Get isolation rules for a specific agent.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "content": {
+          "agent_id": {
             "type": "string"
           },
-          "memory_type": {
-            "type": "string",
-            "default": ""
+          "config_path": {
+            "type": "string"
           }
         },
         "required": [
-          "content"
+          "agent_id"
         ]
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
       ]
     },
     {
-      "name": "super_memory_diagnostics_new",
-      "category": "core",
-      "description": "Runtime diagnostics — component health + milestones (v1.6.0+).",
+      "name": "super_memory_isolation_summary",
+      "category": "other",
+      "description": "Summary of all agent isolation rules.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -5008,9 +3720,197 @@
         "required": []
       },
       "profiles": [
-        "user",
-        "admin",
-        "readonly"
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_isolation_agent_counts",
+      "category": "other",
+      "description": "Count memories per agent scope.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_autocomplete_suggest",
+      "category": "core",
+      "description": "Suggest memory completions from prefix index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5
+          },
+          "type_filter": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_autocomplete_idle",
+      "category": "core",
+      "description": "Find idle/neglected memories needing reinforcement.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_autocomplete_rebuild",
+      "category": "core",
+      "description": "Rebuild full autocomplete prefix index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_autocomplete_status",
+      "category": "core",
+      "description": "Show autocomplete prefix index status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_deep_audit",
+      "category": "other",
+      "description": "Comprehensive memory health audit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_deep_qualify",
+      "category": "other",
+      "description": "Score memory quality and recall pipeline.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_deep_debug",
+      "category": "other",
+      "description": "Find operational issues and misconfigurations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_deep_improve",
+      "category": "other",
+      "description": "Generate and optionally apply improvement proposals.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_auto_deep_pipeline",
+      "category": "core",
+      "description": "Run full Auto Deep pipeline: Audit -> Qualify -> Debug -> Improve.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
       ]
     }
   ]

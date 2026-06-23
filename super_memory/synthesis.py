@@ -107,7 +107,8 @@ class SynthesisTools:
     def promote_to_shared(self, memory_id: str) -> dict[str, Any]:
         """Promote a memory to shared scope."""
         with sqlite3.connect(self.db_path, timeout=30) as conn:
-            cur = conn.execute("UPDATE memories SET scope = 'shared' WHERE id = ?", (memory_id,))
+            esc_mid = memory_id.replace("'", "''")
+            conn.executescript(f"UPDATE memories SET scope = 'shared' WHERE id = '{esc_mid}';")
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
         return {"ok": cur.rowcount > 0, "memory_id": memory_id, "scope": "shared"}

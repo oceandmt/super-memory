@@ -7,6 +7,9 @@ convo_miner.py pattern.
 Scans honcho_events for high-signal patterns (decisions, preferences,
 blockers, workflows) and auto-creates curated memory records.
 
+Upgraded P1-1: NLP entity extraction + relation extraction for richer
+memory content.
+
 Usage:
     from super_memory.conversation_miner import run_conversation_mining
     result = run_conversation_mining(store, dry_run=True)
@@ -56,6 +59,15 @@ _LESSON_PATTERNS: list[re.Pattern] = [
     re.compile(r"\b(remember to|don't forget|note to self|important)\b", re.IGNORECASE),
 ]
 
+# ── NLP Entity Patterns (P1-1 upgrade) ──────────────────────────
+
+_ENTITY_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\b(Python|FastAPI|React|Vue|Angular|Django|Flask|Node\.?js|TypeScript|Go|Rust|Swift|Kotlin|Docker|Kubernetes|AWS|GCP|Azure|PostgreSQL|MySQL|MongoDB|Redis|GraphQL|REST|gRPC)\b", re.IGNORECASE),
+    re.compile(r"\b(GitHub|GitLab|Jira|Slack|Notion|VSCode|PyCharm|OpenAI|Claude|Gemini|LangChain|LlamaIndex)\b", re.IGNORECASE),
+    re.compile(r"\b(microservice|monolith|serverless|event.?driven|CQRS|DDD|TDD|CI/?CD|MVP|API|SDK|ORM)\b", re.IGNORECASE),
+    re.compile(r"\b(engineer|developer|designer|manager|stakeholder|customer|user|client|team)\b", re.IGNORECASE),
+]
+
 PATTERN_MAP: list[tuple[str, list[re.Pattern], str]] = [
     ("decision", _DECISION_PATTERNS, "decision"),
     ("preference", _PREFERENCE_PATTERNS, "preference"),
@@ -75,8 +87,36 @@ def _classify(text: str) -> tuple[str | None, str | None]:
     return (None, None)
 
 
+# ── NLP Entity Extraction (P1-1 upgrade) ────────────────────────
+
+def _extract_entities_nlp(text: str) -> list[str]:
+    """Extract named entities from text using regex patterns."""
+    found: set[str] = set()
+    for pat in _ENTITY_PATTERNS:
+        matches = pat.findall(text)
+        for m in matches:
+            found.add(m.strip().rstrip('.'))
+    return sorted(found)
+
+
+def _extract_relations_nlp(text: str, entities: list[str]) -> list[tuple[str, str, str]]:
+    """Extract subject-relation-object triples from text."""
+    rels: list[tuple[str, str, str]] = []
+    causal = re.findall(
+        r"(\w+(?:\s+\w+)?)\s+(caused|broke|fixed|enables|depends on|requires|triggers|creates|blocks|uses)\s+(\w+(?:\s+\w+)?)",
+        text, re.IGNORECASE,
+    )
+    for a, r, b in causal:
+        rels.append((a.strip(), r, b.strip()))
+    return rels
+
+
 def _extract_key_sentence(text: str, max_len: int = 200) -> str:
-    """Extract the most signal-rich sentence from text."""
+    """Extract the most signal-rich sentence from text.
+
+    Uses entity density + pattern density scoring (NLP-enhanced).
+    Prefers sentences with named entities and signal patterns.
+    """
     sentences = re.split(r'[.!?\n]+', text)
     best_sentence = ""
     best_score = 0
@@ -84,13 +124,13 @@ def _extract_key_sentence(text: str, max_len: int = 200) -> str:
         sent = sent.strip()
         if len(sent) < 10:
             continue
-        # Score by pattern density
         score = 0
         for _, patterns, _ in PATTERN_MAP:
             for pat in patterns:
                 if pat.search(sent.lower()):
                     score += 2
-        # Prefer medium-length sentences (20-120 chars)
+        entities = _extract_entities_nlp(sent)
+        score += len(entities) * 3
         if 20 <= len(sent) <= 120:
             score += 1
         if score > best_score:
@@ -107,23 +147,39 @@ def _dedupe_candidate(
     agent_id: str,
     threshold: float = 0.6,
 ) -> bool:
-    """Check if a similar memory already exists (Jaccard-based)."""
-    tokens = set(re.findall(r"\w{3,}", content.lower()))
-    if not tokens:
-        return True  # No meaningful tokens, skip
+    """Check if a similar memory already exists (Jaccard-based with pre-filter).
+
+    Optimized: uses content_hash for exact dedup first, then Jaccard.
+    Falls back gracefully when no precomputed tokens exist.
+    """
+    tokens_new = set(re.findall(r"\w{3,}", content.lower()))
+    if not tokens_new:
+        return True
+
+    # Exact dedup by content_hash
+    import hashlib
+    content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
     existing = conn.execute(
-        "SELECT content FROM memories WHERE agent_id = ? AND LENGTH(content) > 20 ORDER BY created_at DESC LIMIT 20",
+        "SELECT content, content_hash FROM memories WHERE agent_id = ? AND LENGTH(content) > 20 ORDER BY created_at DESC LIMIT 30",
         (agent_id,),
     ).fetchall()
+    seen_exact = set()
+    for row in existing:
+        ch = row["content_hash"] or hashlib.sha256((row["content"] or "").encode()).hexdigest()[:16]
+        seen_exact.add(ch)
+    if content_hash in seen_exact:
+        return True  # Exact duplicate
+
+    # Jaccard with early exit
     for row in existing:
         existing_tokens = set(re.findall(r"\w{3,}", (row["content"] or "").lower()))
         if not existing_tokens:
             continue
-        intersection = tokens & existing_tokens
-        union = tokens | existing_tokens
+        intersection = tokens_new & existing_tokens
+        union = tokens_new | existing_tokens
         jaccard = len(intersection) / len(union)
         if jaccard >= threshold:
-            return True  # Duplicate found
+            return True
     return False
 
 
@@ -138,8 +194,9 @@ def run_conversation_mining(
     Strategy:
       1. Fetch recent honcho_events not yet mined
       2. Classify each by pattern type (decision/preference/blocker/workflow/lesson)
-      3. Deduplicate against existing memories
-      4. Auto-create curated memory records
+      3. NLP entity extraction for richer content
+      4. Deduplicate against existing memories
+      5. Auto-create curated memory records
 
     Args:
         store: SuperMemoryStore instance
@@ -169,7 +226,6 @@ def run_conversation_mining(
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
 
-        # Track last mined event to avoid re-scanning
         conn.execute(
             "CREATE TABLE IF NOT EXISTS lifecycle_state (key TEXT PRIMARY KEY, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL)"
         )
@@ -183,7 +239,6 @@ def run_conversation_mining(
             except Exception:
                 pass
 
-        # Fetch events after cursor
         if last_mined_id:
             rows = conn.execute(
                 "SELECT * FROM honcho_events WHERE id > ? AND LENGTH(content) >= ? ORDER BY created_at ASC LIMIT ?",
@@ -207,17 +262,18 @@ def run_conversation_mining(
 
             memory_type, pattern_class = _classify(content)
             if not memory_type:
-                continue  # No signal
+                continue
 
             report["classified"] += 1
 
-            # Deduplicate
             if _dedupe_candidate(conn, content, agent_id, threshold=0.6):
                 report["deduped"] += 1
                 continue
 
-            # Extract key sentence
             key_sent = _extract_key_sentence(content, max_len=200)
+            entities = _extract_entities_nlp(content)
+            relations = _extract_relations_nlp(content, entities)
+
             candidate = {
                 "event_id": event_id,
                 "agent_id": agent_id,
@@ -225,16 +281,27 @@ def run_conversation_mining(
                 "type": memory_type,
                 "pattern_class": pattern_class,
                 "content": key_sent,
+                "entities": entities,
+                "relations": relations,
                 "original_length": len(content),
             }
             report["candidates"].append(candidate)
             last_id = event_id
 
             if not dry_run:
-                # Save as memory through canonical-first layer
                 tags = ["mined", f"pattern:{pattern_class}", f"source:honcho_event"]
                 if session_id:
                     tags.append(f"session:{session_id[:8]}")
+                metadata: dict[str, Any] = {
+                    "mined_from_event": event_id,
+                    "pattern_class": pattern_class,
+                    "original_length": len(content),
+                }
+                if entities:
+                    metadata["mined_entities"] = entities
+                if relations:
+                    metadata["mined_relations"] = relations
+
                 saved = bridge.remember(
                     {
                         "content": key_sent,
@@ -245,25 +312,16 @@ def run_conversation_mining(
                         "tags": tags,
                         "source": "super-memory.conversation_miner",
                         "trust_score": 0.6,
-                        "metadata": {
-                            "mined_from_event": event_id,
-                            "pattern_class": pattern_class,
-                            "original_length": len(content),
-                        },
+                        "metadata": metadata,
                     }
                 )
                 if saved.get("record"):
                     report["created"] += 1
 
-        # Update cursor if any events processed
         if not dry_run and last_id != last_mined_id:
             conn.execute(
                 "INSERT OR REPLACE INTO lifecycle_state (key, payload_json, updated_at) VALUES (?, ?, ?)",
-                (
-                    "conversation_mining_cursor",
-                    json.dumps({"last_event_id": last_id}),
-                    now,
-                ),
+                ("conversation_mining_cursor", json.dumps({"last_event_id": last_id}), now),
             )
             conn.commit()
 

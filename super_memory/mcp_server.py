@@ -5,27 +5,26 @@ import json
 import os
 import sys
 import traceback
-from typing import Any
+from typing import Any, Callable
 
 from . import bridge
-from .capture_hook import CAPTURE_HOOK_TOOLS, CaptureHook
-from .claim_extractor import CLAIM_EXTRACTOR_TOOLS, ClaimExtractor
 from .config import load_config
-from .cross_agent import CROSS_AGENT_TOOLS, CrossAgentTools
-from .handoff import HANDOFF_TOOLS, HandoffTools
-from .handlers import get_handler_map
-from .honcho.tools import HONCHO_TOOLS, HonchoTools
-from .hooks import HOOKS_TOOLS, HookManager
-from .hybrid_recall import HYBRID_RECALL_TOOLS, HybridRecall
-from .mempalace.tools import MEMPALACE_TOOLS, MemPalaceTools
-from .reports import REPORTS_TOOLS, Reports
-from .session_archive import SESSION_ARCHIVE_TOOLS, SessionArchive
-from .session_timeline import SESSION_TIMELINE_TOOLS, SessionTimelineTools
-from .synthesis import SYNTHESIS_TOOLS, SynthesisTools
+from .mempalace.tools import MemPalaceTools, MEMPALACE_TOOLS
+from .honcho.tools import HonchoTools, HONCHO_TOOLS
+from .cross_agent import CrossAgentTools, CROSS_AGENT_TOOLS
+from .session_timeline import SessionTimelineTools, SESSION_TIMELINE_TOOLS
+from .capture_hook import CaptureHook, CAPTURE_HOOK_TOOLS
+from .handoff import HandoffTools, HANDOFF_TOOLS
+from .synthesis import SynthesisTools, SYNTHESIS_TOOLS
+from .hooks import HookManager, HOOKS_TOOLS
+from .hybrid_recall import HybridRecall, HYBRID_RECALL_TOOLS
+from .claim_extractor import ClaimExtractor, CLAIM_EXTRACTOR_TOOLS
+from .session_archive import SessionArchive, SESSION_ARCHIVE_TOOLS
+from .reports import Reports, REPORTS_TOOLS
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "1.4.1"}
+SERVER_INFO = {"name": "super-memory", "version": "0.1.0"}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
@@ -38,78 +37,17 @@ NORMAL_TOOLS = {
     "super_memory_auto",
     "super_memory_stats",
     "super_memory_health",
-    "super_memory_auto_compact",
-    "super_memory_cleanup",
     "super_memory_sanitize_prompt",
     "super_memory_sanitize_auto_capture",
     "super_memory_normalize_memory",
     "super_memory_recall",
     "super_memory_prefetch",
     "super_memory_sync_turn",
-    "super_memory_durable_pack",
-    "super_memory_durable_pack_status",
-    "super_memory_durable_pack_audit",
     "super_memory_memory_search",
     "super_memory_memory_get",
     "super_memory_status",
-    # P1: Write Queue
-    "super_memory_write_queue_flush",
-    "super_memory_write_queue_defer",
-    # P1: Depth Prior
-    "super_memory_depth_prior_status",
-    # P2: Conflict Detection
-    "super_memory_detect_conflicts",
-    "super_memory_resolve_conflict",
-    # P2: Versioning
-    "super_memory_version_create",
-    "super_memory_version_list",
-    "super_memory_version_diff",
-    "super_memory_version_rollback_dry_run",
-    # P3: Answer Reconstruction
-    "super_memory_causal_chain",
-    "super_memory_event_sequence",
-    "super_memory_temporal_range",
-    "super_memory_topic_narrative",
-    # P3: Arousal/Valence
-    "super_memory_classify_affect",
-    "super_memory_recall_by_affect",
-    # P3: Stabilization
-    "super_memory_graph_health",
-    "super_memory_stabilize",
-    # Lifecycle: Expiration
-    "super_memory_expire_by_age",
-    "super_memory_expire_by_valid_until",
-    # P0-P3: Safety & Recall
-    "super_memory_safety_firewall",
-    "super_memory_evaluate_freshness",
-    "super_memory_encrypt_content",
-    "super_memory_extract_relations",
-    "super_memory_check_triggers",
-    "super_memory_detect_structure",
-    "super_memory_get_eternal_context",
-    "super_memory_dedup_check_content",
-    "super_memory_load_warm_cache",
-    "super_memory_run_auto_deep",
-    # P4: Advanced
-    "super_memory_build_merkle_root",
-    "super_memory_diff_merkle_trees",
-    "super_memory_build_memory_proof",
-    "super_memory_select_warm_activations",
-    # P5 Memory Quality + Recall Quality (v1.6.0+)
-    "super_memory_quality_score",
-    "super_memory_rerank",
-    "super_memory_priming_boosts",
-    "super_memory_reflex_pin",
-    "super_memory_reflex_unpin",
-    "super_memory_reflex_list",
-    "super_memory_preference_detect",
-    "super_memory_diagnostics_new",
-    # P0: New (v1.6.0 P5 roadmap)
-    "super_memory_confidence",
-    "super_memory_fidelity",
-    "super_memory_retrieval_pipeline",
 }
-ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote", "super_memory_spreading_activation"}
+ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
     "super_memory_conflicts",
     "super_memory_provenance",
@@ -154,26 +92,11 @@ ADVANCED_TOOLS = {
     "super_memory_prediction_list",
     "super_memory_verify_prediction",
     "super_memory_lifecycle_review",
-    "super_memory_lifecycle_quality_cleanup",
     "super_memory_lifecycle_cache",
     "super_memory_lifecycle_tier",
     "super_memory_lifecycle_compression",
-    "super_memory_embedding_doctor",
-    "super_memory_embedding_auto_select",
-    "super_memory_semantic_doctor",
-    "super_memory_semantic_index",
-    "super_memory_semantic_verify",
-    "super_memory_semantic_quality_audit",
-    "super_memory_maintenance_run",
-    "super_memory_short_term_audit",
-    "super_memory_short_term_repair",
-    "super_memory_short_term_mark_reviewed",
-    "super_memory_dreaming_audit",
-    "super_memory_dreaming_run",
-    "super_memory_dreaming_repair",
     "super_memory_reflex_status",
     "super_memory_leitner",
-    "super_memory_leitner_due",
     # MemPalace Phase 1 tools
     "super_memory_palace_search",
     "super_memory_palace_load_layer",
@@ -198,11 +121,8 @@ ADVANCED_TOOLS = {
     "super_memory_import_local",
     "super_memory_watch_scan",
     "super_memory_sync_status",
-    "super_memory_sync_archive_to_honcho",
     "super_memory_store_status",
     "super_memory_diagnostics",
-    "super_memory_cross_layer_health",
-    "super_memory_backfill_markdown_sqlite",
     "super_memory_memory_slot_contract",
     "super_memory_mcp_contract",
     "super_memory_supervised_runtime_smoke",
@@ -248,6 +168,34 @@ ADVANCED_TOOLS = {
     "super_memory_session_health",
     "super_memory_memory_pollution_report",
     "super_memory_export_memory_graph",
+    # Dream Engine (P0)
+    "super_memory_dream_insight_generation",
+    "super_memory_dream_weak_tie_reinforcement",
+    "super_memory_dream_pattern_summary",
+    "super_memory_dream_full_cycle",
+    # Telemetry (P3)
+    "super_memory_telemetry_record_event",
+    "super_memory_telemetry_stats",
+    "super_memory_telemetry_aggregate_daily",
+    # Per-agent Isolation (P3)
+    "super_memory_isolation_set_rules",
+    "super_memory_isolation_get_rules",
+    "super_memory_isolation_summary",
+    "super_memory_isolation_agent_counts",
+    # Auto-complete
+    "super_memory_autocomplete_suggest",
+    "super_memory_autocomplete_idle",
+    "super_memory_autocomplete_rebuild",
+    "super_memory_autocomplete_status",
+    # Auto Deep pipeline
+    "super_memory_deep_audit",
+    "super_memory_deep_qualify",
+    "super_memory_deep_debug",
+    "super_memory_deep_improve",
+    "super_memory_auto_deep_pipeline",
+    # P0 fixes: forget + edit
+    "super_memory_forget",
+    "super_memory_edit",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -264,7 +212,7 @@ def _schema(properties: JSON, required: list[str] | None = None) -> JSON:
 
 TOOLS: dict[str, JSON] = {
     "super_memory_remember": {
-        "description": "Save a memory through Super Memory canonical-first layer order. Supports defer=True for batch queuing.",
+        "description": "Save a memory through Super Memory canonical-first layer order.",
         "inputSchema": _schema(
             {
                 "content": {"type": "string"},
@@ -277,7 +225,6 @@ TOOLS: dict[str, JSON] = {
                 "source": {"type": "string"},
                 "trust_score": {"type": "number"},
                 "metadata": {"type": "object"},
-                "defer": {"type": "boolean", "default": False},
                 "config_path": {"type": "string"},
             },
             ["content"],
@@ -337,14 +284,6 @@ TOOLS: dict[str, JSON] = {
         "description": "Phase 8 diagnostics dashboard for canonical-first, sqlite, graph, lifecycle, and safe optional states.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
-    "super_memory_cross_layer_health": {
-        "description": "Audit cross-layer consistency: canonical markdown rows, projection orphans, content drift, and pending sync.",
-        "inputSchema": _schema({"config_path": {"type": "string"}}),
-    },
-    "super_memory_backfill_markdown_sqlite": {
-        "description": "Admin repair: backfill missing workspace_markdown SQLite rows from existing derived-layer records.",
-        "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "config_path": {"type": "string"}}),
-    },
     "super_memory_memory_slot_contract": {
         "description": "Run Phase 8 memory-slot replacement contract: save/search/get/show/graph projection.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
@@ -360,54 +299,6 @@ TOOLS: dict[str, JSON] = {
     "super_memory_health": {
         "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
-    },
-    "super_memory_auto_compact": {
-        "description": "Auto-compact soft-deleted records when ratio exceeds threshold (default 20%). Safe by default (dry_run=True).",
-        "inputSchema": {"type": "object", "properties": {
-            "threshold": {"type": "number", "default": 0.2},
-            "dry_run": {"type": "boolean", "default": True},
-            "config_path": {"type": "string"}
-        }},
-    },
-    "super_memory_cleanup": {
-        "description": "Official safe SQLite cleanup: migrations, derived views, FTS rebuilds, transactions, optional VACUUM.",
-        "inputSchema": _schema(
-            {
-                "config_path": {"type": "string"},
-                "vacuum": {"type": "boolean", "default": False},
-                "integrity_check": {"type": "boolean", "default": True},
-            }
-        ),
-    },
-    "super_memory_prune": {
-        "description": "Prune memories matching retention policy criteria. Safe by default (dry_run=True). Built-in: empty openclaw.turn events + optional source_prefixes/max_days filter.",
-        "inputSchema": _schema(
-            {
-                "config_path": {"type": "string"},
-                "dry_run": {"type": "boolean", "default": True},
-                "source_prefixes": {"type": "array", "items": {"type": "string"}},
-                "max_days": {"type": "integer"},
-            }
-        ),
-    },
-    "super_memory_expire_by_age": {
-        "description": "Soft-delete memories past their expires_days TTL (e.g. todos, ephemeral notes). Safe by default (dry_run=True).",
-        "inputSchema": _schema(
-            {
-                "config_path": {"type": "string"},
-                "max_days": {"type": "integer", "default": 90},
-                "dry_run": {"type": "boolean", "default": True},
-            }
-        ),
-    },
-    "super_memory_expire_by_valid_until": {
-        "description": "Soft-delete memories past their valid_until window (scheduled rules, time-bounded API keys). Safe by default (dry_run=True).",
-        "inputSchema": _schema(
-            {
-                "config_path": {"type": "string"},
-                "dry_run": {"type": "boolean", "default": True},
-            }
-        ),
     },
     "super_memory_sanitize_prompt": {
         "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
@@ -453,41 +344,6 @@ TOOLS: dict[str, JSON] = {
                 "assistant_message": {"type": "string"},
                 "project": {"type": "string"},
                 "metadata": {"type": "object"},
-                "config_path": {"type": "string"},
-            }
-        ),
-    },
-    "super_memory_durable_pack": {
-        "description": "Install curated shared/project durable memories for OpenClaw agents, then auto-qualify and debug recall.",
-        "inputSchema": _schema(
-            {
-                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
-                "project": {"type": "string", "default": "super-memory"},
-                "agents": {"type": "array", "items": {"type": "string"}},
-                "qualify": {"type": "boolean", "default": True},
-                "debug": {"type": "boolean", "default": True},
-                "dedupe": {"type": "boolean", "default": True},
-                "config_path": {"type": "string"},
-            }
-        ),
-    },
-    "super_memory_durable_pack_status": {
-        "description": "Audit whether the curated OpenClaw durable memory pack is installed, qualified, and duplicate-free.",
-        "inputSchema": _schema(
-            {
-                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
-                "project": {"type": "string", "default": "super-memory"},
-                "config_path": {"type": "string"},
-            }
-        ),
-    },
-    "super_memory_durable_pack_audit": {
-        "description": "Deep audit the OpenClaw durable memory pack; with fix=true, soft-delete duplicates and backfill SQLite-only canonical rows.",
-        "inputSchema": _schema(
-            {
-                "pack_name": {"type": "string", "default": "openclaw-super-memory-durable-pack-v1"},
-                "project": {"type": "string", "default": "super-memory"},
-                "fix": {"type": "boolean", "default": False},
                 "config_path": {"type": "string"},
             }
         ),
@@ -585,43 +441,10 @@ for _name, _desc, _props, _required in [
     ("super_memory_prediction_list", "List predictions.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
     ("super_memory_verify_prediction", "Verify a prediction as correct/wrong.", {"prediction_id": {"type": "string"}, "outcome": {"type": "string"}, "content": {"type": "string"}, "config_path": {"type": "string"}}, ["prediction_id", "outcome"]),
     ("super_memory_lifecycle_review", "Review lifecycle hygiene.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
-    ("super_memory_lifecycle_quality_cleanup", "Soft-delete active duplicate memory IDs and mark long raw event transcripts for compression without hard deletion.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_cache", "Manage local activation cache status/save/load/clear.", {"action": {"type": "string", "default": "status"}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_tier", "Evaluate/apply deterministic memory tiers.", {"action": {"type": "string", "default": "evaluate"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
     ("super_memory_lifecycle_compression", "Review/mark compression candidates without truncating content.", {"action": {"type": "string", "default": "review"}, "dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
-    ("super_memory_embedding_doctor", "Inspect embedding/semantic provider health and recommend FTS or semantic mode.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_embedding_auto_select", "Choose the healthiest local recall backend using doctor metadata.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_semantic_doctor", "Run semantic sqlite-vec/Ollama doctor checks.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "config_path": {"type": "string"}}, []),
-    ("super_memory_semantic_index", "Incrementally index canonical workspace memories into sqlite-vec.", {"rebuild": {"type": "boolean", "default": False}, "batch_size": {"type": "integer", "default": 8}, "limit": {"type": "integer"}, "config_path": {"type": "string"}}, []),
-    ("super_memory_semantic_verify", "Verify semantic KNN recall and hydrate canonical memories.", {"query": {"type": "string", "default": "semantic recall smoke test"}, "limit": {"type": "integer", "default": 5}, "config_path": {"type": "string"}}, []),
-    ("super_memory_semantic_quality_audit", "Check known durable queries rank high in semantic retrieval.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_maintenance_run", "Run safe maintenance: cleanup, semantic index, short-term policy, dreaming, health checks.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
-    ("super_memory_short_term_audit", "Audit short-term event memories for promotion candidates.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
-    ("super_memory_short_term_repair", "Promote high-signal short-term event clusters into curated memories and mark raw events for compression.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
-    ("super_memory_short_term_mark_reviewed", "Mark a short-term promotion cluster as reviewed/promoted/deferred/ignored.", {"cluster_key": {"type": "string"}, "decision": {"type": "string", "default": "deferred"}, "config_path": {"type": "string"}}, ["cluster_key"]),
-    ("super_memory_dreaming_audit", "Audit inputs for dreaming/sleep consolidation artifacts.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_dreaming_run", "Create a deterministic dreaming consolidation artifact and optional insight memory.", {"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "config_path": {"type": "string"}}, []),
-    ("super_memory_dreaming_repair", "Inspect dreaming artifacts and recommend non-destructive repair/run actions.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_write_queue_flush", "Flush the deferred write queue (batch save pending records).", {"queue_key": {"type": "string", "default": "default"}, "config_path": {"type": "string"}}, []),
-    ("super_memory_write_queue_defer", "Defer a memory record to the write queue for batch flush.", {"content": {"type": "string"}, "type_": {"type": "string", "default": "context"}, "scope": {"type": "string", "default": "session"}, "agent_id": {"type": "string", "default": "lucas"}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
-    ("super_memory_depth_prior_status", "Show depth prior adaptation state (query type depths, success rates).", {"config_path": {"type": "string"}}, []),
-    ("super_memory_detect_conflicts", "Detect conflicting memories via negation/temporal analysis.", {"content": {"type": "string"}, "min_similarity": {"type": "number", "default": 0.3}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
-    ("super_memory_resolve_conflict", "Resolve a detected conflict.", {"conflict_key": {"type": "string"}, "resolution": {"type": "string", "enum": ["keep_both", "keep_a", "keep_b", "supersede"]}, "reason": {"type": "string", "default": ""}, "config_path": {"type": "string"}}, ["conflict_key", "resolution"]),
-    ("super_memory_version_create", "Create a brain version snapshot for safe rollback.", {"name": {"type": "string", "default": "snapshot"}, "description": {"type": "string", "default": ""}, "config_path": {"type": "string"}}, []),
-    ("super_memory_version_list", "List all version snapshots.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_version_diff", "Diff two version snapshots.", {"from_version": {"type": "string"}, "to_version": {"type": "string"}, "config_path": {"type": "string"}}, ["from_version", "to_version"]),
-    ("super_memory_version_rollback_dry_run", "Preview rollback to a snapshot (non-destructive dry-run).", {"version_id": {"type": "string"}, "config_path": {"type": "string"}}, ["version_id"]),
     ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
-    ("super_memory_leitner_due", "Return count of Leitner-due memories without loading full queue.", {"config_path": {"type": "string"}}, []),
-    # Phase 3 tools
-    ("super_memory_causal_chain", "Trace causal chain through LEADS_TO/CAUSED_BY synapses.", {"memory_id": {"type": "string"}, "direction": {"type": "string", "default": "forward", "enum": ["forward", "backward"]}, "max_depth": {"type": "integer", "default": 6}, "config_path": {"type": "string"}}, ["memory_id"]),
-    ("super_memory_event_sequence", "Get chronological event sequence within optional time window.", {"start": {"type": "string"}, "end": {"type": "string"}, "types": {"type": "array", "items": {"type": "string"}}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
-    ("super_memory_temporal_range", "Get memories within a time window.", {"start": {"type": "string"}, "end": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, ["start", "end"]),
-    ("super_memory_topic_narrative", "Build coherent narrative from memories related to a topic.", {"topic": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["topic"]),
-    ("super_memory_classify_affect", "Classify arousal (0.0-1.0) and valence (positive/negative/neutral) of text.", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_recall_by_affect", "Recall memories filtered by arousal threshold or valence.", {"min_arousal": {"type": "number"}, "valence": {"type": "string", "enum": ["positive", "negative", "neutral"]}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
-    ("super_memory_graph_health", "Run full graph health check: neurons, synapses, orphans, duplicates.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_stabilize", "Run full graph stabilization: health check, repair orphans, dedup, prune stale.", {"dry_run": {"type": "boolean", "default": True}, "prune_stale_synapses": {"type": "boolean", "default": True}, "weight_threshold": {"type": "number", "default": 0.05}, "config_path": {"type": "string"}}, []),
     ("super_memory_reflex_status", "Show reflex audit events and missing refs.", {"config_path": {"type": "string"}}, []),
     ("super_memory_train_local", "Train from local text/rich docs under workspace only.", {"path": {"type": "string"}, "domain_tag": {"type": "string", "default": "local"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
     ("super_memory_index_local", "Index code symbols/imports under workspace only.", {"path": {"type": "string"}, "extensions": {"type": "array", "items": {"type": "string"}}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "save": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, ["path"]),
@@ -630,113 +453,56 @@ for _name, _desc, _props, _required in [
     ("super_memory_watch_scan", "One-shot file watch scan; no daemon.", {"directory": {"type": "string"}, "recursive": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 200}, "save": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, ["directory"]),
     ("super_memory_sync_status", "Show sync status only; cloud disabled.", {"config_path": {"type": "string"}}, []),
     ("super_memory_store_status", "Show store status only; community store disabled.", {"config_path": {"type": "string"}}, []),
-
-    # P4: Advanced features
-    ("super_memory_build_merkle_root", "Build Merkle root hash for all active memories.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_diff_merkle_trees", "Diff local vs remote Merkle states.", {"local_root": {"type": "string"}, "remote_root": {"type": "string"}, "remote_buckets": {"type": "object"}, "config_path": {"type": "string"}}, []),
-    ("super_memory_build_memory_proof", "Build Merkle proof for a specific memory.", {"memory_id": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
-    ("super_memory_select_warm_activations", "Select warm activations ranked by embedding similarity.", {"query": {"type": "string"}, "top_k": {"type": "integer", "default": 20}, "min_similarity": {"type": "number", "default": 0.3}, "config_path": {"type": "string"}}, ["query"]),
+]:
+    TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
 
-    # Phase 4: P0-P3 Endpoints
-    ("super_memory_safety_firewall", "Check content against input firewall (P0).", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_evaluate_freshness", "Evaluate memory freshness by age in days (P0).", {"days_old": {"type": "number", "default": 0.0}}, []),
-    ("super_memory_encrypt_content", "Encrypt memory content using Fernet key (P0).", {"content": {"type": "string"}, "key": {"type": "string"}}, ["content"]),
-    ("super_memory_extract_relations", "Extract causal/comparative/sequential relations from text (P1).", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_check_triggers", "Check content against auto-capture trigger patterns (P1).", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_detect_structure", "Detect structured content format — JSON/CSV/KV/Table (P1).", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_spreading_activation", "Run spreading activation for associative graph recall (P0).", {"query": {"type": "string"}, "anchor_neurons": {"type": "array", "items": {"type": "string"}}, "max_hops": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, ["query"]),
-    ("super_memory_get_eternal_context", "Get session-start context injection (P1).", {"level": {"type": "integer", "default": 1}, "config_path": {"type": "string"}}, []),
-    ("super_memory_dedup_check_content", "Check content against 3-tier dedup pipeline (P0).", {"content": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
-    ("super_memory_load_warm_cache", "Load activation cache for warm-start recall (P1).", {"config_path": {"type": "string"}}, []),
-    ("super_memory_run_auto_deep", "Run full Auto Deep Engine — Audit/Qualify/Debug/Improve (P0-P3).", {"config_path": {"type": "string"}}, []),
-
-    # Phase 5: P5 Memory Quality + Recall Quality (v1.6.0+)
-    ("super_memory_quality_score", "Run quality assessment on memory content — fidelity, sufficiency, importance.", {"content": {"type": "string"}, "memory_type": {"type": "string", "default": "context"}}, ["content"]),
-    ("super_memory_rerank", "Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion.", {"query": {"type": "string"}, "candidates": {"type": "array", "items": {"type": "object"}}}, ["query", "candidates"]),
-    ("super_memory_priming_boosts", "Get priming boost multipliers for neurons in a session.", {"session_id": {"type": "string"}, "neuron_ids": {"type": "array", "items": {"type": "string"}}}, ["session_id", "neuron_ids"]),
-    ("super_memory_reflex_pin", "Pin a neuron as always-on reflex for boosted recall.", {"neuron_id": {"type": "string"}, "content": {"type": "string", "default": ""}}, ["neuron_id"]),
-    ("super_memory_reflex_unpin", "Unpin a neuron from reflex status.", {"neuron_id": {"type": "string"}}, ["neuron_id"]),
-    ("super_memory_reflex_list", "List all reflex-pinned neurons.", {}, []),
-    ("super_memory_preference_detect", "Analyze memory content for preference signals (tech, topics, workflows).", {"content": {"type": "string"}, "memory_type": {"type": "string", "default": ""}}, ["content"]),
-    ("super_memory_diagnostics_new", "Runtime diagnostics — component health + milestones (v1.6.0+).", {"config_path": {"type": "string"}}, []),
-    # P0: Unified Confidence Scoring (v1.6.0 P5 roadmap)
-    ("super_memory_confidence", "Compute unified confidence score for recall results.", {"retrieval_score": {"type": "number", "default": 0.5}, "sufficiency_confidence": {"type": "number", "default": 0.5}, "quality_score": {"type": "number", "default": 5.0}, "fidelity_layer": {"type": "string", "default": "detail"}, "config_path": {"type": "string"}}, []),
-    ("super_memory_fidelity", "Extract single-sentence essence and classify fidelity layer from content.", {"content": {"type": "string"}}, ["content"]),
-    ("super_memory_retrieval_pipeline", "Run full composable retrieval pipeline: parse → expand → rerank → confidence → format.", {"query": {"type": "string"}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
-    # P1: Hippocampal Replay
-    ("super_memory_hippocampal_replay", "Run hippocampal replay consolidation: strengthen synapses from recent patterns.", {"config_path": {"type": "string"}, "dry_run": {"type": "boolean", "default": True}}, []),
-    # P1: Pipeline Steps (modular)
-    ("super_memory_pipeline_steps_run", "Run selected pipeline steps as a composed pipeline (parse/expand/retrieve/fuse/score/format).", {"query": {"type": "string"}, "step_names": {"type": "array", "items": {"type": "string"}}, "limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, ["query"]),
-    # P1: Storage Mixins
-    ("super_memory_storage_mixin_query", "Query storage using mixins: tag_frequencies, memories_by_tag, high_priority, recent, type_distribution, fts.", {"action": {"type": "string", "default": "tag_frequencies"}, "tag": {"type": "string", "default": ""}, "tags": {"type": "array", "items": {"type": "string"}}, "min_priority": {"type": "integer", "default": 7}, "hours": {"type": "integer", "default": 24}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
-    # P2: Schema Assimilation
-    ("super_memory_schema_assimilation", "Run schema assimilation analysis: detect patterns from recent memories.", {"config_path": {"type": "string"}, "dry_run": {"type": "boolean", "default": True}}, []),
-    ("super_memory_schema_match", "Match content against registered schemas.", {"content": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
-    # P2: Spaced Repetition (SM-2)
-    ("super_memory_spaced_repetition_due", "Get items due for review with SM-2 retention estimates.", {"limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
-    ("super_memory_spaced_repetition_review", "Record a spaced repetition review grade (SM-2 0-5).", {"memory_id": {"type": "string"}, "grade": {"type": "integer"}, "config_path": {"type": "string"}}, ["memory_id", "grade"]),
-    ("super_memory_spaced_repetition_stats", "Get spaced repetition statistics.", {"config_path": {"type": "string"}}, []),
-    # P2: Token Budget
-    ("super_memory_token_budget_estimate", "Estimate token count for text.", {"text": {"type": "string"}}, ["text"]),
-    ("super_memory_token_budget_select", "Select value-dense memories within token budget.", {"memories": {"type": "array", "items": {"type": "object"}}, "budget_tokens": {"type": "integer", "default": 3000}, "min_items": {"type": "integer", "default": 1}, "config_path": {"type": "string"}}, ["memories"]),
-    # P2: Query Expander
-    ("super_memory_query_expand", "Expand query with synonyms, graph neighbors, and embedding terms.", {"query": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
+for _name, _desc, _props, _required in [
+    ("super_memory_forget", "Delete a memory. Soft delete by default. Hard delete cascades to graph and projections.", {"memory_id": {"type": "string"}, "hard": {"type": "boolean", "default": False}, "reason": {"type": "string", "default": ""}, "config_path": {"type": "string"}}, ["memory_id"]),
+    ("super_memory_edit", "Edit a memory's content, type, priority, or tier. Preserves all synapses.", {"memory_id": {"type": "string"}, "content": {"type": "string"}, "type": {"type": "string"}, "priority": {"type": "integer"}, "tier": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
+    ("super_memory_dream_insight_generation", "Dream Phase 1: Generate synthetic insight memories from cross-domain bridges.", {"limit": {"type": "integer", "default": 200}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dream_weak_tie_reinforcement", "Dream Phase 2: Strengthen weak graph synapses.", {"limit": {"type": "integer", "default": 200}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dream_pattern_summary", "Dream Phase 3: Generate pattern-summary memories from repetitive content.", {"limit": {"type": "integer", "default": 200}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_dream_full_cycle", "Run full Dream Engine cycle (insight -> weak tie -> pattern).", {"limit": {"type": "integer", "default": 200}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_telemetry_record_event", "Record a telemetry event for usage tracking.", {"kind": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "tool_name": {"type": "string"}, "duration_ms": {"type": "number"}, "success": {"type": "boolean", "default": True}, "detail": {"type": "object"}, "config_path": {"type": "string"}}, ["kind"]),
+    ("super_memory_telemetry_stats", "Get telemetry usage statistics for recent days.", {"days": {"type": "integer", "default": 7}, "config_path": {"type": "string"}}, []),
+    ("super_memory_telemetry_aggregate_daily", "Aggregate today's telemetry into daily rollup.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_isolation_set_rules", "Set per-agent isolation rules for memory scoping.", {"agent_id": {"type": "string"}, "allowed_scopes": {"type": "array", "items": {"type": "string"}}, "allowed_agents": {"type": "array", "items": {"type": "string"}}, "blocked_agents": {"type": "array", "items": {"type": "string"}}, "read_others": {"type": "boolean"}, "config_path": {"type": "string"}}, ["agent_id"]),
+    ("super_memory_isolation_get_rules", "Get isolation rules for a specific agent.", {"agent_id": {"type": "string"}, "config_path": {"type": "string"}}, ["agent_id"]),
+    ("super_memory_isolation_summary", "Summary of all agent isolation rules.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_isolation_agent_counts", "Count memories per agent scope.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_autocomplete_suggest", "Suggest memory completions from prefix index.", {"prefix": {"type": "string"}, "limit": {"type": "integer", "default": 5}, "type_filter": {"type": "string"}, "config_path": {"type": "string"}}, ["prefix"]),
+    ("super_memory_autocomplete_idle", "Find idle/neglected memories needing reinforcement.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_autocomplete_rebuild", "Rebuild full autocomplete prefix index.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_autocomplete_status", "Show autocomplete prefix index status.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_deep_audit", "Comprehensive memory health audit.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_deep_qualify", "Score memory quality and recall pipeline.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_deep_debug", "Find operational issues and misconfigurations.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_deep_improve", "Generate and optionally apply improvement proposals.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_auto_deep_pipeline", "Run full Auto Deep pipeline: Audit -> Qualify -> Debug -> Improve.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
 def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
-    try:
-        return _ALLOWED_CACHE[effective]
-    except KeyError:
-        pass
     if effective == "admin":
-        result = ADMIN_TOOLS
-    elif effective == "all":
-        result = set(TOOLS)
-    else:
-        result = NORMAL_TOOLS
-    _ALLOWED_CACHE[effective] = result
-    return result
-
-_ALLOWED_CACHE: dict[str, set[str]] = {}
+        return ADMIN_TOOLS
+    if effective == "all":
+        return set(TOOLS)
+    return NORMAL_TOOLS
 
 
 def _tool_descriptors(profile: str | None = None) -> list[JSON]:
-    effective = (profile or MCP_PROFILE or "normal").lower()
-    try:
-        return _DESCRIPTOR_CACHE[effective]
-    except KeyError:
-        pass
     allowed = _allowed_tools(profile)
-    result = [{"name": name, **meta} for name, meta in TOOLS.items() if name in allowed]
-    _DESCRIPTOR_CACHE[effective] = result
-    return result
-
-_REGISTRY_CACHE: dict[str, Any] | None = None
-_DESCRIPTOR_CACHE: dict[str, list[JSON]] = {}
-
-
-def _get_registry():
-    global _REGISTRY_CACHE
-    if _REGISTRY_CACHE is None:
-        _REGISTRY_CACHE = get_handler_map()
-    return _REGISTRY_CACHE
+    return [{"name": name, **meta} for name, meta in TOOLS.items() if name in allowed]
 
 
 def _call_tool(name: str, args: JSON) -> Any:
     if name not in _allowed_tools():
         raise PermissionError(f"tool not exposed in {MCP_PROFILE!r} MCP profile: {name}")
-    # ── Handler registry (handler-per-tool pattern) ──────────────────────
-    registered = _get_registry().get(name)
-    if registered is not None:
-        return registered.handle(args)
-    # ── Fallback: class-based dispatchers below ──────────────────────────
     if name == "super_memory_remember":
         config_path = args.pop("config_path", None)
-        defer = args.pop("defer", False)
-        return bridge.remember(args, config_path=config_path, defer=defer)
+        return bridge.remember(args, config_path=config_path)
     if name == "super_memory_remember_batch":
         config_path = args.pop("config_path", None)
         return bridge.remember_batch(args["memories"], config_path=config_path)
@@ -752,10 +518,6 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.stats(config_path=args.get("config_path"))
     if name == "super_memory_diagnostics":
         return bridge.diagnostics(config_path=args.get("config_path"))
-    if name == "super_memory_cross_layer_health":
-        return bridge.cross_layer_health(config_path=args.get("config_path"))
-    if name == "super_memory_backfill_markdown_sqlite":
-        return bridge.backfill_markdown_sqlite(limit=args.get("limit", 2000), config_path=args.get("config_path"))
     if name == "super_memory_memory_slot_contract":
         return bridge.memory_slot_contract(config_path=args.get("config_path"))
     if name == "super_memory_mcp_contract":
@@ -764,36 +526,6 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.supervised_runtime_smoke(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
-    if name == "super_memory_auto_compact":
-        return bridge.auto_compact(
-            threshold=args.get("threshold", 0.2),
-            dry_run=args.get("dry_run", True),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_cleanup":
-        return bridge.cleanup(
-            config_path=args.get("config_path"),
-            vacuum=args.get("vacuum", False),
-            integrity_check=args.get("integrity_check", True),
-        )
-    if name == "super_memory_prune":
-        return bridge.prune(
-            config_path=args.get("config_path"),
-            dry_run=args.get("dry_run", True),
-            source_prefixes=args.get("source_prefixes"),
-            max_days=args.get("max_days"),
-        )
-    if name == "super_memory_expire_by_age":
-        return bridge.expire_by_age(
-            config_path=args.get("config_path"),
-            max_days=args.get("max_days", 90),
-            dry_run=args.get("dry_run", True),
-        )
-    if name == "super_memory_expire_by_valid_until":
-        return bridge.expire_by_valid_until(
-            config_path=args.get("config_path"),
-            dry_run=args.get("dry_run", True),
-        )
     if name == "super_memory_sanitize_prompt":
         return {"text": bridge.sanitize_prompt(args["text"])}
     if name == "super_memory_sanitize_auto_capture":
@@ -807,29 +539,6 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_sync_turn":
         config_path = args.pop("config_path", None)
         return bridge.sync_turn(args, config_path=config_path)
-    if name == "super_memory_durable_pack":
-        return bridge.durable_pack(
-            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
-            project=args.get("project", "super-memory"),
-            agents=args.get("agents") or ["lucas", "alex", "max", "isol"],
-            qualify=args.get("qualify", True),
-            debug=args.get("debug", True),
-            dedupe=args.get("dedupe", True),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_durable_pack_status":
-        return bridge.durable_pack_status(
-            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
-            project=args.get("project", "super-memory"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_durable_pack_audit":
-        return bridge.durable_pack_audit(
-            pack_name=args.get("pack_name", "openclaw-super-memory-durable-pack-v1"),
-            project=args.get("project", "super-memory"),
-            fix=args.get("fix", False),
-            config_path=args.get("config_path"),
-        )
     if name == "super_memory_memory_search":
         return bridge.memory_search(
             args["query"],
@@ -928,136 +637,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.verify_prediction(args["prediction_id"], args["outcome"], content=args.get("content", ""), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_review":
         return bridge.lifecycle_review(limit=args.get("limit", 500), config_path=args.get("config_path"))
-    if name == "super_memory_lifecycle_quality_cleanup":
-        return bridge.lifecycle_quality_cleanup(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_cache":
         return bridge.lifecycle_cache(action=args.get("action", "status"), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_tier":
         return bridge.lifecycle_tier(action=args.get("action", "evaluate"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_lifecycle_compression":
         return bridge.lifecycle_compression(action=args.get("action", "review"), dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
-    if name == "super_memory_embedding_doctor":
-        return bridge.embedding_doctor(config_path=args.get("config_path"))
-    if name == "super_memory_embedding_auto_select":
-        return bridge.embedding_auto_select(config_path=args.get("config_path"))
-    if name == "super_memory_semantic_doctor":
-        return bridge.semantic_doctor(config_path=args.get("config_path"), query=args.get("query", "semantic recall smoke test"))
-    if name == "super_memory_semantic_index":
-        return bridge.semantic_index(config_path=args.get("config_path"), rebuild=args.get("rebuild", False), batch_size=args.get("batch_size", 8), limit=args.get("limit"))
-    if name == "super_memory_semantic_verify":
-        return bridge.semantic_verify(config_path=args.get("config_path"), query=args.get("query", "semantic recall smoke test"), limit=args.get("limit", 5))
-    if name == "super_memory_semantic_quality_audit":
-        return bridge.semantic_quality_audit(config_path=args.get("config_path"))
-    if name == "super_memory_maintenance_run":
-        return bridge.maintenance_run(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), config_path=args.get("config_path"))
-    if name == "super_memory_short_term_audit":
-        return bridge.short_term_audit(limit=args.get("limit", 500), config_path=args.get("config_path"))
-    if name == "super_memory_short_term_repair":
-        return bridge.short_term_repair(limit=args.get("limit", 500), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
-    if name == "super_memory_short_term_mark_reviewed":
-        return bridge.short_term_mark_reviewed(cluster_key=args["cluster_key"], decision=args.get("decision", "deferred"), config_path=args.get("config_path"))
-    if name == "super_memory_dreaming_audit":
-        return bridge.dreaming_audit(config_path=args.get("config_path"))
-    if name == "super_memory_dreaming_run":
-        return bridge.dreaming_run(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
-    if name == "super_memory_write_queue_flush":
-        return bridge.write_queue_flush(
-            queue_key=args.get("queue_key", "default"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_write_queue_defer":
-        return bridge.write_queue_defer(
-            content=args["content"],
-            type_=args.get("type_", "context"),
-            scope=args.get("scope", "session"),
-            agent_id=args.get("agent_id", "lucas"),
-            tags=args.get("tags"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_depth_prior_status":
-        return bridge.depth_prior_status(config_path=args.get("config_path"))
-    if name == "super_memory_detect_conflicts":
-        return bridge.detect_conflicts(
-            content=args.get("content"),
-            min_similarity=args.get("min_similarity", 0.3),
-            limit=args.get("limit", 50),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_resolve_conflict":
-        return bridge.resolve_conflict(
-            conflict_key=args["conflict_key"],
-            resolution=args["resolution"],
-            reason=args.get("reason", ""),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_version_create":
-        return bridge.version_create(
-            name=args.get("name", "snapshot"),
-            description=args.get("description", ""),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_version_list":
-        return bridge.version_list(config_path=args.get("config_path"))
-    if name == "super_memory_version_diff":
-        return bridge.version_diff(
-            from_version=args["from_version"],
-            to_version=args["to_version"],
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_version_rollback_dry_run":
-        return bridge.version_rollback_dry_run(
-            version_id=args["version_id"],
-            config_path=args.get("config_path"),
-        )
-    # Phase 3 handlers
-    if name == "super_memory_causal_chain":
-        return bridge.causal_chain(
-            memory_id=args["memory_id"],
-            direction=args.get("direction", "forward"),
-            max_depth=args.get("max_depth", 6),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_event_sequence":
-        return bridge.event_sequence(
-            start=args.get("start"),
-            end=args.get("end"),
-            types=args.get("types"),
-            limit=args.get("limit", 20),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_temporal_range":
-        return bridge.temporal_range(
-            start=args["start"],
-            end=args["end"],
-            limit=args.get("limit", 20),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_topic_narrative":
-        return bridge.topic_narrative(
-            topic=args["topic"],
-            limit=args.get("limit", 10),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_classify_affect":
-        return bridge.classify_affect(text=args["text"])
-    if name == "super_memory_recall_by_affect":
-        return bridge.recall_by_affect(
-            min_arousal=args.get("min_arousal"),
-            valence=args.get("valence"),
-            limit=args.get("limit", 20),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_graph_health":
-        return bridge.graph_health(config_path=args.get("config_path"))
-    if name == "super_memory_stabilize":
-        return bridge.stabilize(
-            dry_run=args.get("dry_run", True),
-            prune_stale_synapses=args.get("prune_stale_synapses", True),
-            weight_threshold=args.get("weight_threshold", 0.05),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_dreaming_repair":
-        return bridge.dreaming_repair(config_path=args.get("config_path"))
     if name == "super_memory_reflex_status":
         return bridge.reflex_status(config_path=args.get("config_path"))
     if name == "super_memory_leitner":
@@ -1074,8 +659,6 @@ def _call_tool(name: str, args: JSON) -> Any:
             return bridge.leitner_auto_seed(limit=args.get("limit", 100), config_path=args.get("config_path"))
         else:
             raise ValueError(f"unknown leitner action: {action}")
-    if name == "super_memory_leitner_due":
-        return bridge.leitner_due(config_path=args.get("config_path"))
     if name == "super_memory_train_local":
         return bridge.train_local(args["path"], domain_tag=args.get("domain_tag", "local"), recursive=args.get("recursive", True), limit=args.get("limit", 200), save=args.get("save", True), config_path=args.get("config_path"))
     if name == "super_memory_index_local":
@@ -1167,6 +750,58 @@ def _call_tool(name: str, args: JSON) -> Any:
             raise ValueError(f"unknown Honcho action: {action}")
         return getattr(tools, action)(**args)
 
+
+    # ── Dream Engine (P0) ────────────────────────────────────
+    if name == "super_memory_dream_insight_generation":
+        return bridge.dream_insight_generation(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_dream_weak_tie_reinforcement":
+        return bridge.dream_weak_tie_reinforcement(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_dream_pattern_summary":
+        return bridge.dream_pattern_summary(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_dream_full_cycle":
+        return bridge.dream_full_cycle(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    # ── Telemetry (P3) ───────────────────────────────────────
+    if name == "super_memory_telemetry_record_event":
+        return bridge.telemetry_record_event(args.get("kind"), agent_id=args.get("agent_id", "lucas"), tool_name=args.get("tool_name"), duration_ms=args.get("duration_ms"), success=args.get("success", True), detail=args.get("detail"), config_path=args.get("config_path"))
+    if name == "super_memory_telemetry_stats":
+        return bridge.telemetry_stats(days=args.get("days", 7), config_path=args.get("config_path"))
+    if name == "super_memory_telemetry_aggregate_daily":
+        return bridge.telemetry_aggregate_daily(config_path=args.get("config_path"))
+    # ── Per-agent Isolation (P3) ─────────────────────────────
+    if name == "super_memory_isolation_set_rules":
+        return bridge.isolation_set_rules(args.get("agent_id"), allowed_scopes=args.get("allowed_scopes"), allowed_agents=args.get("allowed_agents"), blocked_agents=args.get("blocked_agents"), read_others=args.get("read_others"), config_path=args.get("config_path"))
+    if name == "super_memory_isolation_get_rules":
+        return bridge.isolation_get_rules(args.get("agent_id"), config_path=args.get("config_path"))
+    if name == "super_memory_isolation_summary":
+        return bridge.isolation_summary(config_path=args.get("config_path"))
+    if name == "super_memory_isolation_agent_counts":
+        return bridge.isolation_agent_counts(config_path=args.get("config_path"))
+    # ── Auto-complete ───────────────────────────────────────
+    if name == "super_memory_autocomplete_suggest":
+        return bridge.autocomplete_suggest(args.get("prefix"), limit=args.get("limit", 5), type_filter=args.get("type_filter"), config_path=args.get("config_path"))
+    if name == "super_memory_autocomplete_idle":
+        return bridge.autocomplete_idle(config_path=args.get("config_path"))
+    if name == "super_memory_autocomplete_rebuild":
+        return bridge.autocomplete_rebuild(config_path=args.get("config_path"))
+    if name == "super_memory_autocomplete_status":
+        return bridge.autocomplete_status(config_path=args.get("config_path"))
+    # ── Auto Deep Pipeline ───────────────────────────────────
+    if name == "super_memory_deep_audit":
+        return bridge.deep_audit(config_path=args.get("config_path"))
+    if name == "super_memory_deep_qualify":
+        return bridge.deep_qualify(config_path=args.get("config_path"))
+    if name == "super_memory_deep_debug":
+        return bridge.deep_debug(config_path=args.get("config_path"))
+    if name == "super_memory_deep_improve":
+        return bridge.deep_improve(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_auto_deep_pipeline":
+        return bridge.auto_deep_pipeline(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    # ── P0 fixes: forget + edit ──────────────────────────────
+    if name == "super_memory_forget":
+        return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
+    if name == "super_memory_edit":
+        return bridge.edit(args.get("memory_id"), content=args.get("content"), type=args.get("type"), priority=args.get("priority"), tier=args.get("tier"), config_path=args.get("config_path"))
+
     raise ValueError(f"unknown tool: {name}")
 
 
@@ -1224,203 +859,7 @@ def handle(request: JSON) -> JSON | None:
     return _error(request_id, -32601, f"method not found: {method}")
 
 
-    # P0-P3 dispatch handlers
-    if name == "super_memory_safety_firewall":
-        return bridge.run_safety_firewall(text=args["text"])
-    if name == "super_memory_evaluate_freshness":
-        return bridge.evaluate_freshness(days_old=args.get("days_old", 0.0))
-    if name == "super_memory_encrypt_content":
-        return bridge.encrypt_content(content=args["content"], key=args.get("key"))
-    if name == "super_memory_extract_relations":
-        return bridge.extract_relations(text=args["text"])
-    if name == "super_memory_check_triggers":
-        return bridge.check_triggers(text=args["text"])
-    if name == "super_memory_detect_structure":
-        return bridge.detect_structure(text=args["text"])
-    if name == "super_memory_spreading_activation":
-        return bridge.run_spreading_activation(
-            query=args["query"],
-            anchor_neurons=args.get("anchor_neurons"),
-            max_hops=args.get("max_hops", 3),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_get_eternal_context":
-        return bridge.get_eternal_context(level=args.get("level", 1), config_path=args.get("config_path"))
-    if name == "super_memory_dedup_check_content":
-        return bridge.dedup_check_content(content=args["content"], config_path=args.get("config_path"))
-    if name == "super_memory_load_warm_cache":
-        return bridge.load_warm_cache(config_path=args.get("config_path"))
-    if name == "super_memory_run_auto_deep":
-        return bridge.run_auto_deep(config_path=args.get("config_path"))
-    if name == "super_memory_build_merkle_root":
-        return bridge.build_merkle_root(config_path=args.get("config_path"))
-    if name == "super_memory_diff_merkle_trees":
-        return bridge.diff_merkle_trees(
-            local_root=args.get("local_root"),
-            remote_root=args.get("remote_root"),
-            remote_buckets=args.get("remote_buckets"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_build_memory_proof":
-        return bridge.build_memory_proof(memory_id=args["memory_id"], config_path=args.get("config_path"))
-    if name == "super_memory_select_warm_activations":
-        from super_memory.cache.selector import select_warm_activations, _embed_query
-        query = args["query"]
-        emb = _embed_query(query)
-        from super_memory.pipeline_integration import load_warm_cache as _lwc
-        from super_memory.config import load_config as _lc
-        from super_memory.storage import SuperMemoryStore
-        cfg = _lc(args.get("config_path"))
-        store = SuperMemoryStore(cfg)
-        cache = _lwc(store)
-        selected = select_warm_activations(emb, cache, top_k=args.get("top_k", 20), min_similarity=args.get("min_similarity", 0.3), query=query)
-        return {"entries": len(selected), "selected": dict(sorted(selected.items(), key=lambda x: -x[1])[:10])}
-    if name == "super_memory_quality_score":
-        return bridge.quality_score(
-            content=args["content"],
-            memory_type=args.get("memory_type", "context"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_rerank":
-        return bridge.rerank(
-            query=args["query"],
-            candidates=args["candidates"],
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_priming_boosts":
-        return bridge.get_priming_boosts(
-            session_id=args["session_id"],
-            neuron_ids=args["neuron_ids"],
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_reflex_pin":
-        return bridge.reflex_pin(
-            neuron_id=args["neuron_id"],
-            content=args.get("content", ""),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_reflex_unpin":
-        return bridge.reflex_unpin(
-            neuron_id=args["neuron_id"],
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_reflex_list":
-        return bridge.reflex_list(config_path=args.get("config_path"))
-    if name == "super_memory_preference_detect":
-        return bridge.preference_detect(
-            content=args["content"],
-            memory_type=args.get("memory_type", ""),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_diagnostics_new":
-        return bridge.diagnostics_new(config_path=args.get("config_path"))
-    if name == "super_memory_confidence":
-        return bridge.compute_confidence(
-            retrieval_score=args.get("retrieval_score", 0.5),
-            sufficiency_confidence=args.get("sufficiency_confidence", 0.5),
-            quality_score=args.get("quality_score", 5.0),
-            fidelity_layer=args.get("fidelity_layer", "detail"),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_fidelity":
-        return bridge.fidelity_extract(content=args["content"], config_path=args.get("config_path"))
-    if name == "super_memory_retrieval_pipeline":
-        return bridge.retrieval_pipeline(
-            query=args["query"],
-            limit=args.get("limit", 10),
-            config_path=args.get("config_path"),
-        )
-    # P1: Hippocampal Replay
-    if name == "super_memory_hippocampal_replay":
-        return bridge.run_hippocampal_replay(
-            config_path=args.get("config_path"),
-            dry_run=args.get("dry_run", True),
-        )
-    # P1: Pipeline Steps
-    if name == "super_memory_pipeline_steps_run":
-        return bridge.pipeline_steps_run(
-            query=args["query"],
-            step_names=args.get("step_names"),
-            limit=args.get("limit", 10),
-            config_path=args.get("config_path"),
-        )
-    # P1: Storage Mixins
-    if name == "super_memory_storage_mixin_query":
-        return bridge.storage_mixin_query(
-            action=args.get("action", "tag_frequencies"),
-            tag=args.get("tag", ""),
-            tags=args.get("tags"),
-            min_priority=args.get("min_priority", 7),
-            hours=args.get("hours", 24),
-            limit=args.get("limit", 50),
-            config_path=args.get("config_path"),
-        )
-    # P2: Schema Assimilation
-    if name == "super_memory_schema_assimilation":
-        return bridge.run_schema_assimilation(
-            config_path=args.get("config_path"),
-            dry_run=args.get("dry_run", True),
-        )
-    if name == "super_memory_schema_match":
-        return bridge.schema_match(
-            content=args["content"],
-            config_path=args.get("config_path"),
-        )
-    # P2: Spaced Repetition
-    if name == "super_memory_spaced_repetition_due":
-        return bridge.spaced_repetition_get_due(
-            limit=args.get("limit", 50),
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_spaced_repetition_review":
-        return bridge.spaced_repetition_review(
-            memory_id=args["memory_id"],
-            grade=args["grade"],
-            config_path=args.get("config_path"),
-        )
-    if name == "super_memory_spaced_repetition_stats":
-        return bridge.spaced_repetition_stats(
-            config_path=args.get("config_path"),
-        )
-    # P2: Token Budget
-    if name == "super_memory_token_budget_estimate":
-        return bridge.token_budget_estimate(text=args["text"])
-    if name == "super_memory_token_budget_select":
-        return bridge.token_budget_select(
-            memories=args["memories"],
-            budget_tokens=args.get("budget_tokens", 3000),
-            min_items=args.get("min_items", 1),
-            config_path=args.get("config_path"),
-        )
-    # P2: Query Expander
-    if name == "super_memory_query_expand":
-        return bridge.query_expand(
-            query=args["query"],
-            config_path=args.get("config_path"),
-        )
-
-class _StdoutToStderr:
-    """Redirect accidental library logs/prints away from MCP stdout.
-
-    MCP stdio stdout is a JSON-RPC transport and must never contain human logs.
-    This proxy lets the server write protocol frames through _ORIGINAL_STDOUT
-    while third-party logging/print calls are safely sent to stderr.
-    """
-
-    def write(self, data: str) -> int:
-        return sys.stderr.write(data)
-
-    def flush(self) -> None:
-        sys.stderr.flush()
-
-
-_ORIGINAL_STDOUT = sys.stdout
-
-def _prepare_stdio_transport() -> None:
-    sys.stdout = _StdoutToStderr()  # type: ignore[assignment]
-
 def serve() -> None:
-    _prepare_stdio_transport()
     DEBUG = os.environ.get("SUPER_MEMORY_MCP_DEBUG", "0") in ("1", "true", "yes")
     for line in sys.stdin:
         line = line.strip()
@@ -1433,8 +872,8 @@ def serve() -> None:
             data = traceback.format_exc() if DEBUG else f"{type(exc).__name__}: {exc}"
             response = _error(None, -32000, str(exc), data)
         if response is not None:
-            _ORIGINAL_STDOUT.write(json.dumps(response, ensure_ascii=False) + "\n")
-            _ORIGINAL_STDOUT.flush()
+            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
 
 
 def main(argv: list[str] | None = None) -> None:

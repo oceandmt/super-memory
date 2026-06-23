@@ -1,70 +1,36 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-PIPFILE.lock
-
-# Virtual environments
-.venv/
-.venv_*/
-venv/
-ENV/
-env/
-
-# Testing
+dist/
+build/
 .pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-.tox/
-.nox/
-.hypothesis/
 
-# IDEs
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-.DS_Store
 
-# Project-specific
-data/*.sqlite3
-data/*.sqlite3-*
-data/*.json
-.phase5-backtest-result.json
-.phase5-work/
+# Virtual envs
+.venv/
+.venv_test/
+venv/
+
+# DB / data (except keeping schema.sql)
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+data/
+
+# OpenClaw workspace artifacts
 .openclaw/
 
-# Logs
-*.log
-logs/
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Backup files
+# Backups
+backups/
+backups_fixes/
 *.bak
-*.backup
-*~
+*.bak2
+
+# Temp / logs
+test_results*.txt
+*.log
+reports/

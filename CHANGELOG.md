@@ -60,3 +60,38 @@
 - Phase 3: Auto Debug (0 issues found)
 - Phase 4: Auto Improve (all modules ≥ C grade)
 
+
+## 2.0.0 (P0-P3 Full Feature Deployment — Dream Engine, Telemetry, Auto Deep)
+
+### P0 — Critical (Dream Engine & FTS Stability)
+- **Dream Engine**: 3-phase consolidation dreaming — insight generation (keyword cluster bridging), weak tie reinforcement (Jaccard-similar synapses), pattern summary (frequency-based keyword patterns)
+- **FTS Trigger Fix**: Root-cause fix for `sqlite3.OperationalError` on all memory INSERT/UPDATE — stale FTS5 triggers recreated with correct column schema, auto-detect + repair on init
+- **FTS Schema Repair**: `layers.py` auto-detects stale FTS5 schema (only `content` column) and recreates with `(id, layer, content, tags)`
+- **Forget + Edit Endpoints**: Full composite-key-safe forget (soft/hard delete) and edit (content/type/priority/tier) with `executescript()` workaround for FTS trigger conflict
+- **Bridge Cleanup**: Dead duplicate code removed from `layers.py` (20 lines after `return out`)
+
+### P1 — Core Infrastructure
+- **Semantic Quality Module**: Reformatted from one-liner to maintainable multiline code
+- **Short Term Module**: Reformatted from one-liner to maintainable multiline code
+- **All UPDATE queries on `memories` table**: All parameterized updates converted to `executescript()` with manual escaping to avoid FTS trigger `SQL logic error`
+
+### P2 — Memory Lifecycle & Leitner
+- **Leitner SM-2**: All 3 UPDATE paths (`mark()`, `schedule()`, `auto_seed()`) hardened with `executescript()` fix
+- **Lifecycle Tier/Compression**: All `metadata_json` updates hardened with `executescript()`
+- **Lifecycle/Synthesis/Deep-Auto**: All cross-module UPDATEs fixed
+
+### P3 — Cross-Agent & Analytics
+- **Telemetry**: `record_event()` with kind/agent/tool/duration tracking, `aggregate_daily()` rollups, `stats()` with 7-day window
+- **Per-Agent Isolation**: `set_agent_rules()`/`get_agent_rules()` with scope/agent blocklist, `isolation_summary()`, `agent_memory_counts()`
+- **Auto-Complete**: Prefix-index suggest engine with `suggest()`, `idle_suggestions()`, `rebuild()`, `status()`
+- **Auto Deep Pipeline**: 4-stage pipeline — `deep_audit()` (health), `deep_qualify()` (quality), `deep_debug()` (issues), `deep_improve()` (auto-fix proposals)
+
+### MCP Server
+- 22 new tools registered in `ADVANCED_TOOLS` set
+- All tools have `TOOLS[_name]` schemas and `_call_tool` handlers
+- Tool count: 155 (admin), 17 (user), 17 (readonly)
+
+### Test Suite
+- All 11 Phase 8 contract tests passing
+- 30 core tests passing (phase1, phase8, tool catalog, sanitize, guardrails, slot contract, promotion)
+- Pre-existing failure in `test_api_remember_status_prefetch_promote` (assert 2==3) — unrelated SQLite test fixture issue

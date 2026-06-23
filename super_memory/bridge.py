@@ -1,45 +1,39 @@
 from __future__ import annotations
 
-import importlib.util as _importlib_util
+import json
+import sqlite3
 from typing import Any
 
-from . import cleanup as cleanup_mod
-from . import code_index, cognitive, durable_pack as durable_pack_mod, graph, intelligence, leitner, lifecycle, memory_core, phase8, reasoning, safe_flows
-from .compat import memory_get_compatible, memory_search_compatible
-from .entity_extractor import extract_metadata
-from .memory_stages import record_reinforcement, MemoryStage
-from .simhash import compute_content_hash, hamming_distance, simhash_dedup_check
-from .goals import create_goal, get_goal_manager
-from .semantic_discovery import auto_link_memories as auto_link_semantic
-from .leitner import auto_seed as leitner_auto_seed
 from .config import load_config
+from .compat import memory_get_compatible, memory_search_compatible
 from .hooks import TurnContext
 from .models import MemoryRecord, MemoryScope, MemoryType
 from .promote import promote_both
 from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize_auto_capture, sanitize_prompt
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-
-_HAS_STRUCTLOG = _importlib_util.find_spec("structlog") is not None
-if _HAS_STRUCTLOG:
-    import structlog as _structlog
-    logger = _structlog.get_logger("super-memory.bridge")
-else:
-    import logging as _logging
-    logger = _logging.getLogger("super-memory.bridge")
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term
 
 
-def remember(payload: dict[str, Any], config_path: str | None = None, defer: bool = False) -> dict[str, Any]:
-    """Save a memory with canonical-first layered persistence.
 
-    Args:
-        payload: Memory payload (content, type, scope, agent_id, session_id, project, tags, source, metadata).
-        config_path: Optional config path.
-        defer: If True, enqueue to write queue instead of saving immediately.
 
-    Returns:
-        Dict with record, results (or pending count when deferred), graph_projection.
-    """
+def _safe_memories_update(
+    conn: "sqlite3.Connection",
+    updates: dict[str, str],  # column_name -> escaped_value
+    where_id: str,
+    where_layer: str | None = None,
+) -> None:
+    """Execute UPDATE on memories table with executescript to work around
+    FTS5 trigger issues with parameterized queries on composite PK tables."""
+    set_clause = ", ".join(f"{k} = '{v}'" for k, v in updates.items())
+    esc_id = where_id.replace("'", "''")
+    if where_layer:
+        esc_layer = where_layer.replace("'", "''")
+        sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}' AND layer = '{esc_layer}';"
+    else:
+        sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}';"
+    conn.executescript(sql)
+def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
     payload = normalize_memory_payload(payload)
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
@@ -55,90 +49,7 @@ def remember(payload: dict[str, Any], config_path: str | None = None, defer: boo
         trust_score=payload.get("trust_score"),
         metadata=payload.get("metadata", {}),
     )
-
-    if defer:
-        # Defer to write queue for batch flush
-        _ensure_write_queue(config_path)
-        _WRITE_QUEUES["default"].defer(record)
-        return {
-            "record": record.model_dump(mode="json"),
-            "deferred": True,
-            "pending": _WRITE_QUEUES["default"].pending_count,
-        }
-
-    # Dedup check: skip save when an active record with the same content_hash
-    # already exists.
-    dedup = svc.dedup_check(record)
-    if dedup["skipped"]:
-        logger.debug("remember dedup hit — skipping save", memory_id=record.id, matched_id=dedup["matched_id"])
-        matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
-        out_record = matched or record
-        return {
-            "record": out_record.model_dump(mode="json"),
-            "dedup": dedup,
-            "results": [],
-            "graph_projection": None,
-        }
-
-    # SimHash near-dup check: detect fuzzy duplicates using Hamming distance
-    # on fingerprint hashes. Near-duplicates are saved but annotated for downstream.
-    try:
-        import json as _json
-        simhash_fp = compute_content_hash(record.content)
-        if simhash_fp:
-            record.metadata["simhash_fingerprint"] = simhash_fp
-            with svc.store.connect() as conn:
-                recent = conn.execute(
-                    "SELECT id, metadata_json FROM memories "
-                    "WHERE json_extract(metadata_json, '$.simhash_fingerprint') IS NOT NULL "
-                    "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
-                    "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
-                    "ORDER BY rowid DESC LIMIT 500"
-                ).fetchall()
-            min_dist = 999
-            nearest_id = None
-            for row in recent:
-                meta = _json.loads(row["metadata_json"] or "{}")
-                existing_fp = meta.get("simhash_fingerprint", 0)
-                if existing_fp:
-                    dist = hamming_distance(simhash_fp, existing_fp)
-                    if dist < min_dist:
-                        min_dist = dist
-                        nearest_id = row["id"]
-            if min_dist <= 3:
-                record.metadata["simhash_near_dup"] = {
-                    "is_near_dup": True,
-                    "nearest_id": nearest_id,
-                    "hamming_distance": min_dist,
-                }
-                logger.debug("simhash near-dup detected", memory_id=record.id, nearest_id=nearest_id, distance=min_dist)
-    except Exception as exc:
-        logger.debug("simhash check failed (non-blocking)", error=str(exc))
-    # Entity extraction: enrich metadata for better recall
-    entity_meta = extract_metadata(record.content)
-    if entity_meta:
-        record.metadata.setdefault("extracted_entities", {})
-        record.metadata["extracted_entities"] = entity_meta
-
-    # Memory stage: new memories start at SHORT_TERM
-    record.metadata.setdefault("memory_stage", {
-        "stage": MemoryStage.SHORT_TERM.value,
-        "created_at": record.created_at.isoformat() if hasattr(record.created_at, 'isoformat') else str(record.created_at),
-        "promoted_at": [],
-        "reinforcements": 0,
-        "distinct_reinforcement_dates": [],
-        "last_reinforced_at": "",
-    })
-
     results = svc.save(record)
-
-    # Leitner auto-seed: assign box=0 to priority memories for spaced repetition
-    try:
-        if record.type in (MemoryType.DECISION, MemoryType.INSTRUCTION, MemoryType.WORKFLOW, MemoryType.REFERENCE):
-            leitner_auto_seed(config_path=config_path, limit=5)
-    except Exception as exc:
-        logger.debug("leitner auto-seed failed (non-blocking)", error=str(exc))
-
     graph_projection = None
     try:
         graph_projection = graph.project_memory(record, config_path=config_path)
@@ -166,23 +77,6 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             trust_score=payload.get("trust_score"),
             metadata=payload.get("metadata", {}),
         )
-        # Entity extraction for batch items
-        entity_meta = extract_metadata(record.content)
-        if entity_meta:
-            record.metadata.setdefault("extracted_entities", {})
-            record.metadata["extracted_entities"] = entity_meta
-        dedup = svc.dedup_check(record)
-        if dedup["skipped"]:
-            matched = svc.store.get_memory(str(dedup["matched_id"]), layer="workspace_markdown")
-            out_record = matched or record
-            items.append({
-                "ok": True,
-                "record": out_record.model_dump(mode="json"),
-                "dedup": dedup,
-                "results": [],
-                "graph_projection": None,
-            })
-            continue
         results = svc.save(record)
         graph_projection = None
         try:
@@ -193,7 +87,6 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         items.append({
             "ok": bool(canonical and canonical.ok),
             "record": record.model_dump(mode="json"),
-            "dedup": {"skipped": False},
             "results": [r.model_dump(mode="json") for r in results],
             "graph_projection": graph_projection,
         })
@@ -217,18 +110,7 @@ def context(query: str = "", limit: int = 10, config_path: str | None = None) ->
     if query:
         records = svc.prefetch(query, limit=limit)
     else:
-        # Canonical-first default: workspace_markdown SQLite mirror, fallback mempalace
-        store = svc.store
-        with store.connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM memories WHERE layer = 'workspace_markdown' ORDER BY created_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-            if not rows:
-                rows = conn.execute(
-                    "SELECT * FROM memories WHERE layer = 'mempalace' ORDER BY created_at DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+        rows = svc.store.list_memory_rows(limit=limit)
         records = [row_to_memory(row) for row in rows]
     return {"records": [r.model_dump(mode="json") for r in records]}
 
@@ -352,172 +234,6 @@ def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dic
     return {"records": [r.model_dump(mode="json") for r in records]}
 
 
-def _durable_pack_source_stats(pack_name: str, project: str, config_path: str | None = None) -> dict[str, Any]:
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    with store.connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, layer, content_hash, content, type, scope, source, project, created_at,
-                   json_extract(metadata_json, '$.soft_deleted') AS soft_deleted
-            FROM memories
-            WHERE source = 'super-memory.durable-pack'
-            AND project = ?
-            AND tags_json LIKE ?
-            ORDER BY created_at DESC
-            """,
-            (project, f"%{pack_name}%"),
-        ).fetchall()
-    by_hash: dict[str, list[dict[str, Any]]] = {}
-    active_ids: set[str] = set()
-    for row in rows:
-        item = dict(row)
-        ch = item.get("content_hash") or item.get("content")
-        by_hash.setdefault(ch, []).append(item)
-        if not item.get("soft_deleted"):
-            active_ids.add(item["id"])
-    duplicate_groups = []
-    for ch, items in by_hash.items():
-        ids = sorted({i["id"] for i in items if not i.get("soft_deleted")})
-        if len(ids) > 1:
-            duplicate_groups.append({"content_hash": ch, "ids": ids, "count": len(ids)})
-    expected_hashes = []
-    import hashlib
-    for item in durable_pack_mod.build_openclaw_pack(pack_name=pack_name, project=project):
-        expected_hashes.append(hashlib.sha256(item["content"].encode("utf-8", errors="replace")).hexdigest())
-    found_hashes = {h for h, items in by_hash.items() if any(not i.get("soft_deleted") for i in items)}
-    return {
-        "pack_name": pack_name,
-        "project": project,
-        "expected_items": len(expected_hashes),
-        "found_items": sum(1 for h in expected_hashes if h in found_hashes),
-        "missing_hashes": [h for h in expected_hashes if h not in found_hashes],
-        "active_ids": sorted(active_ids),
-        "duplicate_groups": duplicate_groups,
-        "duplicates_count": sum(max(0, g["count"] - 1) for g in duplicate_groups),
-    }
-
-
-def _dedupe_durable_pack(pack_name: str, project: str, config_path: str | None = None) -> dict[str, Any]:
-    stats_payload = _durable_pack_source_stats(pack_name, project, config_path=config_path)
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    soft_deleted: list[str] = []
-    with store.connect() as conn:
-        for group in stats_payload["duplicate_groups"]:
-            ids = group["ids"]
-            keep_id = ids[0]
-            for memory_id in ids[1:]:
-                conn.execute(
-                    "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
-                    (f"durable_pack_dedupe keep={keep_id}", memory_id),
-                )
-                soft_deleted.append(memory_id)
-        conn.commit()
-    return {"ok": True, "soft_deleted": soft_deleted, "count": len(soft_deleted)}
-
-
-def durable_pack_status(
-    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
-    project: str = durable_pack_mod.DEFAULT_PROJECT,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    stats_payload = _durable_pack_source_stats(pack_name, project, config_path=config_path)
-    qualification = []
-    for query in durable_pack_mod.qualification_queries():
-        hits = recall(query, limit=5, config_path=config_path)
-        hit_count = sum(len(v) for v in hits.values())
-        qualification.append({"query": query, "hit_count": hit_count, "ok": hit_count > 0})
-    stats_payload["qualification"] = qualification
-    stats_payload["ok"] = (
-        stats_payload["found_items"] == stats_payload["expected_items"]
-        and stats_payload["duplicates_count"] == 0
-        and all(q["ok"] for q in qualification)
-    )
-    return stats_payload
-
-
-def durable_pack_audit(
-    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
-    project: str = durable_pack_mod.DEFAULT_PROJECT,
-    fix: bool = False,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    before = durable_pack_status(pack_name=pack_name, project=project, config_path=config_path)
-    cross_before = cross_layer_health(config_path=config_path)
-    fixes: dict[str, Any] = {}
-    if fix:
-        fixes["dedupe"] = _dedupe_durable_pack(pack_name, project, config_path=config_path)
-        if cross_before.get("sqlite_only_ids", 0):
-            fixes["backfill_markdown_sqlite"] = backfill_markdown_sqlite(config_path=config_path)
-    after = durable_pack_status(pack_name=pack_name, project=project, config_path=config_path)
-    cross_after = cross_layer_health(config_path=config_path)
-    recommendations = []
-    if after.get("duplicates_count", 0):
-        recommendations.append("Run durable_pack_audit(fix=True) to soft-delete duplicate durable pack records.")
-    if cross_after.get("sqlite_only_ids", 0):
-        recommendations.append("Run backfill_markdown_sqlite or cleanup to repair SQLite-only IDs.")
-    recommendations.append("Keep curated durable memories ranked above raw event transcripts during recall.")
-    return {
-        "ok": after.get("ok", False) and cross_after.get("ok", False),
-        "before": before,
-        "after": after,
-        "cross_layer_before": cross_before,
-        "cross_layer_after": cross_after,
-        "fixes": fixes,
-        "recommendations": recommendations,
-    }
-
-
-def durable_pack(
-    pack_name: str = durable_pack_mod.DEFAULT_PACK_NAME,
-    project: str = durable_pack_mod.DEFAULT_PROJECT,
-    agents: list[str] | None = None,
-    qualify: bool = True,
-    debug: bool = True,
-    dedupe: bool = True,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Install a deterministic high-signal OpenClaw durable memory pack.
-
-    The pack is canonical-first, shared-scope, and intentionally curated to improve
-    agent continuity beyond raw transcript recall. Qualification performs recall
-    checks for the pack's key concepts; debug returns health/status snapshots.
-    """
-    pack = durable_pack_mod.build_openclaw_pack(pack_name=pack_name, project=project)
-    if agents:
-        for item in pack:
-            item.setdefault("metadata", {})["agents"] = agents
-    saved = remember_batch(pack, config_path=config_path)
-    dedupe_result = _dedupe_durable_pack(pack_name, project, config_path=config_path) if dedupe else {"ok": True, "soft_deleted": [], "count": 0}
-
-    qualification: list[dict[str, Any]] = []
-    if qualify:
-        for query in durable_pack_mod.qualification_queries():
-            hits = recall(query, limit=5, config_path=config_path)
-            hit_count = sum(len(v) for v in hits.values())
-            qualification.append({"query": query, "hit_count": hit_count, "ok": hit_count > 0})
-
-    debug_payload: dict[str, Any] = {}
-    if debug:
-        debug_payload = {
-            "health": health(config_path=config_path),
-            "status": status(config_path=config_path),
-        }
-
-    ok = bool(saved.get("ok")) and all(q["ok"] for q in qualification) if qualify else bool(saved.get("ok"))
-    return {
-        "ok": ok,
-        "pack_name": pack_name,
-        "project": project,
-        "saved": saved,
-        "dedupe": dedupe_result,
-        "status": durable_pack_status(pack_name=pack_name, project=project, config_path=config_path),
-        "qualification": qualification,
-        "debug": debug_payload,
-    }
-
-
 def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
     payload = dict(payload)
     if payload.get("user_message"):
@@ -558,22 +274,31 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
         return {"ok": False, "error": f"memory not found: {memory_id}"}
     if not hard:
         with store.connect() as conn:
-            conn.execute(
-                "UPDATE memories SET metadata_json = json_set(metadata_json, '$.soft_deleted', 1, '$.deleted_reason', ?) WHERE id = ?",
-                (reason, memory_id),
-            )
+            for row in conn.execute("SELECT layer, metadata_json FROM memories WHERE id=?", (memory_id,)).fetchall():
+                try:
+                    mj = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
+                except (json.JSONDecodeError, TypeError):
+                    mj = {}
+                mj["soft_deleted"] = 1
+                mj["deleted_reason"] = reason
+                new_json = json.dumps(mj).replace("'", "''")
+                esc_layer = row["layer"].replace("'", "''")
+                conn.executescript(
+                    f"UPDATE memories SET metadata_json = '{new_json}' WHERE id = '{memory_id}' AND layer = '{esc_layer}';"
+                )
             conn.commit()
         return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete"}
     # Hard delete: cascade cleanup
     with store.connect() as conn:
-        conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
-        if cfg.legacy_graph_edges:
-            conn.execute("DELETE FROM graph_edges WHERE source_memory_id = ? OR target_memory_id = ?", (memory_id, memory_id))
-        conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?) OR target_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = ?)", (memory_id, memory_id))
-        conn.execute("DELETE FROM cognitive_neurons WHERE source_memory_id = ?", (memory_id,))
-        conn.execute("DELETE FROM cognitive_fibers WHERE id = ?", (f"f:{memory_id}",))
-        conn.execute("DELETE FROM honcho_events WHERE memory_id = ?", (memory_id,))
-        conn.execute("DELETE FROM palace_drawers WHERE memory_id = ?", (memory_id,))
+        esc_id = memory_id.replace("'", "''")
+        conn.executescript(f"""
+            DELETE FROM memories WHERE id = '{esc_id}';
+            DELETE FROM graph_edges WHERE source_memory_id = '{esc_id}' OR target_memory_id = '{esc_id}';
+            DELETE FROM cognitive_synapses WHERE source_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = '{esc_id}') OR target_neuron_id IN (SELECT id FROM cognitive_neurons WHERE source_memory_id = '{esc_id}');
+            DELETE FROM cognitive_neurons WHERE source_memory_id = '{esc_id}';
+            DELETE FROM honcho_events WHERE memory_id = '{esc_id}';
+            DELETE FROM palace_drawers WHERE memory_id = '{esc_id}';
+        """)
         conn.commit()
     return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete"}
 
@@ -585,26 +310,28 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
     record = store.get_memory(memory_id)
     if not record:
         return {"ok": False, "error": f"memory not found: {memory_id}"}
-    updates: list[str] = []
-    params: list[Any] = []
+    set_parts: list[str] = []
     if content is not None:
-        updates.append("content = ?")
-        params.append(content)
+        esc = content.replace("'", "''")
+        set_parts.append(f"content = '{esc}'")
     if type is not None:
-        updates.append("type = ?")
-        params.append(type)
+        esc = type.replace("'", "''")
+        set_parts.append(f"type = '{esc}'")
     if priority is not None:
-        updates.append("trust_score = ?")
-        params.append(max(0, min(10, priority)) / 10.0)
+        val = max(0, min(10, priority)) / 10.0
+        set_parts.append(f"trust_score = {val}")
     if tier is not None:
-        updates.append("metadata_json = json_set(metadata_json, '$.tier', ?)")
-        params.append(tier)
-    if not updates:
+        meta = dict(record.metadata or {})
+        meta["tier"] = tier
+        esc = json.dumps(meta).replace("'", "''")
+        set_parts.append(f"metadata_json = '{esc}'")
+    if not set_parts:
         return {"ok": False, "error": "no fields to update"}
-    params.append(memory_id)
-    set_clause = ", ".join(updates)
+    set_clause = ", ".join(set_parts)
     with store.connect() as conn:
-        conn.execute("UPDATE memories SET " + set_clause + " WHERE id = ?", params)
+        esc_id = memory_id.replace("'", "''")
+        sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}' AND layer = 'workspace_markdown';"
+        conn.executescript(sql)
         conn.commit()
     updated = store.get_memory(memory_id)
     return {"ok": True, "memory_id": memory_id, "updated": updated.model_dump(mode="json") if updated else None}
@@ -618,11 +345,7 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     with store.connect() as conn:
         count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
         layers = conn.execute("SELECT layer, COUNT(*) as c FROM memories GROUP BY layer").fetchall()
-        # V2: when legacy_graph_edges is disabled, only count cognitive_synapses
-        if cfg.legacy_graph_edges:
-            leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
-        else:
-            leg_edges = 0
+        leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
         # Unified graph: cognitive_synapses primary + graph_edges legacy, graceful fallback
         try:
             cog_syn = conn.execute("SELECT COUNT(*) as c FROM cognitive_synapses").fetchone()["c"]
@@ -639,14 +362,9 @@ def status(config_path: str | None = None) -> dict[str, Any]:
         edges = cog_syn + leg_edges
         drawers = conn.execute("SELECT COUNT(*) as c FROM palace_drawers").fetchone()["c"]
         events = conn.execute("SELECT COUNT(*) as c FROM honcho_events").fetchone()["c"]
-
-    # Filesystem markdown stats (canonical layer outside SQLite)
-    fs_stats = _filesystem_markdown_stats(cfg)
-
     return {
         "total_memories": count,
         "layers": {r["layer"]: r["c"] for r in layers},
-        "filesystem_markdown": fs_stats,
         "graph_edges": edges,
         "cognitive_synapses": cog_syn,
         "cognitive_neurons": neurons_ct,
@@ -711,11 +429,6 @@ def spreading_activation_recall(query: str, depth: int = 2, top_k: int = 20, see
     return graph.spreading_activation(query, depth=depth, top_k=top_k, seed_limit=seed_limit, config_path=config_path)
 
 def graph_rebuild(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    """Rebuild Layer 4 cognitive graph (incremental by default). Use graph_rebuild_destructive() for full rebuild."""
-    return graph.rebuild_incremental(limit=limit, config_path=config_path)
-
-def graph_rebuild_destructive(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    """Destructive full rebuild — drops and recreates all cognitive projections."""
     return graph.rebuild(limit=limit, config_path=config_path)
 
 def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
@@ -723,70 +436,6 @@ def graph_rebuild_incremental(limit: int = 500, config_path: str | None = None) 
 
 def graph_cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
     return graph.cleanup_orphans(config_path=config_path)
-
-
-def auto_compact(config_path: str | None = None, threshold: float = 0.2, dry_run: bool = True) -> dict[str, Any]:
-    """Auto-compact soft-deleted records when ratio exceeds threshold."""
-    return cleanup_mod.auto_compact(config_path=config_path, threshold=threshold, dry_run=dry_run)
-
-
-def cleanup(config_path: str | None = None, vacuum: bool = False, integrity_check: bool = True) -> dict[str, Any]:
-    return cleanup_mod.cleanup(config_path=config_path, vacuum=vacuum, integrity_check=integrity_check)
-
-
-def cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
-    """Clean up cross-layer orphan projections.
-
-    Soft-deletes palace_drawers, honcho_events, and graph edges that
-    reference non-existent memory IDs.
-    """
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    report = cross_layer_health(config_path=config_path)
-
-    actions: dict[str, Any] = {"orphans_examined": True, "deleted": {"palace_drawers": [], "honcho_events": []}}
-
-    with store.connect() as conn:
-        for row in conn.execute(
-            "SELECT id FROM palace_drawers WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)"
-        ).fetchall():
-            conn.execute("DELETE FROM palace_drawers WHERE id = ?", (row["id"],))
-            actions["deleted"]["palace_drawers"].append(row["id"])
-
-        for row in conn.execute(
-            "SELECT id FROM honcho_events WHERE memory_id IS NOT NULL AND memory_id NOT IN (SELECT DISTINCT id FROM memories)"
-        ).fetchall():
-            conn.execute("DELETE FROM honcho_events WHERE id = ?", (row["id"],))
-            actions["deleted"]["honcho_events"].append(row["id"])
-
-        conn.commit()
-
-    actions["palace_removed"] = len(actions["deleted"]["palace_drawers"])
-    actions["honcho_removed"] = len(actions["deleted"]["honcho_events"])
-
-    after = cross_layer_health(config_path=config_path)
-    return {"ok": True, "actions": actions, "before": report, "after": after}
-
-
-def prune(config_path: str | None = None, dry_run: bool = True, source_prefixes: list[str] | None = None, max_days: int | None = None) -> dict[str, Any]:
-    """Prune memories matching retention policy criteria.
-
-    Safe by default (dry_run=True). Use dry_run=False to actually delete.
-    See cleanup_mod.prune for details.
-    """
-    return cleanup_mod.prune(config_path=config_path, dry_run=dry_run, source_prefixes=source_prefixes, max_days=max_days)
-
-
-def expire_by_age(config_path: str | None = None, max_days: int = 90, dry_run: bool = True) -> dict[str, Any]:
-    """Soft-delete memories past their expires_days TTL."""
-    return cleanup_mod.expire_by_age(config_path=config_path, max_days=max_days, dry_run=dry_run)
-
-
-def expire_by_valid_until(config_path: str | None = None, dry_run: bool = True) -> dict[str, Any]:
-    """Soft-delete memories past their valid_until window."""
-    return cleanup_mod.expire_by_valid_until(config_path=config_path, dry_run=dry_run)
 
 # Phase 7 / P2 lifecycle
 def lifecycle_review(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
@@ -801,59 +450,38 @@ def lifecycle_tier(action: str = "evaluate", dry_run: bool = True, limit: int = 
 def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.compression(action=action, dry_run=dry_run, config_path=config_path, limit=limit)
 
-def lifecycle_quality_cleanup(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    return lifecycle.quality_cleanup(dry_run=dry_run, config_path=config_path, limit=limit)
-
-def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.embedding_doctor(config_path=config_path)
-
-def embedding_auto_select(config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.embedding_auto_select(config_path=config_path)
-
-def semantic_doctor(config_path: str | None = None, query: str = "semantic recall smoke test") -> dict[str, Any]:
-    from .semantic import semantic_doctor as _semantic_doctor
-    return _semantic_doctor(config_path=config_path, query=query)
-
-def semantic_index(config_path: str | None = None, rebuild: bool = False, batch_size: int = 8, limit: int | None = None) -> dict[str, Any]:
-    from .semantic import semantic_index as _semantic_index
-    return _semantic_index(config_path=config_path, rebuild=rebuild, batch_size=batch_size, limit=limit)
-
-def semantic_verify(config_path: str | None = None, query: str = "semantic recall smoke test", limit: int = 5) -> dict[str, Any]:
-    from .semantic import semantic_verify as _semantic_verify
-    return _semantic_verify(config_path=config_path, query=query, limit=limit)
-
-def semantic_quality_audit(config_path: str | None = None) -> dict[str, Any]:
-    from .semantic import semantic_quality_audit as _semantic_quality_audit
-    return _semantic_quality_audit(config_path=config_path)
-
-def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    from .maintenance import maintenance_run as _maintenance_run
-    return _maintenance_run(dry_run=dry_run, limit=limit, config_path=config_path)
-
-def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.short_term_audit(limit=limit, config_path=config_path)
-
-def short_term_repair(limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.short_term_repair(limit=limit, dry_run=dry_run, config_path=config_path)
-
-def short_term_mark_reviewed(cluster_key: str, decision: str = "deferred", config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.short_term_mark_reviewed(cluster_key=cluster_key, decision=decision, config_path=config_path)
-
-def dreaming_audit(config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.dreaming_audit(config_path=config_path)
-
-def dreaming_run(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.dreaming_run(limit=limit, dry_run=dry_run, config_path=config_path)
-
-def dreaming_repair(config_path: str | None = None) -> dict[str, Any]:
-    return memory_core.dreaming_repair(config_path=config_path)
-
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)
 
-def leitner_due(config_path: str | None = None) -> dict[str, Any]:
-    """Return only the count of Leitner-due memories (lightweight)."""
-    return leitner.due(config_path=config_path)
+# Semantic quality / short-term maintenance
+def semantic_quality_audit(config_path: str | None = None) -> dict[str, Any]:
+    return semantic_quality.quality_audit(config_path=config_path)
+
+def semantic_verify(query: str = "semantic recall smoke test", limit: int = 5, config_path: str | None = None) -> dict[str, Any]:
+    return semantic_quality.verify(query=query, limit=limit, config_path=config_path)
+
+def semantic_index(rebuild: bool = False, batch_size: int = 8, limit: int | None = None, config_path: str | None = None) -> dict[str, Any]:
+    return semantic_quality.index(rebuild=rebuild, batch_size=batch_size, limit=limit, config_path=config_path)
+
+def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return short_term.audit(limit=limit, config_path=config_path)
+
+def short_term_mark_reviewed(cluster_key: str, decision: str = "deferred", config_path: str | None = None) -> dict[str, Any]:
+    return short_term.mark_reviewed(cluster_key=cluster_key, decision=decision, config_path=config_path)
+
+def short_term_repair(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return short_term.repair(dry_run=dry_run, limit=limit, config_path=config_path)
+
+def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "semantic_index": semantic_index(rebuild=False, limit=limit, config_path=config_path),
+        "short_term": short_term_repair(dry_run=dry_run, limit=limit, config_path=config_path),
+        "compression": lifecycle_compression(action="mark", dry_run=dry_run, limit=limit, config_path=config_path),
+        "consolidation": consolidate(strategy="dedup", dry_run=dry_run, config_path=config_path),
+        "semantic_quality": semantic_quality_audit(config_path=config_path),
+    }
 
 def leitner_queue(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
     """Return memories due for Leitner review."""
@@ -923,138 +551,6 @@ def expire_predictions(config_path: str | None = None) -> dict[str, Any]:
     return reasoning.expire_predictions(config_path=config_path)
 
 
-# ── P5 Memory Quality + Recall Quality (v1.6.0+) ──────────────────────────
-
-def quality_score(content: str, memory_type: str = "context", config_path: str | None = None) -> dict[str, Any]:
-    """Run quality assessment on memory content — fidelity, sufficiency, importance."""
-    try:
-        from .quality_scorer import score_memory
-        qs = score_memory(content, memory_type)
-        return {
-            "overall": qs.overall,
-            "fidelity": qs.fidelity,
-            "sufficiency": qs.sufficiency,
-            "importance": qs.importance,
-            "warnings": qs.warnings,
-        }
-    except Exception as e:
-        return {"error": str(e), "overall": 0.5}
-
-
-def rerank(query: str, candidates: list[dict], config_path: str | None = None) -> dict[str, Any]:
-    """Rerank recall candidates using hybrid BM25 + semantic + CrossEncoder fusion."""
-    try:
-        from .reranker import fusion_rerank
-        results = fusion_rerank(query, candidates)
-        return {
-            "results": [
-                {
-                    "neuron_id": r.neuron_id,
-                    "content": r.content,
-                    "score": r.score,
-                    "bm25_score": r.bm25_score,
-                    "semantic_score": r.semantic_score,
-                    "crossencoder_score": r.crossencoder_score,
-                }
-                for r in results
-            ],
-            "count": len(results),
-        }
-    except Exception as e:
-        return {"error": str(e), "results": [], "count": 0}
-
-
-def get_priming_boosts(session_id: str, neuron_ids: list[str], config_path: str | None = None) -> dict[str, Any]:
-    """Get priming boost multipliers for neurons in a session."""
-    try:
-        from .priming import get_priming_tracker
-        tracker = get_priming_tracker()
-        boosts = {nid: tracker.get_priming_boost(session_id, nid) for nid in neuron_ids}
-        primed = tracker.get_primed_neuron_ids(session_id)
-        return {"boosts": boosts, "primed_count": len(primed)}
-    except Exception as e:
-        return {"error": str(e), "boosts": {}}
-
-
-def reflex_pin(neuron_id: str, content: str = "", config_path: str | None = None) -> dict[str, Any]:
-    """Pin a neuron as always-on reflex."""
-    try:
-        from .reflex_arc import get_reflex_manager
-        mgr = get_reflex_manager()
-        ok = mgr.pin(neuron_id, content)
-        return {"ok": ok, "reflex_count": mgr.count()}
-    except Exception as e:
-        return {"error": str(e), "ok": False}
-
-
-def reflex_unpin(neuron_id: str, config_path: str | None = None) -> dict[str, Any]:
-    """Unpin a neuron from reflex status."""
-    try:
-        from .reflex_arc import get_reflex_manager
-        mgr = get_reflex_manager()
-        ok = mgr.unpin(neuron_id)
-        return {"ok": ok, "reflex_count": mgr.count()}
-    except Exception as e:
-        return {"error": str(e), "ok": False}
-
-
-def reflex_list(config_path: str | None = None) -> dict[str, Any]:
-    """List all reflex-pinned neurons."""
-    try:
-        from .reflex_arc import get_reflex_manager
-        mgr = get_reflex_manager()
-        return {"reflexes": mgr.get_all_reflexes(), "count": mgr.count()}
-    except Exception as e:
-        return {"error": str(e), "reflexes": [], "count": 0}
-
-
-def preference_detect(content: str, memory_type: str = "", config_path: str | None = None) -> dict[str, Any]:
-    """Analyze memory content for preference signals."""
-    try:
-        from .preference_detector import get_preference_detector
-        pd = get_preference_detector()
-        signals = pd.analyze(content, memory_type)
-        profile = pd.build_profile()
-        return {
-            "signals": signals,
-            "profile": {
-                "memories_analyzed": profile.memories_analyzed,
-                "preferences_count": len(profile.preferences),
-                "top_tech": [p.key for p in profile.preferences if p.category == "tech"][:5],
-                "top_topics": [p.key for p in profile.preferences if p.category == "topic"][:5],
-            },
-        }
-    except Exception as e:
-        return {"error": str(e), "signals": {}}
-
-
-def memory_pollution_report(config_path: str | None = None) -> dict[str, Any]:
-    """Memory pollution and quality report via Reports class."""
-    from .reports import Reports as _Reports
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    rpt = _Reports(cfg)
-    return rpt.memory_pollution_report()
-
-
-def diagnostics_new(config_path: str | None = None) -> dict[str, Any]:
-    """New runtime diagnostics — component health + milestones."""
-    try:
-        from .diagnostics import get_diagnostics, check_health
-        health = check_health()
-        summary = get_diagnostics().get_summary()
-        return {
-            "healthy": health.healthy,
-            "components": health.component_status,
-            "component_errors": health.component_errors,
-            "milestones": health.milestones[-5:],
-            "warnings": health.warnings,
-            "summary": summary,
-        }
-    except Exception as e:
-        return {"error": str(e), "healthy": False}
-
-
 # Phase 8 live-readiness / diagnostics / contracts
 def diagnostics(config_path: str | None = None) -> dict[str, Any]:
     return phase8.diagnostics(config_path=config_path)
@@ -1069,1243 +565,96 @@ def supervised_runtime_smoke(config_path: str | None = None) -> dict[str, Any]:
     return phase8.supervised_runtime_smoke(config_path=config_path)
 
 
-# ── Cross-layer health & filesystem markdown helpers ────────────────────────
+# ── Dream Engine (P0) ────────────────────────────────────────────────────────
 
-def _filesystem_markdown_stats(cfg: Any) -> dict[str, Any]:
-    """Count filesystem markdown entries (canonical layer outside SQLite)."""
-    try:
-        mem_dir = cfg.workspace_root / cfg.daily_memory_dir
-        if not mem_dir.exists():
-            return {"daily_files": 0, "total_entries": 0, "latest_file": None}
-        daily_files = sorted(mem_dir.glob("*.md"))
-        total_entries = 0
-        latest_file = None
-        for fpath in daily_files:
-            total_entries += sum(1 for line in fpath.read_text(encoding="utf-8", errors="ignore").splitlines() if line.startswith("- "))
-            latest_file = str(fpath.relative_to(cfg.workspace_root))
-        return {
-            "daily_files": len(daily_files),
-            "total_entries": total_entries,
-            "latest_file": latest_file,
-        }
-    except Exception as exc:
-        return {"error": f"{type(exc).__name__}: {exc}"}
+def dream_insight_generation(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import dream
+    return dream.dream_insight_generation(limit=limit, dry_run=dry_run, config_path=config_path)
 
+def dream_weak_tie_reinforcement(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import dream
+    return dream.dream_weak_tie_reinforcement(limit=limit, dry_run=dry_run, config_path=config_path)
 
-def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
-    """Cross-layer consistency audit.
+def dream_pattern_summary(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import dream
+    return dream.dream_pattern_summary(limit=limit, dry_run=dry_run, config_path=config_path)
 
-    Verifies:
-    - (a) Every SQLite memory ID has a matching filesystem markdown entry
-    - (b) Content hasn't drifted (content_hash check)
-    - (c) No orphan projections (palace_drawers, honcho_events, graph, cognitive)
-    """
+def dream_full_cycle(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import dream
+    return dream.dream_full_cycle(limit=limit, dry_run=dry_run, config_path=config_path)
 
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
 
-    issues: list[dict[str, Any]] = []
+# ── Telemetry (P3) ───────────────────────────────────────────────────────────
 
-    FILTER_ACTIVE = "(json_extract(metadata_json, '$.soft_deleted') IS NULL OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+def telemetry_record_event(kind: str, agent_id: str = "lucas", tool_name: str | None = None, duration_ms: float | None = None, success: bool = True, detail: dict | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from . import telemetry
+    return telemetry.record_event(kind, agent_id=agent_id, tool_name=tool_name, duration_ms=duration_ms, success=success, detail=detail, config_path=config_path)
 
-    def _has_table(conn, table: str) -> bool:
-        return conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+def telemetry_stats(days: int = 7, config_path: str | None = None) -> dict[str, Any]:
+    from . import telemetry
+    return telemetry.stats(days=days, config_path=config_path)
 
-    with store.connect() as conn:
-        has_memories = _has_table(conn, "memories")
-        has_palace = _has_table(conn, "palace_drawers")
-        has_honcho = _has_table(conn, "honcho_events")
-        has_graph_edges = _has_table(conn, "graph_edges")
-        has_cognitive_neurons = _has_table(conn, "cognitive_neurons")
-        has_cognitive_synapses = _has_table(conn, "cognitive_synapses")
-        has_cognitive_fibers = _has_table(conn, "cognitive_fibers")
-        if not has_memories:
-            return {
-                "ok": True,
-                "verdict": "pass",
-                "active_ids": 0,
-                "full_4layer_coverage": 0,
-                "full_4layer_pct": 0,
-                "soft_deleted": 0,
-                "pending_canonical_sync": 0,
-                "sqlite_only_ids": 0,
-                "content_drift_count": 0,
-                "orphan_projections_total": 0,
-                "issues": [],
-            }
-        # ── (a) Check for SQLite-only IDs (no workspace_markdown row) ──
-        sqlite_only = conn.execute(
-            "SELECT COUNT(DISTINCT id) FROM memories"
-            " WHERE layer != 'workspace_markdown'"
-            " AND " + FILTER_ACTIVE +
-            " AND id NOT IN ("
-            " SELECT id FROM memories WHERE layer = 'workspace_markdown'"
-            " )"
-        ).fetchone()[0]
+def telemetry_aggregate_daily(config_path: str | None = None) -> dict[str, Any]:
+    from . import telemetry
+    return telemetry.aggregate_daily(config_path=config_path)
 
-        # ── (b) Content drift: workspace_markdown vs other layers ──
-        drift_rows = conn.execute("""
-            SELECT m1.id, m1.layer, m2.layer AS layer2,
-                   m1.content_hash, m2.content_hash AS hash2
-            FROM memories m1
-            JOIN memories m2 ON m1.id = m2.id
-            WHERE m1.layer = 'workspace_markdown'
-            AND m2.layer != 'workspace_markdown'
-            AND m1.content_hash IS NOT NULL
-            AND m2.content_hash IS NOT NULL
-            AND m1.content_hash != m2.content_hash
-            LIMIT 50
-        """).fetchall()
 
-        drift_details: list[dict[str, Any]] = []
-        for row in drift_rows:
-            drift_details.append({
-                "id": row["id"],
-                "layer_a": row["layer"],
-                "layer_b": row["layer2"],
-                "hash_a": row["content_hash"][:12],
-                "hash_b": row["hash2"][:12],
-            })
+# ── Per-agent Isolation (P3) ─────────────────────────────────────────────────
 
-        # ── (c) Orphan projections ──
-        orphan_palace = conn.execute("""
-            SELECT COUNT(*) FROM palace_drawers
-            WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0] if has_palace else 0
+def isolation_set_rules(agent_id: str, allowed_scopes: list[str] | None = None, allowed_agents: list[str] | None = None, blocked_agents: list[str] | None = None, read_others: bool | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from . import isolation
+    return isolation.set_agent_rules(agent_id, allowed_scopes=allowed_scopes, allowed_agents=allowed_agents, blocked_agents=blocked_agents, read_others=read_others, config_path=config_path)
 
-        orphan_honcho = conn.execute("""
-            SELECT COUNT(*) FROM honcho_events
-            WHERE memory_id NOT IN (SELECT DISTINCT id FROM memories)
-            AND memory_id IS NOT NULL
-        """).fetchone()[0] if has_honcho else 0
+def isolation_get_rules(agent_id: str, config_path: str | None = None) -> dict[str, Any]:
+    from . import isolation
+    return isolation.get_agent_rules(agent_id, config_path=config_path)
 
-        orphan_graph = conn.execute("""
-            SELECT COUNT(*) FROM graph_edges
-            WHERE source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
-            OR target_memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0] if has_graph_edges else 0
+def isolation_summary(config_path: str | None = None) -> dict[str, Any]:
+    from . import isolation
+    return isolation.isolation_summary(config_path=config_path)
 
-        orphan_cog_syn = conn.execute("""
-            SELECT COUNT(*) FROM cognitive_synapses cs
-            LEFT JOIN cognitive_neurons cn1 ON cs.source_neuron_id = cn1.id
-            LEFT JOIN cognitive_neurons cn2 ON cs.target_neuron_id = cn2.id
-            WHERE cn1.id IS NULL OR cn2.id IS NULL
-        """).fetchone()[0] if has_cognitive_synapses and has_cognitive_neurons else 0
+def isolation_agent_counts(config_path: str | None = None) -> dict[str, Any]:
+    from . import isolation
+    return isolation.agent_memory_counts(config_path=config_path)
 
-        orphan_cog_neurons = conn.execute("""
-            SELECT COUNT(*) FROM cognitive_neurons
-            WHERE source_memory_id IS NOT NULL
-            AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
-        """).fetchone()[0] if has_cognitive_neurons else 0
 
-        orphan_cog_fibers = conn.execute("""
-            SELECT COUNT(*) FROM cognitive_fibers cf
-            LEFT JOIN cognitive_neurons cn ON cf.anchor_neuron_id = cn.id
-            WHERE cn.id IS NULL
-        """).fetchone()[0] if has_cognitive_fibers and has_cognitive_neurons else 0
+# ── Auto-complete ────────────────────────────────────────────────────────────
 
-        # ── Layer coverage: how many IDs have full 4-layer representation ──
-        active_ids = conn.execute(
-            "SELECT COUNT(DISTINCT id) FROM memories WHERE " + FILTER_ACTIVE
-        ).fetchone()[0]
+def autocomplete_suggest(prefix: str, limit: int = 5, type_filter: str | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from . import autocomplete
+    return autocomplete.suggest(prefix=prefix, limit=limit, type_filter=type_filter, config_path=config_path)
 
-        full_coverage = conn.execute(
-            "SELECT COUNT(*) FROM ("
-            " SELECT id FROM memories WHERE " + FILTER_ACTIVE +
-            " GROUP BY id HAVING COUNT(DISTINCT layer) = 4"
-            " )"
-        ).fetchone()[0]
+def autocomplete_idle(config_path: str | None = None) -> dict[str, Any]:
+    from . import autocomplete
+    return autocomplete.idle_suggestions(config_path=config_path)
 
-        soft_deleted = conn.execute("""
-            SELECT COUNT(*) FROM memories
-            WHERE json_extract(metadata_json, '$.soft_deleted') = 1
-        """).fetchone()[0]
+def autocomplete_rebuild(config_path: str | None = None) -> dict[str, Any]:
+    from . import autocomplete
+    return autocomplete.rebuild(config_path=config_path)
 
-        pending_sync = conn.execute("""
-            SELECT COUNT(*) FROM memories
-            WHERE pending_canonical_sync = 1
-        """).fetchone()[0]
+def autocomplete_status(config_path: str | None = None) -> dict[str, Any]:
+    from . import autocomplete
+    return autocomplete.status(config_path=config_path)
 
-    orphan_total = orphan_palace + orphan_honcho + orphan_graph + orphan_cog_syn + orphan_cog_neurons + orphan_cog_fibers
 
-    verdict = "pass"
-    issues = []
-    if sqlite_only > 0:
-        issues.append({"check": "sqlite_only_ids", "count": sqlite_only, "detail": "IDs in SQLite layers but missing workspace_markdown row"})
-    if drift_details:
-        issues.append({"check": "content_drift", "count": len(drift_details), "samples": drift_details[:5]})
-    if orphan_total > 0:
-        issues.append({
-            "check": "orphan_projections",
-            "total": orphan_total,
-            "breakdown": {
-                "palace_drawers": orphan_palace,
-                "honcho_events": orphan_honcho,
-                "graph_edges": orphan_graph,
-                "cognitive_synapses": orphan_cog_syn,
-                "cognitive_neurons": orphan_cog_neurons,
-                "cognitive_fibers": orphan_cog_fibers,
-            }
-        })
+# ── Auto Deep Pipeline ───────────────────────────────────────────────────────
 
-    if issues:
-        verdict = "issues_found"
+def deep_audit(config_path: str | None = None) -> dict[str, Any]:
+    from . import deep_auto
+    return deep_auto.deep_audit(config_path=config_path)
 
-    return {
-        "ok": len(issues) == 0,
-        "verdict": verdict,
-        "active_ids": active_ids,
-        "full_4layer_coverage": full_coverage,
-        "full_4layer_pct": round(full_coverage / active_ids * 100, 1) if active_ids else 0,
-        "soft_deleted": soft_deleted,
-        "pending_canonical_sync": pending_sync,
-        "sqlite_only_ids": sqlite_only,
-        "content_drift_count": len(drift_details),
-        "orphan_projections_total": orphan_total,
-        "issues": issues,
-    }
+def deep_qualify(config_path: str | None = None) -> dict[str, Any]:
+    from . import deep_auto
+    return deep_auto.deep_qualify(config_path=config_path)
 
+def deep_debug(config_path: str | None = None) -> dict[str, Any]:
+    from . import deep_auto
+    return deep_auto.deep_debug(config_path=config_path)
 
-def backfill_markdown_sqlite(limit: int = 2000, config_path: str | None = None) -> dict[str, Any]:
-    """Backfill workspace_markdown rows into SQLite for historical records.
+def deep_improve(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import deep_auto
+    return deep_auto.deep_improve(dry_run=dry_run, config_path=config_path)
 
-    For records that exist in mempalace/honcho/neural_memory but lack a
-    workspace_markdown row in SQLite. Reconstructs from existing layers
-    using content from the earliest available SQLite layer.
-    """
-
-    import json
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-
-    with store.connect() as conn:
-        # Find IDs that have SQLite layers but no workspace_markdown
-        ids_to_backfill = conn.execute("""
-            SELECT DISTINCT m.id, m.content, m.type, m.scope, m.agent_id,
-                   m.session_id, m.project, m.tags_json, m.source,
-                   m.trust_score, m.created_at, m.metadata_json,
-                   m.content_hash
-            FROM memories m
-            WHERE m.layer != 'workspace_markdown'
-            AND m.id NOT IN (
-                SELECT id FROM memories WHERE layer = 'workspace_markdown'
-            )
-            LIMIT ?
-        """, (limit,)).fetchall()
-
-        backfilled = 0
-        errors = 0
-        for row in ids_to_backfill:
-            try:
-                conn.execute("""
-                    INSERT OR REPLACE INTO memories
-                    (id, layer, content, type, scope, agent_id, session_id,
-                     project, tags_json, source, trust_score, created_at,
-                     metadata_json, pending_canonical_sync, content_hash)
-                    VALUES (?, 'workspace_markdown', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
-                """, (
-                    row["id"], row["content"], row["type"], row["scope"],
-                    row["agent_id"], row["session_id"], row["project"],
-                    row["tags_json"], row["source"], row["trust_score"],
-                    row["created_at"], row["metadata_json"], row["content_hash"],
-                ))
-                backfilled += 1
-            except Exception:
-                errors += 1
-        conn.commit()
-
-        # Re-count remaining
-        remaining = conn.execute(
-            "SELECT COUNT(DISTINCT id) FROM memories"
-            " WHERE layer != 'workspace_markdown'"
-            " AND id NOT IN ("
-            " SELECT id FROM memories WHERE layer = 'workspace_markdown'"
-            " )"
-        ).fetchone()[0]
-
-    return {
-        "ok": True,
-        "backfilled": backfilled,
-        "errors": errors,
-        "remaining_sqlite_only": remaining,
-    }
-
-
-# ── Phase 1: Write Queue ───────────────────────────────────────────────────
-def write_queue_flush(queue_key: str = "default", config_path: str | None = None) -> dict[str, Any]:
-    """Flush the global deferred write queue."""
-    _ensure_write_queue(config_path)
-    results = _WRITE_QUEUES[queue_key].flush_sync()
-    return {
-        "ok": True,
-        "flushed": len(results),
-        "ok_count": sum(1 for r in results if r.ok),
-        "results": [r.model_dump(mode="json") for r in results],
-    }
-
-
-def write_queue_defer(
-    content: str,
-    type_: str = "context",
-    scope: str = "session",
-    agent_id: str = "lucas",
-    tags: list[str] | None = None,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Defer a memory record to the write queue."""
-    _ensure_write_queue(config_path)
-    record = MemoryRecord(
-        content=content,
-        type=MemoryType(type_),
-        scope=MemoryScope(scope),
-        agent_id=agent_id,
-        tags=tags or [],
-    )
-    _WRITE_QUEUES["default"].defer(record)
-    return {
-        "ok": True,
-        "memory_id": record.id,
-        "pending": _WRITE_QUEUES["default"].pending_count,
-    }
-
-
-_WRITE_QUEUES: dict[str, Any] = {}
-
-
-def _ensure_write_queue(config_path: str | None = None) -> None:
-    if "default" not in _WRITE_QUEUES:
-        from .write_queue import DeferredWriteQueue as _DWQ
-        from .config import load_config as _lc
-        cfg = _lc(config_path)
-        store = SuperMemoryStore(cfg)
-        _WRITE_QUEUES["default"] = _DWQ.create_batch_service(store, batch_size=50)
-
-
-# ── Phase 1: Depth Prior ───────────────────────────────────────────────────
-def depth_prior_status(config_path: str | None = None) -> dict[str, Any]:
-    """Show depth prior adaptation state."""
-    from .depth_prior import _get_prior, classify_query
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    prior = _get_prior(store)
-    return {
-        "ok": True,
-        **prior.to_dict(),
-        "query_types": sorted({
-            **prior.successes,
-            **prior.failures,
-            **prior.depths,
-        }.keys()),
-    }
-
-
-# ── Phase 2: Conflict Detection ────────────────────────────────────────────
-def detect_conflicts(
-    content: str | None = None,
-    min_similarity: float = 0.3,
-    limit: int = 50,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Detect conflicts among memories.
-
-    If content is provided, checks new content against existing records.
-    Otherwise, samples recent active records and cross-checks them.
-    """
-    from .conflict import detect_conflicts_for_content, detect_conflicts as _dc, ConflictReport
-    from .config import load_config as _lc
-    from datetime import datetime, timezone
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-
-    if content:
-        report = detect_conflicts_for_content(
-            content, store, limit=limit, min_similarity=min_similarity
-        )
-    else:
-        # Sample recent records
-        with store.connect() as conn:
-            active_filter = (
-                "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
-                "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
-            )
-            rows = conn.execute(
-                f"SELECT * FROM memories WHERE {active_filter} ORDER BY created_at DESC LIMIT {limit}"
-            ).fetchall()
-        records = []
-        from .models import MemoryRecord as _MR
-        for row in rows:
-            records.append(_MR(
-                id=row["id"],
-                content=row["content"],
-                type=row["type"],
-                created_at=datetime.fromisoformat(row["created_at"]) if row["created_at"] else datetime.now(timezone.utc),
-            ))
-        report = _dc(records, min_similarity=min_similarity)
-
-    return {"ok": True, **report.to_dict()}
-
-
-def resolve_conflict(
-    conflict_key: str,
-    resolution: str,
-    reason: str = "",
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Resolve a detected conflict."""
-    from .conflict import resolve_conflict as _rc
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _rc(conflict_key, resolution, reason=reason, store=store)
-
-
-# ── Phase 2: Versioning ────────────────────────────────────────────────────
-def version_create(
-    name: str = "snapshot",
-    description: str = "",
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Create a brain version snapshot."""
-    from .version import create_snapshot
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return create_snapshot(store, name=name, description=description)
-
-
-def version_list(config_path: str | None = None) -> dict[str, Any]:
-    """List version snapshots."""
-    from .version import list_snapshots
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return list_snapshots(store)
-
-
-def version_diff(
-    from_version: str,
-    to_version: str,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Diff two version snapshots."""
-    from .version import diff_snapshots
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return diff_snapshots(store, from_version, to_version)
-
-
-def version_rollback_dry_run(
-    version_id: str,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Preview rollback to a snapshot."""
-    from .version import rollback_dry_run
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return rollback_dry_run(store, version_id)
-
-
-# ── Phase 3: Answer Reconstruction ─────────────────────────────────────────
-def causal_chain(
-    memory_id: str,
-    direction: str = "forward",
-    max_depth: int = 6,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Trace a causal chain through memories."""
-    from .reconstruct import causal_chain as _cc
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _cc(memory_id, store, max_depth=max_depth, direction=direction)
-
-
-def event_sequence(
-    start: str | None = None,
-    end: str | None = None,
-    types: list[str] | None = None,
-    limit: int = 20,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Get chronological event sequence."""
-    from .reconstruct import event_sequence as _es
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _es(store, start=start, end=end, types=types, limit=limit)
-
-
-def temporal_range(
-    start: str,
-    end: str,
-    config_path: str | None = None,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Get memories within a time window."""
-    from .reconstruct import temporal_range as _tr
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _tr(store, start=start, end=end, **kwargs)
-
-
-def topic_narrative(
-    topic: str,
-    limit: int = 10,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Build a coherent narrative from memories related to a topic."""
-    from .reconstruct import topic_narrative as _tn
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _tn(topic, store, max_memories=limit)
-
-
-# ── Phase 3: Arousal/Valence ───────────────────────────────────────────────
-def classify_affect(text: str) -> dict[str, Any]:
-    """Classify arousal (0.0-1.0) and valence (positive/negative/neutral)."""
-    from .affect import classify_affect as _ca
-    return _ca(text)
-
-
-def recall_by_affect(
-    min_arousal: float | None = None,
-    valence: str | None = None,
-    limit: int = 20,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Recall memories filtered by arousal/valence."""
-    from .affect import recall_by_affect as _rba
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _rba(store, min_arousal=min_arousal, valence=valence, limit=limit)
-
-
-# ── Phase 3: Stabilization ─────────────────────────────────────────────────
-def graph_health(config_path: str | None = None) -> dict[str, Any]:
-    """Run full graph health check."""
-    from .stabilize import graph_health as _gh
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _gh(store)
-
-
-def stabilize(
-    dry_run: bool = True,
-    prune_stale_synapses: bool = True,
-    weight_threshold: float = 0.05,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Run full graph stabilization: health, repair orphans, dedup, prune."""
-    from .stabilize import stabilize as _st
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _st(store, dry_run=dry_run, prune_stale_synapses=prune_stale_synapses, weight_threshold=weight_threshold)
-
-
-# ── Phase 4: P0-P3 Endpoints ────────────────────────────────────────────────
-
-def run_safety_firewall(text: str) -> dict[str, Any]:
-    """Check content against input firewall."""
-    from .pipeline_integration import run_safety_firewall as _fw
-    return _fw(text)
-
-
-def evaluate_freshness(days_old: float = 0.0) -> dict[str, Any]:
-    """Evaluate memory freshness by age in days."""
-    from .safety.freshness import evaluate_freshness as _ef
-    from datetime import datetime, timezone, timedelta
-    dt = datetime.now(timezone.utc) - timedelta(days=days_old)
-    fr = _ef(dt)
-    return {"level": fr.level.value, "score": fr.score, "age_days": fr.age_days, "warning": fr.warning}
-
-
-def encrypt_content(content: str, key: str | None = None) -> dict[str, Any]:
-    """Encrypt memory content."""
-    from .safety.encryption import MemoryEncryptor
-    from base64 import b64decode
-    k = b64decode(key) if key else MemoryEncryptor.generate_key()
-    enc = MemoryEncryptor(k)
-    return {"encrypted": enc.encrypt(content), "available": enc.available}
-
-
-def extract_relations(text: str) -> list[dict[str, Any]]:
-    """Extract relation candidates from text."""
-    from .pipeline_integration import extract_relations as _er
-    return _er(text)
-
-
-def check_triggers(text: str) -> list[dict[str, Any]]:
-    """Check content against auto-capture trigger patterns."""
-    from .pipeline_integration import check_triggers as _ct
-    return _ct(text)
-
-
-def detect_structure(text: str) -> dict[str, Any] | None:
-    """Detect structured content format."""
-    from .pipeline_integration import detect_structure as _ds
-    return _ds(text)
-
-
-def run_spreading_activation(
-    query: str,
-    anchor_neurons: list[str] | None = None,
-    max_hops: int = 3,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Run spreading activation for associative recall."""
-    from .pipeline_integration import run_spreading_activation as _sa
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _sa(query, store, cfg, anchor_neurons=anchor_neurons, max_hops=max_hops)
-
-
-def get_eternal_context(level: int = 1, config_path: str | None = None) -> str:
-    """Get session-start context injection."""
-    from .pipeline_integration import get_eternal_context as _ec
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    return _ec(store, level=level)
-
-
-def dedup_check_content(content: str, config_path: str | None = None) -> dict[str, Any]:
-    """Check content against dedup pipeline."""
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    from .dedup.pipeline import DedupPipeline, DedupConfig
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    dp = DedupPipeline(DedupConfig(), store)
-    r = dp.check_duplicate(content)
-    return {"is_duplicate": r.is_duplicate, "tier": r.tier, "similarity": r.similarity_score, "reason": r.reason}
-
-
-def load_warm_cache(config_path: str | None = None) -> dict[str, Any]:
-    """Load activation cache for warm-start recall."""
-    from .pipeline_integration import load_warm_cache as _lwc
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    cache = _lwc(store)
-    return {"entries": len(cache), "top": sorted(cache.items(), key=lambda x: -x[1])[:5]}
-
-
-def run_auto_deep(config_path: str | None = None) -> dict[str, Any]:
-    """Run full Auto Deep Engine: Audit → Qualify → Debug → Improve."""
-    from .auto_deep import run_deep_engine as _de
-    result = _de()
-    return {
-        "audit_summary": result.audit.summary,
-        "qualify_grade": result.qualify.grade,
-        "debug_fixes": len(result.debug.fixes_applied),
-        "improvements": len(result.improve.improvements_made),
-        "total_ms": result.total_duration_ms,
-    }
-
-
-def build_merkle_root(config_path: str | None = None) -> dict[str, Any]:
-    """Build Merkle root hash for all active memories."""
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    from .sync.protocol import build_merkle_tree
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-
-    with store.connect() as conn:
-        rows = conn.execute(
-            "SELECT id, content, type, scope, created_at FROM memories "
-            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
-            "ORDER BY rowid DESC LIMIT 2000"
-        ).fetchall()
-
-    memories = [dict(r) for r in rows]
-    root = build_merkle_tree(memories)
-    bucket_count = len(root.children)
-    return {"root_hash": root.hash, "bucket_count": bucket_count, "total_memories": len(memories)}
-
-
-def diff_merkle_trees(
-    local_root: str | None = None,
-    remote_root: str | None = None,
-    remote_buckets: dict[str, str] | None = None,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Diff local vs remote Merkle states."""
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    from .sync.protocol import build_merkle_tree, diff_merkle, MerkleNode
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-
-    # Build local tree
-    with store.connect() as conn:
-        rows = conn.execute(
-            "SELECT id, content, type, scope, created_at FROM memories "
-            "WHERE (json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
-            "ORDER BY rowid DESC LIMIT 2000"
-        ).fetchall()
-
-    memories = [dict(r) for r in rows]
-    local_tree = build_merkle_tree(memories)
-
-    # Reconstruct remote tree from bucket hashes if provided
-    if remote_buckets:
-        remote_tree = MerkleNode(hash=remote_root or "", path="root")
-        for bucket_key, bucket_hash in remote_buckets.items():
-            remote_tree.children[bucket_key] = MerkleNode(hash=bucket_hash, path=f"bucket:{bucket_key}")
-        # Recompute remote root
-        import hashlib
-        combined = hashlib.sha256()
-        for bk in sorted(remote_tree.children):
-            combined.update(f"{bk}:{remote_tree.children[bk].hash}".encode())
-        remote_tree.hash = combined.hexdigest()[:16] if not remote_root else remote_root
-    else:
-        remote_tree = None
-
-    differing = []
-    if remote_tree:
-        differing = diff_merkle(local_tree, remote_tree)
-
-    return {
-        "local_root": local_tree.hash,
-        "local_buckets": {k: v.hash for k, v in sorted(local_tree.children.items())},
-        "differing_count": len(differing),
-        "differing_ids": differing[:50],
-    }
-
-
-def build_memory_proof(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
-    """Build Merkle proof for a specific memory."""
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    from .sync.protocol import build_memory_proof as _bmp
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-
-    with store.connect() as conn:
-        row = conn.execute(
-            "SELECT id, content, type, scope, created_at FROM memories WHERE id = ?",
-            (memory_id,),
-        ).fetchone()
-
-    if not row:
-        return {"error": f"memory not found: {memory_id}"}
-
-    # Get all memories for proof context
-    rows = conn.execute(
-        "SELECT id, content, type, scope, created_at FROM memories "
-        "LIMIT 2000"
-    ).fetchall()
-
-    memories = [dict(r) for r in rows]
-    return _bmp(memories, memory_id)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# P0: Unified Confidence, Fidelity, Retrieval Pipeline (v1.6.0 P5 roadmap)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-def compute_confidence(
-    retrieval_score: float = 0.5,
-    sufficiency_confidence: float = 0.5,
-    quality_score: float = 5.0,
-    fidelity_layer: str = "detail",
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Compute unified ConfidenceScore for recall quality assessment."""
-    from .confidence import compute_confidence as _cc, ConfidenceWeights
-    cs = _cc(
-        retrieval_score=retrieval_score,
-        sufficiency_confidence=sufficiency_confidence,
-        quality_score=quality_score,
-        fidelity_layer=fidelity_layer,
-    )
-    return {
-        "overall": cs.overall,
-        "retrieval": cs.retrieval,
-        "content_quality": cs.content_quality,
-        "fidelity": cs.fidelity,
-        "freshness": cs.freshness,
-        "familiarity_penalty": cs.familiarity_penalty,
-        "components": cs.components,
-    }
-
-
-def fidelity_extract(content: str, config_path: str | None = None) -> dict[str, Any]:
-    """Extract essence and classify fidelity layer from content."""
-    from .fidelity import extract_essence, classify_fidelity_layer
-    essence = extract_essence(content)
-    layer = classify_fidelity_layer(content)
-    return {
-        "essence": essence,
-        "fidelity_layer": layer,
-        "content_length": len(content),
-    }
-
-
-def retrieval_pipeline(
-    query: str,
-    limit: int = 10,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Run full composable retrieval pipeline.
-
-    Parses query, retrieves candidates, reranks, computes confidence,
-    and formats context for LLM injection.
-    """
-    from .retrieval_pipeline import RetrievalPipeline, RetrievalConfig
-    from .spreading_activation import recall as _recall
-
-    cfg = load_config(config_path)
-
-    def _retrieve(q: str, max_c: int) -> list[dict]:
-        from .sanitize import sanitize_prompt
-        q = sanitize_prompt(q)
-        hits = _recall(q, limit=max_c, config=cfg)
-        candidates = []
-        seen = set()
-        for hit in hits:
-            nid = hit.get("neuron_id", hit.get("id", ""))
-            if nid and nid not in seen:
-                seen.add(nid)
-                candidates.append({
-                    "neuron_id": nid,
-                    "content": hit.get("content", ""),
-                    "score": hit.get("score", 0.5),
-                })
-        return candidates
-
-    pipeline = RetrievalPipeline()
-    result = pipeline.run(
-        query=query,
-        retrieve_fn=_retrieve,
-        limit=limit,
-    )
-
-    return {
-        "query": result.query,
-        "intent": {
-            "depth": int(result.intent.depth),
-            "topics": result.intent.topics,
-            "entities": result.intent.entities,
-            "is_question": result.intent.is_question,
-            "is_temporal": result.intent.is_temporal,
-            "is_causal": result.intent.is_causal,
-        },
-        "expanded_query": result.expanded_query,
-        "expansion_terms": result.expansion_terms,
-        "reranked": [
-            {
-                "neuron_id": r.neuron_id,
-                "score": r.score,
-                "bm25_score": r.bm25_score,
-                "semantic_score": r.semantic_score,
-                "crossencoder_score": r.crossencoder_score,
-            }
-            for r in result.reranked[:limit]
-        ],
-        "confidences": [
-            {
-                "overall": cs.overall,
-                "retrieval": cs.retrieval,
-                "content_quality": cs.content_quality,
-                "fidelity": cs.fidelity,
-                "freshness": cs.freshness,
-            }
-            for cs in result.confidences
-        ],
-        "formatted_context": result.formatted_context,
-        "raw_candidate_count": len(result.raw_candidates),
-    }
-
-
-# ── P1: Hippocampal Replay ───────────────────────────────────────────────────
-
-def run_hippocampal_replay(
-    config_path: str | None = None,
-    dry_run: bool = True,
-) -> dict[str, Any]:
-    """Run hippocampal replay consolidation cycle."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .hippocampal_replay import run_hippocampal_replay as _run, HippocampalReplayConfig
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    hc = HippocampalReplayConfig(dry_run=dry_run)
-    result = _run(store, hc)
-    return {
-        "ok": True,
-        "patterns_selected": result.patterns_selected,
-        "synapses_strengthened": result.synapses_strengthened,
-        "clusters_consolidated": result.clusters_consolidated,
-        "summary_fibers_created": result.summary_fibers_created,
-        "elapsed_ms": result.elapsed_ms,
-        "skipped_reason": result.skipped_reason,
-    }
-
-
-# ── P1: Pipeline Steps (Modular Execution) ───────────────────────────────────
-
-def pipeline_steps_run(
-    query: str,
-    step_names: list[str] | None = None,
-    limit: int = 10,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Run selected pipeline steps as a composed pipeline."""
-    from .config import load_config
-    from .pipeline_steps import (
-        StepContext, StepRegistry, create_default_pipeline,
-        parse_step, expand_step, retrieve_step, fuse_step,
-        score_step, format_step, annotate_step, filter_step,
-    )
-    from .spreading_activation import recall as _recall
-    from .sanitize import sanitize_prompt
-
-    cfg = load_config(config_path)
-    query = sanitize_prompt(query)
-
-    registry, steps = create_default_pipeline(step_names)
-    ctx = StepContext(query=query)
-
-    # Step 1: Parse
-    if "parse" in steps:
-        intent = parse_step(query, context=ctx)
-
-    # Step 2: Expand
-    if "expand" in steps:
-        expand_step(query, ctx.intent, context=ctx)
-
-    # Step 3: Retrieve
-    if "retrieve" in steps:
-        def _retrieve(q: str, max_c: int) -> list[dict]:
-            hits = _recall(q, limit=max_c, config=cfg)
-            candidates = []
-            seen = set()
-            for hit in hits:
-                nid = hit.get("neuron_id", hit.get("id", ""))
-                if nid and nid not in seen:
-                    seen.add(nid)
-                    candidates.append({
-                        "neuron_id": nid,
-                        "content": hit.get("content", ""),
-                        "score": hit.get("score", 0.5),
-                    })
-            return candidates
-        retrieve_step(ctx.expanded_query or query, _retrieve, limit=50, context=ctx)
-
-    # Step 4: Fuse
-    if "fuse" in steps:
-        fuse_step(query, ctx.raw_candidates, limit=limit, context=ctx)
-
-    # Step 5: Score
-    if "score" in steps:
-        score_step(ctx.reranked, limit=limit, context=ctx)
-
-    # Step 6: Format
-    if "format" in steps:
-        format_step(ctx.reranked, ctx.confidences, query=query, context=ctx)
-
-    return ctx.to_pipeline_result_dict()
-
-
-# ── P1: Storage Mixins (Tag/Leitner/Priority queries) ────────────────────────
-
-def storage_mixin_query(
-    action: str = "tag_frequencies",
-    tag: str = "",
-    tags: list[str] | None = None,
-    min_priority: int = 7,
-    hours: int = 24,
-    limit: int = 50,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Query storage using mixin capabilities."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .storage_mixins import TagMixin, LeitnerMixin, PriorityMixin, TemporalMixin, StatsMixin
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-
-    # Create a composite class dynamically
-    class CompositeStore(TagMixin, LeitnerMixin, PriorityMixin, TemporalMixin, StatsMixin):
-        def __init__(self, base):
-            self._base = base
-        def connect(self):
-            return self._base.connect()
-
-    cs = CompositeStore(store)
-
-    if action == "tag_frequencies":
-        return {"tags": cs.get_tag_frequencies()}
-    elif action == "memories_by_tag":
-        return {"memories": cs.get_memories_by_tag(tag, limit)}
-    elif action == "memories_by_tags_all":
-        return {"memories": cs.get_memories_by_tags_all(tags or [], limit)}
-    elif action == "memories_by_tags_any":
-        return {"memories": cs.get_memories_by_tags_any(tags or [], limit)}
-    elif action == "review_distribution":
-        return cs.get_review_distribution()
-    elif action == "high_priority":
-        return {"memories": cs.get_high_priority(min_priority, limit)}
-    elif action == "recent":
-        return {"memories": cs.get_recent_memories(hours, limit)}
-    elif action == "type_distribution":
-        return cs.get_type_distribution()
-    elif action == "layer_distribution":
-        return cs.get_layer_distribution()
-    elif action == "daily_counts":
-        return {"daily": cs.get_daily_creation_counts(days=30)}
-    elif action == "fts":
-        from .storage_mixins import SearchMixin
-        class FTSStore(SearchMixin):
-            def __init__(self, base):
-                self._base = base
-            def connect(self):
-                return self._base.connect()
-        sc = FTSStore(store)
-        return {"results": sc.fts_search(tag, limit)}
-    else:
-        return {"error": f"unknown action: {action}"}
-
-
-# ── P2: Schema Assimilation ──────────────────────────────────────────────────
-
-def run_schema_assimilation(
-    config_path: str | None = None,
-    dry_run: bool = True,
-) -> dict[str, Any]:
-    """Run schema assimilation analysis cycle."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .schema_assimilation import run_schema_assimilation as _run, SchemaAssimilatorConfig
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    sac = SchemaAssimilatorConfig(dry_run=dry_run)
-    return _run(store, sac)
-
-
-def schema_match(
-    content: str,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Match content against registered schemas."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .schema_assimilation import SchemaAssimilator
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    assimilator = SchemaAssimilator(store)
-    match = assimilator.match_memory(content)
-    return {
-        "matched": match.matched,
-        "schema_id": match.schema_id,
-        "schema_name": match.schema_name,
-        "schema_type": match.schema_type,
-        "similarity": match.similarity,
-        "field_overlap": match.field_overlap,
-    }
-
-
-# ── P2: Spaced Repetition (SM-2 enhanced) ────────────────────────────────────
-
-def spaced_repetition_get_due(
-    limit: int = 50,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Get items due for review with retention estimates."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .spaced_repetition import SpacedRepetitionEngine
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    engine = SpacedRepetitionEngine(store)
-    items = engine.get_due(limit)
-    return {
-        "ok": True,
-        "due_count": len(items),
-        "items": [
-            {
-                "memory_id": i.memory_id,
-                "content": i.content[:200],
-                "type": i.type,
-                "box": i.box,
-                "ease_factor": i.ease_factor,
-                "interval_days": i.interval_days,
-                "retention_probability": i.retention_probability,
-                "overdue_days": i.overdue_days,
-            }
-            for i in items
-        ],
-    }
-
-
-def spaced_repetition_review(
-    memory_id: str,
-    grade: int,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Record a spaced repetition review grade (SM-2)."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .spaced_repetition import SpacedRepetitionEngine
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    engine = SpacedRepetitionEngine(store)
-    result = engine.record_review(memory_id, grade)
-    return {
-        "ok": result.success,
-        "memory_id": result.memory_id,
-        "grade": result.grade,
-        "quality_label": result.quality_label,
-        "new_box": result.new_box,
-        "new_ease_factor": result.new_ease_factor,
-        "new_interval_days": result.new_interval_days,
-        "next_review": result.next_review,
-        "retention_change": result.retention_change,
-    }
-
-
-def spaced_repetition_stats(config_path: str | None = None) -> dict[str, Any]:
-    """Get spaced repetition statistics."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .spaced_repetition import SpacedRepetitionEngine
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    engine = SpacedRepetitionEngine(store)
-    return engine.get_stats()
-
-
-# ── P2: Token Budget Management ──────────────────────────────────────────────
-
-def token_budget_estimate(
-    text: str,
-) -> dict[str, Any]:
-    """Estimate token count for text."""
-    from .token_budget import estimate_tokens, compute_budget_allocation
-    tokens = estimate_tokens(text)
-    return {"text_length": len(text), "estimated_tokens": tokens}
-
-
-def token_budget_select(
-    memories: list[dict[str, Any]],
-    budget_tokens: int = 3000,
-    min_items: int = 1,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Select value-dense memories within token budget."""
-    from .token_budget import select_value_dense, estimate_tokens
-    selected = select_value_dense(memories, budget_tokens, min_items)
-    total_selected_tokens = sum(m.get("_tokens", estimate_tokens(m.get("content", ""))) for m in selected)
-    return {
-        "selected_count": len(selected),
-        "total_tokens": total_selected_tokens,
-        "budget": budget_tokens,
-        "selections": [
-            {
-                "id": m.get("neuron_id", m.get("id", "")),
-                "score": m.get("score", 0.5),
-                "tokens": m.get("_tokens", estimate_tokens(m.get("content", ""))),
-                "value_per_token": m.get("_value_per_token", 0),
-            }
-            for m in selected
-        ],
-    }
-
-
-# ── P2: Query Expander ───────────────────────────────────────────────────────
-
-def query_expand(
-    query: str,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Expand query with synonyms, graph neighbors, and embedding terms."""
-    from .config import load_config
-    from .storage import SuperMemoryStore
-    from .query_expander import QueryExpander
-
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
-    expander = QueryExpander(store)
-    result = expander.expand(query)
-    return {
-        "original": result.original,
-        "expanded": result.expanded,
-        "added_terms": result.added_terms,
-        "expansions": result.expansions,
-        "confidence_boost": result.confidence_boost,
-    }
-
-
-# ── Wrappers for handler-per-tool refactor ────────────────────────────────────
-
-def select_warm_activations(
-    query: str,
-    top_k: int = 20,
-    min_similarity: float = 0.3,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Select warm activations ranked by embedding similarity."""
-    from .cache.selector import select_warm_activations as _select, _embed_query
-    from .pipeline_integration import load_warm_cache as _lwc
-    from .config import load_config as _lc
-    from .storage import SuperMemoryStore
-    cfg = _lc(config_path)
-    store = SuperMemoryStore(cfg)
-    emb = _embed_query(query)
-    cache = _lwc(store)
-    selected = _select(emb, cache, top_k=top_k, min_similarity=min_similarity, query=query)
-    return {"entries": len(selected), "selected": dict(sorted(selected.items(), key=lambda x: -x[1])[:10])}
-
-
-def normalize_memory(
-    memory: dict[str, Any],
-    auto_capture: bool = False,
-) -> dict[str, Any]:
-    """Normalize a memory payload schema without saving."""
-    from .sanitize import normalize_memory_payload as _norm
-    return _norm(memory, auto_capture=auto_capture)
-
-
-def _nmem_recall_compat(
-    query: str,
-    depth: int = 2,
-    top_k: int = 20,
-    seed_limit: int = 30,
-    config_path: str | None = None,
-) -> dict[str, Any]:
-    """Compatibility alias: neural-memory-style recall with wrapped response."""
-    from .spreading_activation import recall as _recall
-    from .config import load_config as _lc
-    cfg = _lc(config_path)
-    result = _recall(query, limit=top_k, config=cfg, depth=depth)
-    return {
-        "answer": result.get("results", []),
-        "confidence": 1.0 if result.get("results") else 0.0,
-        "neurons_activated": result.get("total_activated", 0),
-        "depth_used": result.get("depth", depth),
-        "elapsed_ms": result.get("elapsed_ms", 0),
-        "raw": result,
-    }
+def auto_deep_pipeline(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from . import deep_auto
+    return deep_auto.auto_deep_pipeline(dry_run=dry_run, config_path=config_path)

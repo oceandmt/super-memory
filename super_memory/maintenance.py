@@ -59,7 +59,15 @@ def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -
     """
     report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "expired": 0, "active_hypotheses": 0, "notes": []}
     try:
-        from . import bridge as _bridge
+        from . import bridge, telemetry
+
+    # Telemetry collection (P3 #9)
+    try:
+        report["steps"]["telemetry"] = telemetry.telemetry_status()
+    except Exception as exc:
+        report["steps"]["telemetry"] = {"ok": False, "error": str(exc)}
+
+    from . import bridge, dream_engine as _bridge
 
         # Step 1: Expire stale predictions
         expire_r = _bridge.expire_predictions(config_path=config_path)
@@ -238,6 +246,23 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     except Exception as exc:
         report["steps"]["hippocampal_replay"] = {"ok": False, "error": str(exc)}
 
+
+    # Dream consolidation engine (P0 #2) — idle-time memory consolidation
+    try:
+        if not _was_run_recently(config_path, "dream_engine", within_hours=4):
+            report["steps"]["dream_engine"] = dream_engine.run_dream_cycle(
+                SuperMemoryStore(load_config(config_path)),
+                dry_run=dry_run,
+                window_hours=48,
+                max_insights=5,
+                config_path=config_path,
+            )
+            _record_run(config_path, "dream_engine")
+        else:
+            report["steps"]["dream_engine"] = {"ok": True, "skipped": True, "reason": "run within last 4 hours"}
+    except Exception as exc:
+        report["steps"]["dream_engine"] = {"ok": False, "error": str(exc)}
+
     # Synaptic pruning with weight decay (P2 #8) — maintain cognitive graph health
     try:
         from .cleanup import prune_synapses_with_decay
@@ -251,7 +276,15 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     except Exception as exc:
         report["steps"]["synaptic_pruning"] = {"ok": False, "error": str(exc)}
 
-    from . import bridge
+    from . import bridge, telemetry
+
+    # Telemetry collection (P3 #9)
+    try:
+        report["steps"]["telemetry"] = telemetry.telemetry_status()
+    except Exception as exc:
+        report["steps"]["telemetry"] = {"ok": False, "error": str(exc)}
+
+    from . import bridge, dream_engine
     report["steps"]["cross_layer_health"] = bridge.cross_layer_health(config_path=config_path)
     report["steps"]["durable_pack_status"] = bridge.durable_pack_status(config_path=config_path)
     report["ok"] = all(not isinstance(v, dict) or v.get("ok", True) for v in report["steps"].values())

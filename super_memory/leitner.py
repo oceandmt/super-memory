@@ -55,19 +55,6 @@ def _ensure_columns(store: SuperMemoryStore) -> None:
         conn.commit()
 
 
-def due(config_path: str | None = None) -> dict[str, Any]:
-    """Return only the count of memories due for Leitner review (lightweight)."""
-    store = _store(config_path)
-    _ensure_columns(store)
-    now = _now()
-    with store.connect() as conn:
-        due_count = conn.execute(
-            "SELECT COUNT(*) as c FROM memories WHERE next_review IS NOT NULL AND next_review <= ?",
-            (now,),
-        ).fetchone()["c"]
-    return {"ok": True, "due_count": due_count, "checked_at": now}
-
-
 def queue(config_path: str | None = None, limit: int = 50) -> dict[str, Any]:
     """Return memories due for review (next_review <= now)."""
     store = _store(config_path)
@@ -108,9 +95,8 @@ def mark(fiber_id: str, success: bool, config_path: str | None = None) -> dict[s
         new_box = old_box + 1 if success else 0
         new_box = min(new_box, 4)
         next_rev = _next_review(new_box)
-        conn.execute(
-            "UPDATE memories SET leiter_box = ?, next_review = ? WHERE id = ?",
-            (new_box, next_rev, fiber_id),
+        conn.executescript(
+            f"UPDATE memories SET leiter_box = {new_box}, next_review = '{next_rev.replace(chr(39), chr(39)+chr(39))}' WHERE id = '{fiber_id.replace(chr(39), chr(39)+chr(39))}';"
         )
         conn.commit()
     return {
@@ -130,9 +116,9 @@ def schedule(fiber_id: str, box: int, config_path: str | None = None) -> dict[st
     box = max(0, min(4, box))
     next_rev = _next_review(box)
     with store.connect() as conn:
-        conn.execute(
-            "UPDATE memories SET leiter_box = ?, next_review = ? WHERE id = ?",
-            (box, next_rev, fiber_id),
+        esc_nr = next_rev.replace(chr(39), chr(39)+chr(39))
+        conn.executescript(
+            f"UPDATE memories SET leiter_box = {box}, next_review = '{esc_nr}' WHERE id = '{fiber_id.replace(chr(39), chr(39)+chr(39))}';"
         )
         conn.commit()
     return {
@@ -175,11 +161,12 @@ def auto_seed(config_path: str | None = None, limit: int = 100) -> dict[str, Any
     _ensure_columns(store)
     _next = _next_review(0)
     with store.connect() as conn:
-        seeded = conn.execute(
-            "UPDATE memories SET leiter_box = 0, next_review = ? "
-            "WHERE (leiter_box IS NULL OR leiter_box = 0) AND next_review IS NULL LIMIT ?",
-            (_next, limit),
-        ).rowcount
+        esc_next = _next.replace("'", "''")
+        conn.executescript(
+            f"UPDATE memories SET leiter_box = 0, next_review = '{esc_next}' "
+            f"WHERE (leiter_box IS NULL OR leiter_box = 0) AND next_review IS NULL LIMIT {limit};"
+        )
+        seeded = limit
         conn.commit()
     return {"ok": True, "seeded": seeded, "next_review": _next}
 
