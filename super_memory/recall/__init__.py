@@ -57,7 +57,6 @@ TYPE_BOOST = {
     MemoryType.INSIGHT: 0.10,
     MemoryType.FACT: 0.08,
     MemoryType.REFERENCE: 0.08,
-    MemoryType.BOUNDARY: 0.10,
     MemoryType.LESSON: 0.08,
     MemoryType.BLOCKER: 0.08,
 }
