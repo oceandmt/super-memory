@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 155,
+  "total_tools": 193,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -580,6 +580,894 @@
       ]
     },
     {
+      "name": "super_memory_index_sessions",
+      "category": "knowledge_mgmt",
+      "description": "Index all session transcript files into FTS5 for corpus='sessions' search.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_session_index_status",
+      "category": "session",
+      "description": "Get session transcript index health status (files indexed, chunks, chars).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_search_sessions",
+      "category": "other",
+      "description": "Search session transcripts via FTS5 index, returning memory-core compatible results.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "max_results": {
+            "type": "integer",
+            "default": 5
+          },
+          "min_score": {
+            "type": "number",
+            "default": 0.0
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_cooldown_status",
+      "category": "other",
+      "description": "Get cooldown manager status (active entries count).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_cooldown_clear",
+      "category": "other",
+      "description": "Clear all cooldown entries (reset unavailable state).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_hybrid_fuse",
+      "category": "other",
+      "description": "RRF-fuse text and vector search results for hybrid ranking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text_results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "vector_results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "text_weight": {
+            "type": "number",
+            "default": 0.5
+          },
+          "vector_weight": {
+            "type": "number",
+            "default": 0.5
+          },
+          "top_k": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "text_results",
+          "vector_results"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_diversify_results",
+      "category": "other",
+      "description": "MMR-diversify search results for non-redundant ranking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "query": {
+            "type": "string"
+          },
+          "top_k": {
+            "type": "integer"
+          },
+          "lambda_param": {
+            "type": "number",
+            "default": 0.7
+          }
+        },
+        "required": [
+          "results",
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_temporal_decay",
+      "category": "other",
+      "description": "Apply exponential temporal decay to search result scores.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "corpus": {
+            "type": "string",
+            "default": "memory"
+          },
+          "half_life": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_session_boost",
+      "category": "session",
+      "description": "Boost search results from the current session.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "current_session_id": {
+            "type": "string"
+          },
+          "boost_factor": {
+            "type": "number",
+            "default": 0.3
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_list_embedding_providers",
+      "category": "other",
+      "description": "List all embedding providers with availability status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_embed_text",
+      "category": "other",
+      "description": "Embed text to vector using the best available provider.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "integer"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_rem_search",
+      "category": "other",
+      "description": "REM nearest-neighbour vector search via sqlite_vec or numpy brute-force.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query_vector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "top_k": {
+            "type": "integer",
+            "default": 10
+          },
+          "min_score": {
+            "type": "number",
+            "default": 0.0
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query_vector"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_rem_health",
+      "category": "other",
+      "description": "REM health check (vector count).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_watcher_scan",
+      "category": "knowledge_mgmt",
+      "description": "One-shot file watcher scan for changed markdown files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_flush_plan_status",
+      "category": "other",
+      "description": "Get flush plan status (pending session→project memories).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_flush_session_memories",
+      "category": "other",
+      "description": "Execute flush: promote session-scoped memories to project scope.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 100
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reindex_all",
+      "category": "other",
+      "description": "Atomic rebuild of all FTS5 + vector indices.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_get_index_identity",
+      "category": "other",
+      "description": "Get index identity (which embedding provider built the index).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_set_index_identity",
+      "category": "other",
+      "description": "Record which embedding provider built the index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "provider_id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "default": ""
+          },
+          "dimensions": {
+            "type": "integer",
+            "default": 384
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_self_heal_embeddings",
+      "category": "other",
+      "description": "Auto-detect and repair memories missing embeddings.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "batch_size": {
+            "type": "integer",
+            "default": 50
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_self_heal_status",
+      "category": "other",
+      "description": "Show self-heal status (count of memories missing vectors).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_build_prompt_section",
+      "category": "other",
+      "description": "Build markdown memory context section from search results.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "title": {
+            "type": "string",
+            "default": "Memory Context"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 4000
+          },
+          "include_citations": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "results"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_generate_narrative",
+      "category": "other",
+      "description": "Generate dreaming narrative markdown document from cognitive insights.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "default": "Dreaming Narrative"
+          },
+          "out_dir": {
+            "type": "string"
+          },
+          "max_insights": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_rem_extract_all",
+      "category": "other",
+      "description": "Extract REM evidence from all session transcripts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "min_confidence": {
+            "type": "number",
+            "default": 0.6
+          },
+          "promote": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_qmd_search",
+      "category": "other",
+      "description": "Search via QMD Meilisearch binary (external search).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_qmd_health",
+      "category": "other",
+      "description": "QMD health check (binary available, running).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_qmd_start",
+      "category": "other",
+      "description": "Start QMD Meilisearch binary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_qmd_stop",
+      "category": "other",
+      "description": "Stop QMD Meilisearch binary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_watcher_settle_scan",
+      "category": "knowledge_mgmt",
+      "description": "Debounced file scan with settle detection (waits for writes to finish).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_batch_state_status",
+      "category": "other",
+      "description": "Get batch operation failure tracking state.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reset_batch_state",
+      "category": "other",
+      "description": "Reset batch failure state counter.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reindex_fsm_status",
+      "category": "other",
+      "description": "Get reindex Finite State Machine status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reindex_fts_only",
+      "category": "other",
+      "description": "Rebuild only FTS5 indices, skip vectors.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sync_interval_status",
+      "category": "knowledge_mgmt",
+      "description": "Get sync interval manager status (interval, dirty sources, last sync).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sync_interval_start",
+      "category": "knowledge_mgmt",
+      "description": "Start periodic background sync with startup catchup.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sync_interval_stop",
+      "category": "knowledge_mgmt",
+      "description": "Stop periodic background sync.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_sync_startup_catchup",
+      "category": "knowledge_mgmt",
+      "description": "Run startup catchup — sync missed changes since last run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_recovery_status",
+      "category": "other",
+      "description": "Get DB recovery state (attempts, last error, recovered).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "db_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_reset_recovery_state",
+      "category": "other",
+      "description": "Reset DB recovery state count.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "db_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
       "name": "super_memory_palace_search",
       "category": "mempalace",
       "description": "Search memories within spatial scope (wing/room/hall)",
@@ -992,7 +1880,7 @@
     {
       "name": "super_memory_cross_agent_recall",
       "category": "cross_agent",
-      "description": "Query memories by agent",
+      "description": "Query memories from a specific agent",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1000,16 +1888,20 @@
             "type": "string"
           },
           "agent_id": {
-            "type": "string"
+            "type": "string",
+            "default": "lucas"
           },
           "limit": {
             "type": "integer",
             "default": 10
+          },
+          "semantic_reorder": {
+            "type": "boolean",
+            "default": true
           }
         },
         "required": [
-          "query",
-          "agent_id"
+          "query"
         ]
       },
       "profiles": [
@@ -1019,7 +1911,7 @@
     {
       "name": "super_memory_cross_agent_honcho_ask",
       "category": "cross_agent",
-      "description": "Query Honcho events by observer agent",
+      "description": "Ask about another agent's honcho events",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1027,7 +1919,8 @@
             "type": "string"
           },
           "observer_agent": {
-            "type": "string"
+            "type": "string",
+            "default": "lucas"
           },
           "about_peer": {
             "type": "string",
@@ -1039,8 +1932,7 @@
           }
         },
         "required": [
-          "query",
-          "observer_agent"
+          "query"
         ]
       },
       "profiles": [
@@ -1050,7 +1942,7 @@
     {
       "name": "super_memory_cross_agent_summary",
       "category": "cross_agent",
-      "description": "Agent activity summary",
+      "description": "Summary of agents and their memory counts",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1061,8 +1953,7 @@
             "type": "integer",
             "default": 30
           }
-        },
-        "required": []
+        }
       },
       "profiles": [
         "admin"
@@ -1071,42 +1962,23 @@
     {
       "name": "super_memory_cross_agent_compare",
       "category": "cross_agent",
-      "description": "Compare two agents' knowledge",
+      "description": "Compare two agents' memory overlap",
       "inputSchema": {
         "type": "object",
         "properties": {
           "agent_a": {
-            "type": "string"
+            "type": "string",
+            "default": "lucas"
           },
           "agent_b": {
-            "type": "string"
-          },
-          "query": {
-            "type": "string"
+            "type": "string",
+            "default": "alex"
           },
           "limit": {
             "type": "integer",
-            "default": 10
+            "default": 5
           }
-        },
-        "required": [
-          "agent_a",
-          "agent_b",
-          "query"
-        ]
-      },
-      "profiles": [
-        "admin"
-      ]
-    },
-    {
-      "name": "super_memory_list_agents",
-      "category": "cross_session",
-      "description": "List all agent IDs",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "required": []
+        }
       },
       "profiles": [
         "admin"

@@ -62,8 +62,12 @@ def deep_audit(config_path=None):
     with store.connect() as conn:
         rows = conn.execute("SELECT * FROM memories").fetchall()
         total = len(rows)
+        active_memory_ids: set[str] = set()
+        canonical_memory_ids: set[str] = set()
+        canonical_content_lens: list[int] = []
         for row in rows:
             rec = row_to_memory(row)
+            is_soft_deleted = bool(rec.metadata.get("soft_deleted"))
             layer_counts[row["layer"]] += 1
             type_counts[rec.type.value] += 1
             scope_counts[rec.scope.value] += 1
@@ -72,34 +76,45 @@ def deep_audit(config_path=None):
             project_counts[p] += 1
             content_lens.append(len(rec.content))
 
-            if rec.metadata.get("soft_deleted"):
+            if is_soft_deleted:
                 soft_deleted += 1
+            else:
+                active_memory_ids.add(rec.id)
+                if row["layer"] == "workspace_markdown":
+                    canonical_memory_ids.add(rec.id)
+                    canonical_content_lens.append(len(rec.content))
 
             norm_tags = set(rec.normalized_tags())
             if not any(t.startswith("agent:") for t in norm_tags):
                 no_agent_tag += 1
 
-        # Duplicate content detection
+        # Duplicate content detection should not count intentional 4-layer mirrors
+        # as duplicates. Restrict to active canonical workspace_markdown rows.
         content_map = defaultdict(list)
         for row in rows:
             rec = row_to_memory(row)
+            if rec.metadata.get("soft_deleted") or row["layer"] != "workspace_markdown":
+                continue
             norm = " ".join(re.split(r"\W+", rec.content.lower().strip()))
             if len(norm) > 20:
                 content_map[norm].append(rec.id)
         duplicates = [{"ids": ids, "count": len(ids)} for norm, ids in content_map.items() if len(set(ids)) > 1]
 
-    canonical_count = layer_counts.get("workspace_markdown", 0)
-    total_active = total - soft_deleted
+    canonical_count = len(canonical_memory_ids)
+    total_active = len(active_memory_ids)
+    canonical_compliance_pct = round(canonical_count / max(total_active, 1) * 100, 1)
     avg_len = sum(content_lens) / max(1, len(content_lens))
     max_len = max(content_lens) if content_lens else 0
-    long_memories = sum(1 for l in content_lens if l > 2000)
+    # Long-memory audit should track active canonical source records only;
+    # counting every layer mirror inflates the number 3-4x.
+    long_memories = sum(1 for l in canonical_content_lens if l > 2000)
 
     audit = {
         "total_memories": total,
         "active_memories": total_active,
         "soft_deleted": soft_deleted,
         "canonical_markdown_count": canonical_count,
-        "canonical_compliance_pct": round(canonical_count / max(total, 1) * 100, 1),
+        "canonical_compliance_pct": canonical_compliance_pct,
         "layers": dict(layer_counts),
         "types": dict(type_counts),
         "scopes": dict(scope_counts),
@@ -140,51 +155,69 @@ def deep_qualify(config_path=None):
     - Agent balance
     - Recall relevance (via sampling)
     - Content quality signals
+
+    NOTE: Memories saved across 4 layers produce 4 rows each.  All aggregate
+    ratios use a DISTINCT id count as denominator so layer replication does
+    not inflate percentages.
     """
     store = _store(config_path)
     with store.connect() as conn:
         rows = conn.execute("SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0").fetchall()
 
-    total = len(rows)
-    if total == 0:
+    total_rows = len(rows)
+    if total_rows == 0:
         return {"ok": True, "grade": "N/A", "score": 0, "note": "No active memories to qualify"}
 
-    type_counts = Counter()
-    agent_counts = Counter()
-    scope_counts = Counter()
-    content_lens = []
+    # Unique memory ID tracking — these are the canonical "one memory" count
+    seen: dict[str, MemoryRecord] = {}
+    for row in rows:
+        mem_id = row["id"]
+        if mem_id not in seen:
+            seen[mem_id] = row_to_memory(row)
+
+    unique_active = len(seen)
+    type_counts: Counter = Counter()
+    agent_counts: Counter = Counter()
+    scope_counts: Counter = Counter()
     has_projects = 0
     has_trust = 0
+    content_lens_workspace: list[int] = []
 
-    for row in rows:
-        rec = row_to_memory(row)
+    for mem_id, rec in seen.items():
         type_counts[rec.type.value] += 1
         agent_counts[rec.agent_id] += 1
         scope_counts[rec.scope.value] += 1
-        content_lens.append(len(rec.content))
         if rec.project:
             has_projects += 1
         if rec.trust_score is not None:
             has_trust += 1
+        # Use workspace_markdown row length for canonical size
+        for row in rows:
+            if row["id"] == mem_id and row["layer"] == "workspace_markdown":
+                content_lens_workspace.append(len(row["content"]))
+                break
+        else:
+            # Fallback: any layer
+            for row in rows:
+                if row["id"] == mem_id:
+                    content_lens_workspace.append(len(row["content"]))
+                    break
 
-    # Type diversity score
-    type_ratio = len(type_counts) / max(total, 1)
-    context_ratio = type_counts.get("context", 0) / max(total, 1)
-    durable_ratio = sum(type_counts.get(t, 0) for t in ["decision", "workflow", "preference", "doctrine", "lesson", "fact"]) / max(total, 1)
-
-    # Agent balance
-    agent_balance = len(agent_counts) / max(sum(agent_counts.values()), 1)
+    # Type diversity score — denominator is unique active count
+    type_diversity = len(type_counts)
+    context_ratio = type_counts.get("context", 0) / max(unique_active, 1)
+    durable_ratio = sum(type_counts.get(t, 0) for t in ["decision", "workflow", "preference", "doctrine", "lesson", "fact"]) / max(unique_active, 1)
 
     # Project coverage
-    project_coverage = has_projects / max(total, 1)
+    project_coverage = has_projects / max(unique_active, 1)
 
     # Trust coverage
-    trust_coverage = has_trust / max(total, 1)
+    trust_coverage = has_trust / max(unique_active, 1)
 
-    # Average content length sanity
-    avg_len = sum(content_lens) / max(1, len(content_lens))
-    too_short = sum(1 for l in content_lens if l < 20)
-    too_short_ratio = too_short / max(total, 1)
+    # Average content length (workspace canonical rows only)
+    avg_len = sum(content_lens_workspace) / max(1, len(content_lens_workspace))
+    too_short = sum(1 for l in content_lens_workspace if l < 20)
+    too_short_ratio = too_short / max(len(content_lens_workspace), 1)
 
     # Scoring
     score = 50.0
@@ -193,14 +226,14 @@ def deep_qualify(config_path=None):
     if durable_ratio >= 0.15:
         score += 15
         reasons.append(f"good durable type ratio ({durable_ratio:.0%})")
-    elif durable_ratio >= 0.08:
-        score += 8
+    elif durable_ratio >= 0.10:
+        score += 10
         reasons.append(f"moderate durable ratio ({durable_ratio:.0%})")
     else:
         score -= 10
         reasons.append(f"low durable type ratio ({durable_ratio:.0%})")
 
-    if context_ratio <= 0.5:
+    if context_ratio <= 0.50:
         score += 10
         reasons.append(f"context ratio controlled ({context_ratio:.0%})")
     else:
@@ -230,7 +263,7 @@ def deep_qualify(config_path=None):
         "grade": grade,
         "score": round(score, 1),
         "reasons": reasons,
-        "type_diversity": len(type_counts),
+        "type_diversity": type_diversity,
         "durable_ratio": round(durable_ratio, 4),
         "context_ratio": round(context_ratio, 4),
         "project_coverage": round(project_coverage, 4),
