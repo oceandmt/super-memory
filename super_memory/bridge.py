@@ -13,7 +13,7 @@ from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize
 from .quality_gate import apply_quality_gate
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown, mmr, temporal_decay, hybrid_search, session_visibility, embeddings_registry, rem, watcher, flush_plan, reindex
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown, mmr, temporal_decay, hybrid_search, session_visibility, embeddings_registry, rem, watcher, flush_plan, reindex, index_identity, self_heal, prompt_section, narrative, rem_evidence, qmd
 
 
 
@@ -863,3 +863,117 @@ def flush_session_memories(
 def reindex_all(config_path: str | None = None) -> dict[str, Any]:
     """Atomic rebuild of all FTS5 + vector indices."""
     return reindex.reindex_all(config_path=config_path)
+
+
+# ── Remaining Gaps: Index Identity ─────────────────────────────────────
+
+
+def get_index_identity(config_path: str | None = None) -> dict[str, Any]:
+    """Get current index identity (provider, model, built_at)."""
+    return index_identity.get_index_identity(config_path=config_path)
+
+
+def set_index_identity(
+    provider_id: str,
+    model: str = "",
+    dimensions: int = 384,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Record which embedding provider built the index."""
+    return index_identity.set_index_identity(
+        provider_id, model=model, dimensions=dimensions, config_path=config_path
+    )
+
+
+# ── Remaining Gaps: Self-Heal ──────────────────────────────────────────
+
+
+def self_heal_embeddings(
+    batch_size: int = 50,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Auto-detect and repair missing embeddings."""
+    return self_heal.self_heal_embeddings(batch_size=batch_size, config_path=config_path)
+
+
+def self_heal_status(config_path: str | None = None) -> dict[str, Any]:
+    """Show self-heal status (missing vector count)."""
+    return self_heal.self_heal_status(config_path=config_path)
+
+
+# ── Remaining Gaps: Prompt Section ─────────────────────────────────────
+
+
+def build_prompt_section(
+    results: list[dict[str, Any]],
+    title: str = "Memory Context",
+    max_tokens: int = 4000,
+    include_citations: bool = True,
+) -> str:
+    """Build markdown memory context section from search results."""
+    return prompt_section.build_memory_section(
+        results, title=title, max_tokens=max_tokens, include_citations=include_citations
+    )
+
+
+# ── Remaining Gaps: Narrative ──────────────────────────────────────────
+
+
+def generate_narrative(
+    title: str = "Dreaming Narrative",
+    out_dir: str | None = None,
+    max_insights: int = 10,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Generate dreaming narrative markdown document."""
+    return narrative.generate_narrative(
+        title=title, out_dir=out_dir, max_insights=max_insights, config_path=config_path
+    )
+
+
+# ── Remaining Gaps: REM Evidence ───────────────────────────────────────
+
+
+def rem_extract_all(
+    min_confidence: float = 0.6,
+    promote: bool = True,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Extract REM evidence from all session transcripts."""
+    return rem_evidence.rem_extract_all(
+        min_confidence=min_confidence, promote=promote, config_path=config_path
+    )
+
+
+# ── Remaining Gaps: QMD ────────────────────────────────────────────────
+
+
+def qmd_search(query: str, limit: int = 10) -> dict[str, Any]:
+    """Search via QMD Meilisearch binary."""
+    return qmd.qmd_search.qmd_search(query, limit=limit)
+
+
+def qmd_health() -> dict[str, Any]:
+    """QMD health check."""
+    return qmd.qmd_search.qmd_health()
+
+
+def qmd_start() -> dict[str, Any]:
+    """Start QMD Meilisearch binary."""
+    return qmd.qmd_search.qmd_start()
+
+
+def qmd_stop() -> dict[str, Any]:
+    """Stop QMD Meilisearch binary."""
+    return qmd.qmd_search.qmd_stop()
+
+
+def watcher_settle_scan(
+    directories: list[str] | None = None,
+    exclude: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Debounced file scan with settle detection."""
+    return watcher.watcher_settle_scan(
+        directories=directories, exclude=exclude, config_path=config_path
+    )

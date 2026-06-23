@@ -126,3 +126,114 @@ def watcher_scan(
         "changes": changes,
         "changed_count": len(changes),
     }
+
+
+# ── Debounce / Settle (watch-pressure + watch-settle pattern) ────────────
+
+
+class SettleQueue:
+    """Settle queue with debounce timing (matches memory-core watch-settle).
+
+    Records file events and can check if files have 'settled'
+    (no more modifications happening) before processing them.
+    """
+
+    RECHECK_MS = 100  # Delay between settle rechecks
+
+    def __init__(self):
+        self._queue: dict[str, dict[str, float]] = {}  # path -> {size, mtime}
+
+    def record_event(self, file_path: str) -> None:
+        """Record a file change event."""
+        try:
+            stat = Path(file_path).stat()
+            self._queue[file_path] = {
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+            }
+        except OSError:
+            pass
+
+    def is_settled(self) -> bool:
+        """Check if all queued files have settled (no changes since last record)."""
+        if not self._queue:
+            return True
+
+        still_changing: dict[str, dict[str, float]] = {}
+        for path_str, snapshot in self._queue.items():
+            try:
+                stat = Path(path_str).stat()
+                current = {"size": stat.st_size, "mtime": stat.st_mtime}
+                if current != snapshot:
+                    still_changing[path_str] = current
+            except OSError:
+                pass
+
+        if still_changing:
+            self._queue = still_changing
+            return False
+
+        self._queue.clear()
+        return True
+
+    def settle(self, max_retries: int = 5) -> bool:
+        """Wait for all queued files to settle, with retries.
+
+        Returns True if settled, False if timeout.
+        """
+        for _ in range(max_retries):
+            if self.is_settled():
+                return True
+            time.sleep(SettleQueue.RECHECK_MS / 1000.0)
+        return self.is_settled()
+
+    def pending_count(self) -> int:
+        return len(self._queue)
+
+    def clear(self) -> None:
+        self._queue.clear()
+
+
+# Singleton for persistent watcher state
+_settle_queue: SettleQueue | None = None
+
+
+def get_settle_queue() -> SettleQueue:
+    global _settle_queue
+    if _settle_queue is None:
+        _settle_queue = SettleQueue()
+    return _settle_queue
+
+
+def watcher_settle_scan(
+    directories: list[str] | None = None,
+    exclude: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Debounced scan with settle detection.
+
+    Records file changes, waits for settle, then scans.
+    Prevents processing files that are still being written.
+    """
+    queue = get_settle_queue()
+    watcher = create_watcher(directories, exclude, config_path)
+
+    # Record current state
+    for watch_dir in watcher._watched_dirs:
+        for fpath in watch_dir.rglob("*.md"):
+            if watcher._is_excluded(fpath):
+                continue
+            queue.record_event(str(fpath))
+
+    # Wait for settle
+    settled = queue.settle()
+
+    # Now scan
+    changes = watcher.scan_once()
+    return {
+        "ok": True,
+        "changes": changes,
+        "changed_count": len(changes),
+        "settled": settled,
+        "settle_pending": queue.pending_count(),
+    }

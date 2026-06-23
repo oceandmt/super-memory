@@ -66,6 +66,19 @@ NORMAL_TOOLS = {
     "super_memory_flush_plan_status",
     "super_memory_flush_session_memories",
     "super_memory_reindex_all",
+    # Remaining Gap Tools
+    "super_memory_get_index_identity",
+    "super_memory_set_index_identity",
+    "super_memory_self_heal_embeddings",
+    "super_memory_self_heal_status",
+    "super_memory_build_prompt_section",
+    "super_memory_generate_narrative",
+    "super_memory_rem_extract_all",
+    "super_memory_qmd_search",
+    "super_memory_qmd_health",
+    "super_memory_qmd_start",
+    "super_memory_qmd_stop",
+    "super_memory_watcher_settle_scan",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -513,6 +526,84 @@ TOOLS: dict[str, JSON] = {
         "description": "Atomic rebuild of all FTS5 + vector indices.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
+    # ── Remaining Gaps ────────────────────────────────────────
+    "super_memory_get_index_identity": {
+        "description": "Get index identity (which embedding provider built the index).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_set_index_identity": {
+        "description": "Record which embedding provider built the index.",
+        "inputSchema": _schema({
+            "provider_id": {"type": "string"},
+            "model": {"type": "string", "default": ""},
+            "dimensions": {"type": "integer", "default": 384},
+            "config_path": {"type": "string"},
+        }, ["provider_id"]),
+    },
+    "super_memory_self_heal_embeddings": {
+        "description": "Auto-detect and repair memories missing embeddings.",
+        "inputSchema": _schema({
+            "batch_size": {"type": "integer", "default": 50},
+            "config_path": {"type": "string"},
+        }),
+    },
+    "super_memory_self_heal_status": {
+        "description": "Show self-heal status (count of memories missing vectors).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_build_prompt_section": {
+        "description": "Build markdown memory context section from search results.",
+        "inputSchema": _schema({
+            "results": {"type": "array", "items": {"type": "object"}},
+            "title": {"type": "string", "default": "Memory Context"},
+            "max_tokens": {"type": "integer", "default": 4000},
+            "include_citations": {"type": "boolean", "default": True},
+        }, ["results"]),
+    },
+    "super_memory_generate_narrative": {
+        "description": "Generate dreaming narrative markdown document from cognitive insights.",
+        "inputSchema": _schema({
+            "title": {"type": "string", "default": "Dreaming Narrative"},
+            "out_dir": {"type": "string"},
+            "max_insights": {"type": "integer", "default": 10},
+            "config_path": {"type": "string"},
+        }),
+    },
+    "super_memory_rem_extract_all": {
+        "description": "Extract REM evidence from all session transcripts.",
+        "inputSchema": _schema({
+            "min_confidence": {"type": "number", "default": 0.6},
+            "promote": {"type": "boolean", "default": True},
+            "config_path": {"type": "string"},
+        }),
+    },
+    "super_memory_qmd_search": {
+        "description": "Search via QMD Meilisearch binary (external search).",
+        "inputSchema": _schema({
+            "query": {"type": "string"},
+            "limit": {"type": "integer", "default": 10},
+        }, ["query"]),
+    },
+    "super_memory_qmd_health": {
+        "description": "QMD health check (binary available, running).",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_qmd_start": {
+        "description": "Start QMD Meilisearch binary.",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_qmd_stop": {
+        "description": "Stop QMD Meilisearch binary.",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_watcher_settle_scan": {
+        "description": "Debounced file scan with settle detection (waits for writes to finish).",
+        "inputSchema": _schema({
+            "directories": {"type": "array", "items": {"type": "string"}},
+            "exclude": {"type": "array", "items": {"type": "string"}},
+            "config_path": {"type": "string"},
+        }),
+    },
 }
 
 for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
@@ -768,6 +859,56 @@ def _call_tool(name: str, args: JSON) -> Any:
         )
     if name == "super_memory_reindex_all":
         return bridge.reindex_all(config_path=args.get("config_path"))
+    if name == "super_memory_get_index_identity":
+        return bridge.get_index_identity(config_path=args.get("config_path"))
+    if name == "super_memory_set_index_identity":
+        return bridge.set_index_identity(
+            args["provider_id"],
+            model=args.get("model", ""),
+            dimensions=args.get("dimensions", 384),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_self_heal_embeddings":
+        return bridge.self_heal_embeddings(
+            batch_size=args.get("batch_size", 50),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_self_heal_status":
+        return bridge.self_heal_status(config_path=args.get("config_path"))
+    if name == "super_memory_build_prompt_section":
+        return bridge.build_prompt_section(
+            args["results"],
+            title=args.get("title", "Memory Context"),
+            max_tokens=args.get("max_tokens", 4000),
+            include_citations=args.get("include_citations", True),
+        )
+    if name == "super_memory_generate_narrative":
+        return bridge.generate_narrative(
+            title=args.get("title", "Dreaming Narrative"),
+            out_dir=args.get("out_dir"),
+            max_insights=args.get("max_insights", 10),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_rem_extract_all":
+        return bridge.rem_extract_all(
+            min_confidence=args.get("min_confidence", 0.6),
+            promote=args.get("promote", True),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_qmd_search":
+        return bridge.qmd_search(args["query"], limit=args.get("limit", 10))
+    if name == "super_memory_qmd_health":
+        return bridge.qmd_health()
+    if name == "super_memory_qmd_start":
+        return bridge.qmd_start()
+    if name == "super_memory_qmd_stop":
+        return bridge.qmd_stop()
+    if name == "super_memory_watcher_settle_scan":
+        return bridge.watcher_settle_scan(
+            directories=args.get("directories"),
+            exclude=args.get("exclude"),
+            config_path=args.get("config_path"),
+        )
     if name == "super_memory_conflicts":
         return bridge.conflicts(content=args.get("content"), memory_id=args.get("memory_id"), config_path=args.get("config_path"))
     if name == "super_memory_provenance":

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import abc
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -22,10 +23,15 @@ PROVIDER_PRIORITY: dict[str, int] = {
     "sqlite_vec": 0,            # Local, no external deps
     "sentence_transformers": 1, # Local, needs torch
     "text2vec": 2,              # Local, needs torch
-    "openai": 3,                # API key required
-    "voyage": 4,                # API key required
-    "cohere": 5,                # API key required
-    "huggingface": 6,           # API key optional
+    "lm_studio": 3,             # Local, LM Studio running
+    "openai": 4,                # API key required
+    "mistral": 5,               # API key required
+    "voyage": 6,                # API key required
+    "cohere": 7,                # API key required
+    "deepinfra": 8,             # API key required
+    "google": 9,                # API key required
+    "huggingface": 10,          # API key optional
+    "bedrock": 11,              # AWS creds required
 }
 
 
@@ -207,6 +213,178 @@ class VoyageAdapter(EmbeddingAdapter):
         return [e[:dimensions] if dimensions else e for e in resp.embeddings]
 
 
+class MistralAdapter(EmbeddingAdapter):
+    """Mistral AI embeddings API."""
+
+    name = "mistral"
+    _client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from mistralai import MistralAI
+            MistralAdapter._client = MistralAI()
+        return MistralAdapter._client
+
+    def is_available(self) -> bool:
+        try:
+            from mistralai import MistralAI  # noqa: F401
+            return bool(os.environ.get("MISTRAL_API_KEY"))
+        except ImportError:
+            return False
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        client = self._get_client()
+        model = "mistral-embed"
+        resp = client.embeddings.create(model=model, inputs=[text])
+        return resp.data[0].embedding[:dimensions] if dimensions else resp.data[0].embedding
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        client = self._get_client()
+        model = "mistral-embed"
+        resp = client.embeddings.create(model=model, inputs=texts)
+        return [e[:dimensions] if dimensions else e for e in resp.data]
+
+
+class BedrockAdapter(EmbeddingAdapter):
+    """Amazon Bedrock embeddings (Cohere embed on Bedrock)."""
+
+    name = "bedrock"
+    _client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import boto3
+            BedrockAdapter._client = boto3.client("bedrock-runtime")
+        return BedrockAdapter._client
+
+    def is_available(self) -> bool:
+        try:
+            import boto3  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        import json as _json
+        client = self._get_client()
+        body = _json.dumps({"input_text": text, "input_type": "search_document"})
+        resp = client.invoke_model(
+            body=body,
+            modelId="cohere.embed-english-v3",
+            accept="application/json",
+            contentType="application/json",
+        )
+        result = _json.loads(resp["body"].read())
+        embeddings = result.get("embeddings", [[]])
+        vec = embeddings[0] if embeddings else []
+        return vec[:dimensions] if dimensions else vec
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        return [self.embed(t, dimensions=dimensions) for t in texts]
+
+
+class LMStudioAdapter(EmbeddingAdapter):
+    """LM Studio local embeddings (OpenAI-compatible API)."""
+
+    name = "lm_studio"
+    _client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import openai
+            LMStudioAdapter._client = openai.OpenAI(
+                base_url="http://localhost:1234/v1",
+                api_key="not-needed",
+            )
+        return LMStudioAdapter._client
+
+    def is_available(self) -> bool:
+        try:
+            import openai  # noqa: F401
+            client = self._get_client()
+            resp = client.models.list()
+            return bool(resp.data)
+        except Exception:
+            return False
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        client = self._get_client()
+        resp = client.embeddings.create(model="local-model", input=text)
+        return resp.data[0].embedding[:dimensions] if dimensions else resp.data[0].embedding
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        client = self._get_client()
+        resp = client.embeddings.create(model="local-model", input=texts)
+        return [d.embedding[:dimensions] if dimensions else d.embedding for d in resp.data]
+
+
+class DeepInfraAdapter(EmbeddingAdapter):
+    """DeepInfra embeddings API."""
+
+    name = "deepinfra"
+    _client = None
+
+    def _get_client(self):
+        if self._client is None:
+            import openai
+            DeepInfraAdapter._client = openai.OpenAI(
+                base_url="https://api.deepinfra.com/v1/openai",
+                api_key=os.environ.get("DEEPINFRA_API_KEY", ""),
+            )
+        return DeepInfraAdapter._client
+
+    def is_available(self) -> bool:
+        try:
+            import openai  # noqa: F401
+            return bool(os.environ.get("DEEPINFRA_API_KEY"))
+        except ImportError:
+            return False
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        client = self._get_client()
+        model = "BAAI/bge-large-en-v1.5"
+        resp = client.embeddings.create(model=model, input=text)
+        return resp.data[0].embedding[:dimensions] if dimensions else resp.data[0].embedding
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        client = self._get_client()
+        model = "BAAI/bge-large-en-v1.5"
+        resp = client.embeddings.create(model=model, input=texts)
+        return [d.embedding[:dimensions] if dimensions else d.embedding for d in resp.data]
+
+
+class GoogleAdapter(EmbeddingAdapter):
+    """Google Vertex AI / Generative AI embeddings."""
+
+    name = "google"
+    _client = None
+
+    def _get_client(self):
+        if self._client is None:
+            from google import genai
+            GoogleAdapter._client = genai.Client()
+        return GoogleAdapter._client
+
+    def is_available(self) -> bool:
+        try:
+            from google import genai  # noqa: F401
+            return bool(os.environ.get("GOOGLE_API_KEY"))
+        except ImportError:
+            return False
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        client = self._get_client()
+        resp = client.models.embed_content(
+            model="models/text-embedding-004",
+            contents=text,
+        )
+        vec = resp.embeddings[0].values
+        return vec[:dimensions] if dimensions else vec
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        return [self.embed(t, dimensions=dimensions) for t in texts]
+
+
 class CohereAdapter(EmbeddingAdapter):
     """Cohere embeddings API."""
 
@@ -277,10 +455,15 @@ BUILTIN_ADAPTERS: list[EmbeddingAdapter] = [
     SQLiteVecAdapter(),
     SentenceTransformersAdapter(),
     Text2VecAdapter(),
+    LMStudioAdapter(),
     OpenAIAdapter(),
+    MistralAdapter(),
     VoyageAdapter(),
     CohereAdapter(),
+    DeepInfraAdapter(),
+    GoogleAdapter(),
     HuggingFaceAdapter(),
+    BedrockAdapter(),
 ]
 
 

@@ -73,6 +73,14 @@ from . import (
     flush_plan,
     reindex,
 
+    # Remaining Gaps
+    index_identity,
+    self_heal,
+    prompt_section,
+    narrative,
+    rem_evidence,
+    qmd,
+
     # Dev Tools
     auto_deep,
     diagnostics,
@@ -104,6 +112,8 @@ __all__ = [
     "embeddings_registry",
     # P3
     "rem", "watcher", "flush_plan", "reindex",
+    # Remaining Gaps
+    "index_identity", "self_heal", "prompt_section", "narrative", "rem_evidence", "qmd",
     # Dev
     "auto_deep", "diagnostics",
 ]
