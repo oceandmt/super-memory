@@ -421,6 +421,104 @@ def _memory_get_virtual(path: str, cfg: SuperMemoryConfig) -> dict[str, Any]:
     }
 
 
+# ── Micro-gap 7: CJK Tokenize Utility ─────────────────────────────────
+
+# Mirrors memory-core tokenize.ts:
+#   tokenize(text) -> Set[str]
+#   jaccardSimilarity(setA, setB) -> float
+#   textSimilarity(contentA, contentB) -> float
+
+# Unicode ranges matching memory-core CJK_RE:
+# Hiragana (3040-309F), Katakana (30A0-30FF),
+# CJK Ext A (3400-4DBF), CJK Unified (4E00-9FFF),
+# Hangul Syllables (AC00-D7AF), Hangul Jamo (1100-11FF)
+_CJK_RE = re.compile(
+    r'[\u3040-\u309f\u30a0-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\u1100-\u11ff]'
+)
+
+
+def tokenize(text: str) -> set[str]:
+    """Tokenize text for Jaccard similarity computation.
+
+    Mirrors memory-core `tokenize()`:
+    - Extracts alphanumeric tokens (a-z, 0-9, _)
+    - Extracts CJK-family unigrams (single characters)
+    - Extracts CJK bigrams from originally adjacent characters
+
+    Args:
+        text: Input text to tokenize.
+
+    Returns:
+        Set of tokens (lowercase).
+    """
+    lower = text.lower()
+    ascii_tokens = re.findall(r'[a-z0-9_]+', lower)
+
+    # Extract CJK characters with their original positions
+    chars = list(lower)
+    cjk_data: list[tuple[str, int]] = []
+    for i, ch in enumerate(chars):
+        if _CJK_RE.match(ch):
+            cjk_data.append((ch, i))
+
+    # Build bigrams only from originally adjacent CJK characters
+    bigrams: list[str] = []
+    for i in range(len(cjk_data) - 1):
+        if cjk_data[i + 1][1] == cjk_data[i][1] + 1:
+            bigrams.append(cjk_data[i][0] + cjk_data[i + 1][0])
+
+    unigrams = [d[0] for d in cjk_data]
+    return set(ascii_tokens + bigrams + unigrams)
+
+
+def jaccard_similarity(set_a: set[str], set_b: set[str]) -> float:
+    """Compute Jaccard similarity between two token sets.
+
+    Mirrors memory-core `jaccardSimilarity()`.
+    Returns value in [0, 1] where 1 means identical sets.
+
+    Args:
+        set_a: First token set.
+        set_b: Second token set.
+
+    Returns:
+        Jaccard similarity score.
+    """
+    if not set_a and not set_b:
+        return 1.0
+    if not set_a or not set_b:
+        return 0.0
+
+    # Iterate over smaller set for efficiency
+    smaller = set_a if len(set_a) <= len(set_b) else set_b
+    larger = set_b if len(set_a) <= len(set_b) else set_a
+
+    intersection_size = sum(1 for token in smaller if token in larger)
+    union_size = len(set_a) + len(set_b) - intersection_size
+    return 0.0 if union_size == 0 else intersection_size / union_size
+
+
+def text_similarity(content_a: str, content_b: str) -> float:
+    """Compute text similarity using Jaccard on tokens.
+
+    Mirrors memory-core `textSimilarity()`.
+    Falls back to exact string equality when both token sets are empty.
+
+    Args:
+        content_a: First content string.
+        content_b: Second content string.
+
+    Returns:
+        Similarity score in [0, 1].
+    """
+    tokens_a = tokenize(content_a)
+    tokens_b = tokenize(content_b)
+    if not tokens_a and not tokens_b:
+        # Fallback to exact normalized equality (same as memory-core)
+        return 1.0 if content_a.lower() == content_b.lower() else 0.0
+    return jaccard_similarity(tokens_a, tokens_b)
+
+
 def _memory_get_file(path: str, cfg: SuperMemoryConfig, *, from_line: int, lines: int) -> dict[str, Any]:
     root = Path(cfg.workspace_root)
     file_path = Path(path)

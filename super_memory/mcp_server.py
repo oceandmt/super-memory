@@ -79,6 +79,21 @@ NORMAL_TOOLS = {
     "super_memory_qmd_start",
     "super_memory_qmd_stop",
     "super_memory_watcher_settle_scan",
+    # Micro-gap 3: Batch State
+    "super_memory_batch_state_status",
+    "super_memory_reset_batch_state",
+    # Micro-gap 4: Reindex FSM
+    "super_memory_reindex_fsm_status",
+    # Micro-gap 8: FTS-only reindex
+    "super_memory_reindex_fts_only",
+    # Micro-gap 5: Sync Interval
+    "super_memory_sync_interval_status",
+    "super_memory_sync_interval_start",
+    "super_memory_sync_interval_stop",
+    "super_memory_sync_startup_catchup",
+    # Micro-gap 6: Read-only Recovery
+    "super_memory_recovery_status",
+    "super_memory_reset_recovery_state",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -604,6 +619,51 @@ TOOLS: dict[str, JSON] = {
             "config_path": {"type": "string"},
         }),
     },
+    # Micro-gap 3: Batch State
+    "super_memory_batch_state_status": {
+        "description": "Get batch operation failure tracking state.",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_reset_batch_state": {
+        "description": "Reset batch failure state counter.",
+        "inputSchema": _schema({}),
+    },
+    # Micro-gap 4: Reindex FSM
+    "super_memory_reindex_fsm_status": {
+        "description": "Get reindex Finite State Machine status.",
+        "inputSchema": _schema({}),
+    },
+    # Micro-gap 8: FTS-only reindex
+    "super_memory_reindex_fts_only": {
+        "description": "Rebuild only FTS5 indices, skip vectors.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    # Micro-gap 5: Sync Interval + Startup Catchup
+    "super_memory_sync_interval_status": {
+        "description": "Get sync interval manager status (interval, dirty sources, last sync).",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_sync_interval_start": {
+        "description": "Start periodic background sync with startup catchup.",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_sync_interval_stop": {
+        "description": "Stop periodic background sync.",
+        "inputSchema": _schema({}),
+    },
+    "super_memory_sync_startup_catchup": {
+        "description": "Run startup catchup — sync missed changes since last run.",
+        "inputSchema": _schema({}),
+    },
+    # Micro-gap 6: Read-only Recovery
+    "super_memory_recovery_status": {
+        "description": "Get DB recovery state (attempts, last error, recovered).",
+        "inputSchema": _schema({"db_path": {"type": "string"}}),
+    },
+    "super_memory_reset_recovery_state": {
+        "description": "Reset DB recovery state count.",
+        "inputSchema": _schema({"db_path": {"type": "string"}}),
+    },
 }
 
 for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
@@ -909,6 +969,26 @@ def _call_tool(name: str, args: JSON) -> Any:
             exclude=args.get("exclude"),
             config_path=args.get("config_path"),
         )
+    if name == "super_memory_batch_state_status":
+        return bridge.batch_state_status()
+    if name == "super_memory_reset_batch_state":
+        return bridge.reset_batch_state()
+    if name == "super_memory_reindex_fsm_status":
+        return bridge.reindex_fsm_status()
+    if name == "super_memory_reindex_fts_only":
+        return bridge.reindex_fts_only(config_path=args.get("config_path"))
+    if name == "super_memory_sync_interval_status":
+        return bridge.sync_interval_status()
+    if name == "super_memory_sync_interval_start":
+        return bridge.sync_interval_start()
+    if name == "super_memory_sync_interval_stop":
+        return bridge.sync_interval_stop()
+    if name == "super_memory_sync_startup_catchup":
+        return bridge.sync_startup_catchup()
+    if name == "super_memory_recovery_status":
+        return bridge.recovery_status(db_path=args.get("db_path"))
+    if name == "super_memory_reset_recovery_state":
+        return bridge.reset_recovery_state(db_path=args.get("db_path"))
     if name == "super_memory_conflicts":
         return bridge.conflicts(content=args.get("content"), memory_id=args.get("memory_id"), config_path=args.get("config_path"))
     if name == "super_memory_provenance":

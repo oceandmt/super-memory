@@ -40,12 +40,88 @@ __all__ = [
     "query_expand",
     "format_context",
     "compute_result_confidence",
+    # Micro-gap 1: Preflight
+    "SearchPreflightResult",
+    "resolve_search_preflight",
 ]
 
 logger = logging.getLogger("super-memory.retrieval_pipeline")
 
 
 # ── Depth Level ──────────────────────────────────────────────────────────────
+
+# ── Search Preflight (Micro-gap 1: Async Search Preflight) ────────────
+
+
+@dataclass
+class SearchPreflightResult:
+    """Result of search preflight validation.
+
+    Mirrors memory-core manager-search-preflight.ts:
+    - normalizedQuery: trimmed query
+    - shouldInitializeProvider: whether embedding provider should init
+    - shouldSearch: whether search should proceed
+    """
+    normalized_query: str = ""
+    should_initialize_provider: bool = False
+    should_search: bool = False
+    reason: str = ""
+
+
+def resolve_search_preflight(
+    query: str,
+    has_indexed_content: bool = True,
+    has_embeddings: bool = True,
+) -> SearchPreflightResult:
+    """Validate search parameters before execution.
+
+    Mirrors memory-core `resolveMemorySearchPreflight()`.
+    Prevents empty queries and searches against empty indexes.
+
+    Args:
+        query: Raw query string.
+        has_indexed_content: Whether any content has been indexed (FTS5).
+        has_embeddings: Whether embedding vectors exist.
+
+    Returns:
+        SearchPreflightResult with validation decision.
+    """
+    normalized_query = query.strip() if query else ""
+
+    if not normalized_query:
+        return SearchPreflightResult(
+            normalized_query="",
+            should_initialize_provider=False,
+            should_search=False,
+            reason="empty query after trimming",
+        )
+
+    if len(normalized_query) < 2:
+        return SearchPreflightResult(
+            normalized_query=normalized_query,
+            should_initialize_provider=False,
+            should_search=False,
+            reason=f"query too short ({len(normalized_query)} chars, min 2)",
+        )
+
+    if not has_indexed_content:
+        return SearchPreflightResult(
+            normalized_query=normalized_query,
+            should_initialize_provider=False,
+            should_search=False,
+            reason="no indexed content available",
+        )
+
+    return SearchPreflightResult(
+        normalized_query=normalized_query,
+        should_initialize_provider=has_embeddings,
+        should_search=True,
+        reason="pass",
+    )
+
+
+# ── Depth Level ──────────────────────────────────────────────────────────────
+
 
 class DepthLevel(IntEnum):
     """Retrieval depth, matching neural-memory semantics."""

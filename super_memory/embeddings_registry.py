@@ -490,9 +490,110 @@ def embed_with_best(text: str, *, dimensions: int | None = None) -> list[float] 
     return adapter.embed(text, dimensions=dimensions)
 
 
-def list_providers() -> list[dict[str, Any]]:
-    """List all providers with availability status."""
-    return [
-        {"name": a.name, "available": a.is_available(), "priority": PROVIDER_PRIORITY.get(a.name, 99)}
-        for a in BUILTIN_ADAPTERS
+# ── Dynamic Provider Registry (Micro-gap 2) ───────────────────────────
+
+# Mirrors memory-core provider-adapter-registration.ts:
+# - filterUnregisteredMemoryEmbeddingProviderAdapters()
+# - dynamic add/remove/reorder
+
+_registered_adapter_ids: set[str] = set()
+
+
+def register_provider(adapter: EmbeddingAdapter) -> dict[str, Any]:
+    """Dynamically register a new provider adapter.
+
+    Args:
+        adapter: EmbeddingAdapter instance to register.
+
+    Returns:
+        Dict with ok, name, priority status.
+    """
+    name = adapter.name
+    if name not in PROVIDER_PRIORITY:
+        # Auto-assign next priority after max
+        max_prio = max(PROVIDER_PRIORITY.values()) if PROVIDER_PRIORITY else 0
+        PROVIDER_PRIORITY[name] = max_prio + 1
+
+    # Add to builtin list if not already there
+    existing_names = {a.name for a in BUILTIN_ADAPTERS}
+    if name not in existing_names:
+        BUILTIN_ADAPTERS.append(adapter)
+
+    _registered_adapter_ids.add(name)
+    return {
+        "ok": True,
+        "name": name,
+        "priority": PROVIDER_PRIORITY.get(name, 99),
+        "already_registered": name in existing_names,
+    }
+
+
+def unregister_provider(name: str) -> dict[str, Any]:
+    """Dynamically unregister a provider adapter.
+
+    Args:
+        name: Provider name to remove.
+
+    Returns:
+        Dict with ok and name.
+    """
+    global BUILTIN_ADAPTERS
+    _registered_adapter_ids.discard(name)
+    BUILTIN_ADAPTERS = [a for a in BUILTIN_ADAPTERS if a.name != name]
+    PROVIDER_PRIORITY.pop(name, None)
+    return {"ok": True, "name": name}
+
+
+def filter_unregistered_adapters(builtin_names: list[str] | None = None) -> list[str]:
+    """Filter which builtin adapters have NOT been registered yet.
+
+    Mirrors memory-core `filterUnregisteredMemoryEmbeddingProviderAdapters()`.
+    Returns list of provider names from builtins that are not yet in registered set.
+
+    Args:
+        builtin_names: Optional subset to check. Defaults to all BUILTIN_ADAPTERS names.
+
+    Returns:
+        List of provider names that are unregistered.
+    """
+    check_names = builtin_names or [a.name for a in BUILTIN_ADAPTERS]
+    return [n for n in check_names if n not in _registered_adapter_ids]
+
+
+def list_providers(include_unregistered: bool = True) -> list[dict[str, Any]]:
+    """List all providers with availability and registration status.
+
+    Args:
+        include_unregistered: If True, include all builtins.
+            If False, only returns dynamically registered providers.
+
+    Returns:
+        List of provider info dicts.
+    """
+    adapters = BUILTIN_ADAPTERS if include_unregistered else [
+        a for a in BUILTIN_ADAPTERS if a.name in _registered_adapter_ids
     ]
+    return [
+        {
+            "name": a.name,
+            "available": a.is_available(),
+            "priority": PROVIDER_PRIORITY.get(a.name, 99),
+            "registered": a.name in _registered_adapter_ids,
+        }
+        for a in adapters
+    ]
+
+
+def get_registry_stats() -> dict[str, Any]:
+    """Get provider registry statistics."""
+    all_providers = list_providers(include_unregistered=True)
+    registered = [p for p in all_providers if p["registered"]]
+    available = [p for p in all_providers if p["available"]]
+    return {
+        "total": len(all_providers),
+        "registered": len(registered),
+        "unregistered": len(all_providers) - len(registered),
+        "available": len(available),
+        "registered_names": [p["name"] for p in registered],
+        "available_names": [p["name"] for p in available],
+    }

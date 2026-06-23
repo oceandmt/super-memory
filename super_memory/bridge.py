@@ -861,8 +861,28 @@ def flush_session_memories(
 
 
 def reindex_all(config_path: str | None = None) -> dict[str, Any]:
-    """Atomic rebuild of all FTS5 + vector indices."""
+    """Atomic rebuild of all FTS5 + vector indices with FSM tracking."""
     return reindex.reindex_all(config_path=config_path)
+
+
+def reindex_fts_only(config_path: str | None = None) -> dict[str, Any]:
+    """Rebuild only FTS5 indices (skip vectors)."""
+    return reindex.reindex_fts_only(config_path=config_path)
+
+
+def reindex_fsm_status() -> dict[str, Any]:
+    """Get reindex FSM status."""
+    return reindex.reindex_fsm_status()
+
+
+def batch_state_status() -> dict[str, Any]:
+    """Get batch state tracking status."""
+    return reindex.batch_state_status()
+
+
+def reset_batch_state() -> dict[str, Any]:
+    """Reset batch failure state."""
+    return reindex.reset_batch_state()
 
 
 # ── Remaining Gaps: Index Identity ─────────────────────────────────────
@@ -977,3 +997,44 @@ def watcher_settle_scan(
     return watcher.watcher_settle_scan(
         directories=directories, exclude=exclude, config_path=config_path
     )
+
+
+# ── Micro-gap 5: Sync Interval + Startup Catchup ──────────────────────
+
+
+def sync_interval_status() -> dict[str, Any]:
+    """Get sync interval manager status."""
+    from .sync.sync_ops import sync_interval_status as _s
+    return _s()
+
+
+def sync_startup_catchup() -> dict[str, Any]:
+    """Run startup catchup sync."""
+    from .sync.sync_ops import sync_startup_catchup as _s
+    return _s()
+
+
+def recovery_status(db_path: str | None = None) -> dict[str, Any]:
+    """Get DB recovery status."""
+    from .storage import recovery_status as _r
+    return _r(db_path=db_path)
+
+
+def reset_recovery_state(db_path: str | None = None) -> dict[str, Any]:
+    """Reset DB recovery state."""
+    from .storage import reset_recovery_state as _r
+    return _r(db_path=db_path)
+
+
+def sync_interval_start(config_path: str | None = None) -> dict[str, Any]:
+    """Start periodic background sync."""
+    from .sync.sync_ops import create_sync_manager
+    mgr = create_sync_manager()
+    return mgr.start_interval()
+
+
+def sync_interval_stop() -> dict[str, Any]:
+    """Stop periodic background sync."""
+    from .sync.sync_ops import create_sync_manager
+    mgr = create_sync_manager()
+    return mgr.stop_interval()
