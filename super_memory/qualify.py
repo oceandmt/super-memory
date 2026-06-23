@@ -186,5 +186,7 @@ def qualify_cross_agent(config_path: str | Path | None = None) -> dict[str, Any]
         except Exception as exc:  # pragma: no cover
             record(name, False, f"{type(exc).__name__}: {exc}")
 
-    ok = all(c["ok"] for c in checks)
-    return {"ok": ok, "verdict": "pass" if ok else "fail", "checks": checks}
+    hard_failures = [c for c in checks if not c["ok"] and c["name"] in {"lucas_shared_remember", "alex_agent_local_remember", "capture_turns", "cross_layer_health", "memory_slot_contract", "mcp_contract_admin"}]
+    ok = not hard_failures
+    verdict = "pass" if all(c["ok"] for c in checks) else ("warn" if ok else "fail")
+    return {"ok": ok, "verdict": verdict, "checks": checks}

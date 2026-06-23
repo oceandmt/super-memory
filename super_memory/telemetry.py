@@ -61,7 +61,16 @@ def _init_tables(store):
 
 
 def record_event(kind, agent_id="lucas", tool_name=None, duration_ms=None, success=True, detail=None, config_path=None):
-    """Record a telemetry event."""
+    """Record a telemetry event. Backward compatible: record_event(kind, success, detail)."""
+    if isinstance(agent_id, bool) or isinstance(agent_id, int):
+        success = bool(agent_id)
+        if isinstance(tool_name, dict) and detail is None:
+            detail = tool_name
+            tool_name = None
+        agent_id = "lucas"
+    if isinstance(tool_name, dict) and detail is None:
+        detail = tool_name
+        tool_name = None
     store = _store(config_path)
     event_id = f"tel:{kind}:{int(time.time() * 1000)}:{abs(hash(str(detail))) % 10**6}"
     with store.connect() as conn:
@@ -145,3 +154,40 @@ def stats(days=7, config_path=None):
         "errors_last_24h": len([e for e in events if not e["success"]]),
         "daily_rollups": [{"date": d["date"], "tool_calls": d["tool_calls"], "saves": d["memories_saved"], "recalls": d["recalls"], "errors": d["errors"]} for d in daily],
     }
+
+class TelemetryRegistry:
+    """In-memory metrics registry with Prometheus text export (test/dev helper)."""
+    def __init__(self):
+        self.counters = Counter()
+        self.observations: dict[str, list[float]] = defaultdict(list)
+    def _metric(self, name: str) -> str:
+        return "super_memory_" + str(name).replace('.', '_').replace('-', '_')
+    def inc(self, name: str, value: int = 1):
+        self.counters[name] += value
+    def observe_ms(self, name: str, value: float):
+        self.observations[name].append(float(value))
+    def prometheus_text(self) -> str:
+        lines=[]
+        for k,v in sorted(self.counters.items()):
+            lines.append(f"{self._metric(k)} {v}")
+        for k, vals in sorted(self.observations.items()):
+            if not vals: continue
+            metric=self._metric(k)
+            lines.append(f"{metric}_count {len(vals)}")
+            lines.append(f"{metric}_avg {sum(vals)/len(vals):.3f}")
+        return "\n".join(lines) + ("\n" if lines else "")
+
+def telemetry_history(kind: str | None = None, limit: int = 100, config_path=None):
+    store = _store(config_path)
+    with store.connect() as conn:
+        if kind:
+            rows = conn.execute("SELECT * FROM telemetry_events WHERE kind=? ORDER BY created_at DESC LIMIT ?", (kind, limit)).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM telemetry_events ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+    events=[]
+    for r in rows:
+        d=dict(r)
+        try: d['detail']=json.loads(d.pop('detail_json') or '{}')
+        except Exception: d['detail']={}
+        events.append(d)
+    return {'ok': True, 'events': events}

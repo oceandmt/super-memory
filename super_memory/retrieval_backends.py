@@ -301,16 +301,20 @@ register_backend("disabled", DisabledVectorBackend)
 # ── Factory ────────────────────────────────────────────────────────
 
 def get_retrieval_backend(name: str | None, config: SuperMemoryConfig) -> RetrievalBackend:
-    """Get a retrieval backend by name, with fallback to sqlite_exact.
+    """Get a retrieval backend by name.
 
-    Falls back to sqlite_exact if the requested backend fails to load.
+    Explicit optional vector backends surface clear dependency errors so callers
+    can distinguish "not installed" from a silent sqlite fallback. Auto-select
+    paths can still catch and fall back.
     """
     backend_name = (name or "sqlite_exact").strip().lower()
     if backend_name in BACKEND_REGISTRY:
         try:
             return BACKEND_REGISTRY[backend_name](config)
         except Exception as exc:
-            logger.warning("Failed to init backend '%s': %s — falling back to sqlite_exact", backend_name, exc)
+            logger.warning("Failed to init backend '%s': %s", backend_name, exc)
+            if backend_name in {"chroma", "qdrant", "pgvector"}:
+                raise RuntimeError(str(exc)) from exc
     else:
         logger.warning("Unknown backend '%s' — falling back to sqlite_exact", backend_name)
     return SQLiteExactBackend(config)

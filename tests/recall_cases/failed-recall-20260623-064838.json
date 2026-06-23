@@ -1,0 +1,11 @@
+{
+  "id": "failed-recall-20260623-064838",
+  "query": "Where is super memory?",
+  "wrong_answer": "Not found",
+  "expected_answer": "installed at projects/super-memory-github",
+  "notes": "",
+  "created_at": "2026-06-23T06:48:38.378894+00:00",
+  "expected_contains": [
+    "installed at projects/super-memory-github"
+  ]
+}

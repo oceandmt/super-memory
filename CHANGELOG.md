@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.1.0 (P0+P1+P2 Deep Implementation — Quality Gate, Recall Arbitration v2, Self-Training)
+
+### P0 — Critical (Quality Gate + Recall Arbitration v2)
+- **Quality Gate**: auto-classify memory type (decision/fact/workflow/blocker/preference), extract entities + relations, score quality (0-1), enrich with tags + content_hash
+- **Recall Arbitration v2**: explainable multi-layer scoring formula (lexical overlap × layer weight × recency × trust × quality score × type boost), returns `why_selected` reasons per result
+
+### P1 — Semantic Memory
+- **Semantic Taxonomy**: 14 relation types (CAUSED_BY, LEADS_TO, RESOLVED_BY, CONTRADICTS, SUPERSEDES, DEPENDS_ON, IMPLEMENTS, CONFIGURES, INSTALLED_AT, SYNCED_WITH, EVIDENCE_FOR, EVIDENCE_AGAINST, DERIVED_FROM, MENTIONS)
+- **Canonical Entity Resolution**: alias normalization (super-memory → super-memory, oceandmt/super-memory → super-memory-github)
+
+### P2 — Workflows & Self-Improvement
+- **Self-Training**: capture failed recall → regression test JSON + training queue markdown
+- **Project State Update**: append structured updates to canonical project memory markdown
+- **Issue Memory Update**: write/update markdown issue files with cause/fix/verification
+- **Telemetry History**: query telemetry events with kind filters
+- **TelemetryRegistry**: Prometheus-text helper class
+
+### Cross-Layer Health
+- **cross_layer_health()**: 4-layer coverage check
+- **content_hash column**: added to SQLiteLayerBackend for dedup at storage level
+- **Soft qualify failures**: cross_agent_recall + hybrid_cross_scope_recall tolerate non-critical failures
+- **Backend openness**: chroma fails raise RuntimeError (no silent fallback)
+
+### Tests
+- 4 new P0/P1/P2 test functions
+- 16 passing targeted tests for quality gate + recall arbitration + semantic taxonomy + self-training
+- 2 recall regression cases in tests/recall_cases/
+
+---
+
 ## 1.7.0 (P1-P3 Roadmap Completion — Memory Lifecycle)
 
 ### P0 — Critical (Recall Quality Enhanced)

@@ -116,8 +116,8 @@ class SQLiteLayerBackend(MemoryBackend):
             conn.execute(
                 """
                 INSERT OR REPLACE INTO memories
-                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, pending_canonical_sync)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, pending_canonical_sync, content_hash)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -134,6 +134,7 @@ class SQLiteLayerBackend(MemoryBackend):
                     record.created_at.isoformat(),
                     json.dumps(record.metadata, ensure_ascii=False),
                     1 if pending_sync else 0,
+                    record.metadata.get("content_hash"),
                 ),
             )
             # Fetch rowid after upsert, delete old FTS row to prevent duplicates

@@ -480,6 +480,9 @@ for _name, _desc, _props, _required in [
     ("super_memory_deep_debug", "Find operational issues and misconfigurations.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_improve", "Generate and optionally apply improvement proposals.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     ("super_memory_auto_deep_pipeline", "Run full Auto Deep pipeline: Audit -> Qualify -> Debug -> Improve.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_capture_failed_recall", "Capture a failed recall/correction into self-training queue and recall regression case.", {"query": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
+    ("super_memory_project_state_update", "Append a structured project-state update to canonical project memory markdown.", {"project": {"type": "string"}, "summary": {"type": "string"}, "facts": {"type": "object"}, "config_path": {"type": "string"}}, []),
+    ("super_memory_issue_memory_update", "Write/update a canonical issue memory markdown file.", {"title": {"type": "string"}, "status": {"type": "string"}, "cause": {"type": "string"}, "fix": {"type": "string"}, "verification": {"type": "string"}, "config_path": {"type": "string"}}, ["title"]),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
@@ -796,6 +799,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.deep_improve(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
     if name == "super_memory_auto_deep_pipeline":
         return bridge.auto_deep_pipeline(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_capture_failed_recall":
+        return bridge.capture_failed_recall(query=args.get("query", ""), wrong_answer=args.get("wrong_answer", ""), expected_answer=args.get("expected_answer", ""), notes=args.get("notes", ""), config_path=args.get("config_path"))
+    if name == "super_memory_project_state_update":
+        return bridge.project_state_update(project=args.get("project", "super-memory-github"), summary=args.get("summary", ""), facts=args.get("facts") or {}, config_path=args.get("config_path"))
+    if name == "super_memory_issue_memory_update":
+        return bridge.issue_memory_update(title=args.get("title", ""), status=args.get("status", "open"), cause=args.get("cause", ""), fix=args.get("fix", ""), verification=args.get("verification", ""), config_path=args.get("config_path"))
     # ── P0 fixes: forget + edit ──────────────────────────────
     if name == "super_memory_forget":
         return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
