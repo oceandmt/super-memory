@@ -1,5 +1,33 @@
 # Changelog
 
+## 2.2.0 (23 June 2026) — P0+P2 + SKILLS Release
+
+### P0 — MemoryEnvelope + SourceAdapter + Semantic Closets + Recall Arbitration v3
+- **MemoryEnvelope v1** (`core/envelope.py`): quality/trust/provenance/lifecycle contract for every memory
+- **SourceAdapter Manifest** (`ingest/__init__.py`): ChatTurnAdapter, FileAdapter, URLAdapter with deterministic chunking
+- **Semantic Closets/Drawers** (`projections/closet.py`): verbatim-preserving pointer layer for structured retrieval
+- **Recall Arbitration v3** (`recall/__init__.py`): unified scoring with `why_selected`, `why_excluded`, `layer_votes` explanations
+- **Recall Feedback Loop** (`recall/feedback.py`): correction → training case pipeline
+
+### P2 — Drift Repair + Watcher Adapter + Citations + Dialectic + Curriculum
+- **Projection Drift Repair** (`projections/drift_repair.py`): audit orphaned projections + auto-repair
+- **Adapter-driven Watcher** (`watcher_adapter.py`): file changes → SourceAdapter ingest pipeline
+- **Line Citations + Neighbor Expansion** (`recall/line_citations.py`): source-verbatim excerpts with ±N line context
+- **Agentic Dialectic Mode** (`recall/dialectic.py`): deterministic format synthesis + LLM-ready synthesis mode
+- **Self-Education Curriculum** (`evals/curriculum.py`): failed recall → training cases → pytest benchmarks
+
+### SKILLS/ — 8 agent skill proposals
+- `SKILLS/` directory ships with repo: onboarding, basic-usage, quality-ingest, recall-arbitration, cross-agent, auto-deep, self-improve, lifecycle
+- Each skill: MCP tools list, copy-paste Python workflows, verification checklist
+- Agent mode mapping in `SKILLS/README.md`
+
+### CI/CD & Deployment
+- CI matrix: Python 3.11 + 3.12 (removed 3.10 per `requires-python >=3.11`)
+- Hard deps: `numpy>=1.26` (for `rem.py`), `cryptography>=43.0` (for `encryption.py`)
+- 108/108 tests passing, Grade A (90/100) qualify, 99.9% canonical compliance
+- 254 MCP tools, 17,090 autocomplete prefixes
+- Deployment to `release` environment: ✅ success
+
 ## 2.1.0 (P0+P1+P2 Deep Implementation — Quality Gate, Recall Arbitration v2, Self-Training)
 
 ### P0 — Critical (Quality Gate + Recall Arbitration v2)

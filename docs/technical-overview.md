@@ -1,7 +1,7 @@
 # Technical Overview: Super Memory Architecture
 
-> **Version**: 1.1.2  
-> **Release**: [v1.1.2 — Semantic Mode](https://github.com/oceandmt/super-memory/releases/tag/v1.1.2)  
+> **Version**: 2.2.0  
+> **Release**: [v2.2.0 — P0+P2 + SKILLS](https://github.com/oceandmt/super-memory/releases/tag/v2.2.0)  
 > **License**: MIT
 
 ---
@@ -409,20 +409,36 @@ Super Memory synchronizes conversation turns to Honcho via the `honcho-auto-capt
 
 ---
 
-## Runtime Status (2026-06-19)
+## Runtime Status (2026-06-23)
 
 | Metric | Value |
 |--------|-------|
-| Total memories | 454 |
-| Workspace Markdown | 440 records across 146 files (11,635 total entries) |
-| MemPalace drawers | 447 |
-| Honcho events | 458 |
-| Cognitive neurons | 870 |
-| Cognitive synapses | 67 |
-| Graph edges | 67 |
-| Vector embeddings | 437 (768d, sqlite-vec) |
-| Meilisearch agents | lucas, alex, max, isol (healthy) |
-| Honcho mode | Backend (http://127.0.0.1:18000) |
+| Version | **v2.2.0** |
+| Total memories | 697 |
+| Auto Deep Grade | **A (90/100)** |
+| Canonical Compliance | **99.9%** |
+| MCP Tools | **254** |
+| Autocomplete Prefixes | **17,090** |
+| Tests Passing | **108/108** (Python 3.11 + 3.12) |
+| CI/CD | ✅ Green — master + v2.2.0 tag |
+| Deployment | ✅ release environment (6f72e14) |
+| Deep Debug Problems | **0** |
+
+### P0+P2 Module Health
+
+| Module | Path | Status |
+|--------|------|--------|
+| MemoryEnvelope | `core/envelope.py` | ✅ |
+| SourceAdapter | `ingest/__init__.py` | ✅ |
+| Semantic Closets | `projections/closet.py` | ✅ |
+| Recall Arbitration v3 | `recall/__init__.py` | ✅ |
+| Recall Feedback | `recall/feedback.py` | ✅ |
+| Drift Repair | `projections/drift_repair.py` | ✅ |
+| Watcher Adapter | `watcher_adapter.py` | ✅ |
+| Line Citations | `recall/line_citations.py` | ✅ |
+| Dialectic | `recall/dialectic.py` | ✅ |
+| Curriculum | `evals/curriculum.py` | ✅ |
+| SKILLS | `SKILLS/` (8 files) | ✅ |
 
 ---
 

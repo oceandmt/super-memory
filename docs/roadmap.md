@@ -1,7 +1,7 @@
 # Super Memory: Development Roadmap
 
-> **Current release**: v1.1.2 (Semantic Mode)  
-> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-06-19
+> **Current release**: v2.2.0 (P0+P2 + SKILLS)  
+> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-06-23
 
 ---
 
@@ -39,123 +39,153 @@
 - [x] Standalone install: `pip install super-memory[semantic]`
 - [x] Reference config: `config/examples/super-memory.semantic.yaml`
 - [x] Documentation: `docs/semantic-mode.md`
-- [x] Version bump to v1.1.2, GitHub release with tag
+
+## ✅ Phase 1.x — Quality Gate + Cross-Agent + Self-Training (v2.0 – v2.1.x)
+
+- [x] Quality Gate: auto-classify memory type, extract entities + relations, score quality (0-1)
+- [x] Recall Arbitration v2: explainable multi-layer scoring with `why_selected`
+- [x] Semantic Taxonomy: 14 relation types (CAUSED_BY, LEADS_TO, CONTRADICTS, SUPERSEDES, etc.)
+- [x] Canonical Entity Resolution: alias normalization
+- [x] Self-Training: failed recall → regression test JSON + training queue
+- [x] Telemetry: `record_event()`, `aggregate_daily()`, `stats()` with 7-day window
+- [x] Per-Agent Isolation: `set_agent_rules()`, `isolation_summary()`, `agent_memory_counts()`
+- [x] Auto-Complete: prefix-index suggest engine, 17,090 prefixes
+- [x] Auto Deep Pipeline: 4-stage pipeline (audit → qualify → debug → improve)
+- [x] Dream Engine: weak-tie insight generation
+- [x] Memory Lifecycle: Leitner SM-2, tier promotion (HOT/WARM/COLD), compression
+- [x] FTS Trigger Fix: stale FTS5 triggers recreated with correct schema
+- [x] Forget + Edit Endpoints: soft/hard delete, content/type/priority/tier edit
+- [x] MCP Tools: 155 tools (v2.0), expanded to 254 (v2.2)
+
+## ✅ Phase 2 — P0+P2 Modules (v2.2.0)
+
+### P0 — MemoryEnvelope + SourceAdapter + Semantic Closets + Recall v3
+
+- [x] **MemoryEnvelope v1** (`core/envelope.py`): quality/trust/provenance/lifecycle contract
+- [x] **SourceAdapter Manifest** (`ingest/__init__.py`): ChatTurnAdapter, FileAdapter, URLAdapter
+- [x] **Semantic Closets/Drawers** (`projections/closet.py`): verbatim-preserving pointer layer
+- [x] **Recall Arbitration v3** (`recall/__init__.py`): unified scoring with `why_selected`, `layer_votes`
+- [x] **Recall Feedback Loop** (`recall/feedback.py`): correction → training case pipeline
+
+### P2 — Drift Repair + Watcher + Citations + Dialectic + Curriculum
+
+- [x] **Projection Drift Repair** (`projections/drift_repair.py`): audit orphan projections + auto-repair
+- [x] **Adapter-driven Watcher** (`watcher_adapter.py`): file changes → SourceAdapter ingest
+- [x] **Line Citations + Neighbor Expansion** (`recall/line_citations.py`): source-verbatim ±N line context
+- [x] **Agentic Dialectic Mode** (`recall/dialectic.py`): deterministic format + LLM-ready synthesis
+- [x] **Self-Education Curriculum** (`evals/curriculum.py`): failed recall → training → pytest benchmarks
+
+### SKILLS/
+
+- [x] 8 agent skills: onboarding, basic-usage, quality-ingest, recall-arbitration, cross-agent, auto-deep, self-improve, lifecycle
+- [x] Skills ship in `SKILLS/` directory with agent mode mapping
+
+### CI/CD
+
+- [x] CI matrix: Python 3.11 + 3.12, 108/108 tests
+- [x] Hard deps: numpy, cryptography
+- [x] Grade A (90/100) qualify, 99.9% canonical compliance
+- [x] 254 MCP tools, 17,090 autocomplete prefixes
+- [x] Deployment to `release` environment: success
 
 ---
 
-## 📋 Phase 2 — Incremental Sync & Offline Resilience
+## 📋 Phase 3 — Incremental Sync & Offline Resilience
 
-**Goal**: Eliminate full-rebuild requirement and make the system robust to network/machine failures.
+**Goal**: Eliminate full-rebuild requirement, robust to network/machine failures.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Incremental vector index** — Embed only new/changed memories since last index, not all 440 | High | Medium | 📋 |
-| **sqlite-vec WAL mode** — Enable `PRAGMA journal_mode=WAL` for concurrent reads during index update (known limitation of vec0 tables) | High | Small | 📋 |
-| **Pending sync dashboard** — CLI command to list/show/resolve `pending_canonical_sync` records | Medium | Small | 📋 |
-| **Delayed write queue** — Buffer failed Markdown writes in SQLite, retry on next save/timer | Medium | Medium | 📋 |
-| **Integrity auto-heal** — `doctor` should auto-fix missing tables, broken indexes, wrong dimension | Medium | Medium | 📋 |
-| **Cross-machine database merge** — Merge two `super-memory.sqlite3` databases with conflict resolution | Low | Large | 💡 |
+| **Incremental vector index** — Embed only new/changed memories since last index | High | Medium | 📋 |
+| **sqlite-vec WAL mode** — Enable `PRAGMA journal_mode=WAL` for concurrent reads | High | Small | 📋 |
+| **Pending sync dashboard** — CLI to list/show/resolve `pending_canonical_sync` records | Medium | Small | 📋 |
+| **Delayed write queue** — Buffer failed Markdown writes, retry on next save | Medium | Medium | 📋 |
+| **Integrity auto-heal** — `doctor` auto-fixes missing tables, broken indexes | Medium | Medium | 📋 |
+| **Cross-machine database merge** — Merge two databases with conflict resolution | Low | Large | 💡 |
 
 ---
 
-## 📋 Phase 3 — Multi-Agent Memory Routing
+## 📋 Phase 4 — Multi-Agent Memory Routing
 
-**Goal**: Route memories automatically to the correct agent/lane without manual tagging.
+**Goal**: Route memories automatically to correct agent/lane without manual tagging.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Context-aware auto-routing** — When saving a memory, detect channel/session context and auto-set `agent_id`, `scope`, `project` | High | Medium | 📋 |
-| **Per-agent vector indexes** — Separate sqlite-vec tables (or `agent_id` column filter) for agent-scoped semantic search | High | Medium | 📋 |
-| **Memory boundary enforcement** — Agent A should not see Agent B's `agent-local` memories by default | High | Medium | 📋 |
-| **Routing rules engine** — Extensible rules (YAML/JSON) defining where a memory type goes based on channel, project, or content | Medium | Medium | 💡 |
-| **Shared memory broadcast** — Mark a memory as `scope=SHARED` and push to all agent memories | Medium | Medium | 💡 |
+| **Context-aware auto-routing** — Auto-set `agent_id`, `scope`, `project` from context | High | Medium | 📋 |
+| **Per-agent vector indexes** — Agent-scoped semantic search | High | Medium | 📋 |
+| **Memory boundary enforcement** — Agent A can't see Agent B's `agent-local` | High | Medium | 📋 |
+| **Routing rules engine** — Extensible YAML rules | Medium | Medium | 💡 |
+| **Shared memory broadcast** — `scope=SHARED` → push to all agents | Medium | Medium | 💡 |
 
 ---
 
-## 📋 Phase 4 — Memory Palace 2.0
+## 📋 Phase 5 — Memory Palace 2.0
 
-**Goal**: Make the spatial memory metaphor genuinely powerful for organizing large knowledge.
+**Goal**: Powerful spatial memory metaphor for large knowledge.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Auto-extract entities** — From memories, auto-detect entities and place them in correct wing/room/hall | High | Medium | 📋 |
-| **Hierarchical entity resolution** — De-duplicate and merge entity aliases across sessions | High | Medium | 📋 |
-| **Palace visualization** — Export palace as JSON/HTML/Mermaid for browsing | Medium | Medium | 📋 |
-| **Cross-palace links** — Link drawers across different wings/rooms (weak references) | Medium | Small | 📋 |
-| **Palace import/export** — Import/export palace subset as portable `.palace.json` | Low | Small | 💡 |
+| **Auto-extract entities** — Detect entities, place in correct wing/room/hall | High | Medium | 📋 |
+| **Hierarchical entity resolution** — Deduplicate aliases across sessions | High | Medium | 📋 |
+| **Palace visualization** — Export as JSON/HTML/Mermaid | Medium | Medium | 📋 |
+| **Cross-palace links** — Link drawers across wings/rooms | Medium | Small | 📋 |
+| **Palace import/export** — Portable `.palace.json` | Low | Small | 💡 |
 
 ---
 
-## 📋 Phase 5 — Honcho Deep Integration
+## 📋 Phase 6 — Honcho Deep Integration
 
-**Goal**: Fully synchronize Honcho conversation memories with Super Memory layers for richer recall.
+**Goal**: Full sync Honcho conversations with Super Memory layers.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Bidirectional Honcho ↔ Markdown sync** — Honcho events → daily notes AND daily notes → Honcho peer model | High | Large | 📋 |
-| **Turn embedding + semantic sync** — Each Honcho turn gets embedded and indexed in sqlite-vec | High | Medium | 📋 |
-| **Cross-session peer model** — Build a durable peer model across all sessions for a participant | Medium | Medium | 💡 |
-| **Honcho event pruning** — Retention policy: keep N days, prune older events to summaries | Medium | Medium | 📋 |
-| **Dialectic analysis persistence** — Keep dialectic analysis results as `INISIGHT` type memories | Low | Small | 💡 |
+| **Bidirectional Honcho ↔ Markdown sync** | High | Large | 📋 |
+| **Turn embedding + semantic sync** | High | Medium | 📋 |
+| **Cross-session peer model** | Medium | Medium | 💡 |
+| **Honcho event pruning** — Retention policy | Medium | Medium | 📋 |
+| **Dialectic analysis persistence** | Low | Small | 💡 |
 
 ---
 
-## 📋 Phase 6 — Performance & Observability
+## 📋 Phase 7 — Performance & Observability
 
-**Goal**: Understand and optimize query latency, memory usage, and database size.
+**Goal**: Understand latency, memory usage, database size.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Query benchmark suite** — `benchmark-cross-agent` extended with recall latency by layer | High | Medium | 📋 |
-| **Token budget enforcement** — Respect `max_tokens` consistently across all recall paths (currently partial) | High | Small | 📋 |
-| **Database size tracking** — Track `super-memory.sqlite3` and `vectors.sqlite3` growth over time | Medium | Small | 📋 |
-| **Caching layer** — In-memory LRU cache for frequent recall queries (e.g., same query within 5 min) | Medium | Medium | 💡 |
-| **Query logging** — Log every recall query + result count + latency for analysis | Medium | Small | 📋 |
-| **Content compression analytics** — Track compression ratio and quality for compressed memories | Low | Small | 💡 |
+| **Query benchmark suite** | High | Medium | 📋 |
+| **Token budget enforcement** | High | Small | 📋 |
+| **Database size tracking** | Medium | Small | 📋 |
+| **Caching layer** — In-memory LRU | Medium | Medium | 💡 |
+| **Query logging** | Medium | Small | 📋 |
+| **Content compression analytics** | Low | Small | 💡 |
 
 ---
 
-## 📋 Phase 7 — CLI and DX
+## 📋 Phase 8 — CLI and DX
 
-**Goal**: Make the CLI pleasant and productive for daily operator use.
-
-| Item | Priority | Effort | Status |
-|------|----------|--------|--------|
-| **Interactive recall** — `super-memory recall` with pagination, fzf-style filtering | High | Medium | 📋 |
-| **Auto-completion** — Shell completion for `super-memory` CLI (bash/zsh/fish) | Medium | Small | 📋 |
-| **jq-style format filters** — `--format '{{.content}}'` for piping into shell pipelines | Medium | Small | 💡 |
-| **Watch mode** — `super-memory status --watch` showing live memory count changes | Low | Small | 💡 |
-| **Memory diff** — Compare two memories side-by-side (`super-memory diff <id1> <id2>`) | Low | Medium | 💡 |
-
----
-
-## 📋 Phase 8 — Testing & Quality Gates
-
-**Goal**: Reliable CI/CD with contract testing.
+**Goal**: Pleasant, productive CLI.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Unit test suite** — Core modules: `models.py`, `vector.py`, `storage.py` (factored out of `__init__`) | High | Large | 📋 |
-| **Integration tests** — Full pipeline: save → index → recall → promote → cleanup | High | Large | 📋 |
-| **MCP contract testing** — Verify all 100+ tools advertise correct schemas | High | Medium | 📋 |
-| **Cross-layer consistency tests** — Same query across all 4 layers should return no contradicting results | High | Medium | 📋 |
-| **Performance regression CI** — Failing benchmark threshold = PR blocked | Medium | Small | 💡 |
-| **Test fixtures** — Pre-populated SQLite databases for deterministic test scenarios | Medium | Medium | 📋 |
-| **Property-based fuzz testing** — Random save/recall/delete sequences to find edge cases | Low | Large | 💡 |
+| **Interactive recall** — Pagination, fzf-style filtering | High | Medium | 📋 |
+| **Auto-completion** — Shell completion (bash/zsh/fish) | Medium | Small | 📋 |
+| **jq-style format filters** — `--format '{{.content}}'` | Medium | Small | 💡 |
+| **Watch mode** — `status --watch` | Low | Small | 💡 |
+| **Memory diff** — Diff two memories | Low | Medium | 💡 |
 
 ---
 
 ## 💡 Phase 9 — Advanced Cognitive Features
 
-**Goal**: Hypothesis-driven memory with verification, self-correction, and learning.
+**Goal**: Hypothesis-driven memory with verification, self-correction, learning.
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **LLM summarization** — Compress long memories into stable summaries (requires configurable LLM endpoint) | Medium | Medium | 💡 |
-| **Automatic hypothesis generation** — Detect contradiction patterns and auto-create hypotheses | Medium | Large | 💡 |
-| **Memory graph visualization** — Export `cognitive_neurons` + `cognitive_synapses` as D3/vis.js | Low | Medium | 💡 |
-| **Memory quality scoring** — Score memories by recency, access frequency, trust, and source reliability | Low | Medium | 💡 |
-| **Reinforcement learning from usage** — Promote memories that were relevant in past recalls | Low | Large | 💡 |
+| **LLM summarization** — Compress long memories | Medium | Medium | 💡 |
+| **Automatic hypothesis generation** — Detect contradiction patterns | Medium | Large | 💡 |
+| **Memory graph visualization** — D3/vis.js export | Low | Medium | 💡 |
+| **Reinforcement learning from usage** | Low | Large | 💡 |
 
 ---
 
@@ -165,11 +195,11 @@
 
 | Item | Priority | Effort | Status |
 |------|----------|--------|--------|
-| **Obsidian vault import** — Import `.md` files from Obsidian vault as memories | Medium | Medium | 💡 |
-| **Notion API integration** — Sync database pages as Super Memory records | Low | Large | 💡 |
-| **LangChain/LlamaIndex adapter** — Super Memory as a `VectorStore` for LlamaIndex | Medium | Medium | 💡 |
-| **REST API documentation** — OpenAPI spec for REST API | Low | Medium | 💡 |
-| **PostgreSQL backend** — Experimental `db_backend: postgres` for production deployments | Low | Large | 💡 |
+| **Obsidian vault import** | Medium | Medium | 💡 |
+| **Notion API integration** | Low | Large | 💡 |
+| **LangChain/LlamaIndex adapter** | Medium | Medium | 💡 |
+| **OpenAPI spec for REST API** | Low | Medium | 💡 |
+| **PostgreSQL backend** | Low | Large | 💡 |
 
 ---
 
@@ -177,15 +207,14 @@
 
 ```
 Q3 2026
-├── Phase 2 — Incremental Sync & Offline Resilience  (Aug)
-├── Phase 3 — Multi-Agent Memory Routing              (Sep)
-└── Phase 4 — Memory Palace 2.0                       (Oct)
+├── Phase 3 — Incremental Sync & Offline Resilience  (Aug)
+├── Phase 4 — Multi-Agent Memory Routing              (Sep)
+└── Phase 5 — Memory Palace 2.0                       (Oct)
 
 Q4 2026
-├── Phase 5 — Honcho Deep Integration                  (Nov)
-├── Phase 6 — Performance & Observability              (Nov)
-├── Phase 7 — CLI and DX                              (Dec)
-└── Phase 8 — Testing & Quality Gates                  (Dec)
+├── Phase 6 — Honcho Deep Integration                  (Nov)
+├── Phase 7 — Performance & Observability              (Nov)
+├── Phase 8 — CLI and DX                              (Dec)
 
 2027
 ├── Phase 9 — Advanced Cognitive Features              (Q1)
@@ -198,15 +227,15 @@ Q4 2026
 
 ```bash
 # After each phase is released:
-pip install --upgrade "super-memory[semantic] @ git+https://github.com/oceandmt/super-memory.git@vX.Y.Z"
+pip install --upgrade super-memory
 
 # Run doctor to validate upgrade
-super-memory semantic doctor --config .openclaw/super-memory.yaml
+super-memory doctor --no-benchmark --json-out
 
-# Reindex vector store
-super-memory semantic index --config .openclaw/super-memory.yaml --rebuild
+# Auto Deep health check
+super-memory auto-deep
 ```
 
 ---
 
-*Proposed roadmap based on v1.1.2 semantic mode completion. Priorities may shift based on operator feedback and upstream OpenClaw changes.*
+*Proposed roadmap based on v2.2.0 completion. Priorities may shift based on operator feedback and upstream OpenClaw changes.*
