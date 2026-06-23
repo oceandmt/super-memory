@@ -59,7 +59,52 @@ module.exports = function superMemoryPlugin(api) {
   }
 
 
-  async function post(path, body) {
+
+  function pickFirst(...values) {
+    for (const value of values) {
+      if (value !== undefined && value !== null && value !== '') return value;
+    }
+    return null;
+  }
+
+  function extractConversationMetadata(event = {}, ctx = {}) {
+    const meta = event.conversationInfo
+      || event.conversation_info
+      || event.untrustedMetadata
+      || event.untrusted_metadata
+      || event.metadata
+      || ctx.conversationInfo
+      || ctx.conversation_info
+      || ctx.untrustedMetadata
+      || ctx.untrusted_metadata
+      || ctx.metadata
+      || {};
+    const sender = event.senderInfo
+      || event.sender_info
+      || event.sender
+      || ctx.senderInfo
+      || ctx.sender_info
+      || ctx.sender
+      || {};
+    return {
+      messageId: pickFirst(meta.message_id, meta.messageId, event.messageId, event.message_id, ctx.messageId, ctx.message_id),
+      chatId: pickFirst(meta.chat_id, meta.chatId, event.chatId, event.chat_id, ctx.chatId, ctx.chat_id),
+      topicId: pickFirst(meta.topic_id, meta.topicId, event.topicId, event.topic_id, ctx.topicId, ctx.topic_id),
+      conversationLabel: pickFirst(meta.conversation_label, meta.conversationLabel, event.conversationLabel, event.conversation_label, ctx.conversationLabel, ctx.conversation_label),
+      senderId: pickFirst(meta.sender_id, meta.senderId, sender.id, event.senderId, event.sender_id, ctx.senderId, ctx.sender_id),
+      senderName: pickFirst(meta.sender, meta.sender_name, meta.senderName, sender.name, sender.username, sender.tag, event.senderName, event.sender, ctx.senderName, ctx.sender),
+      threadLabel: pickFirst(meta.thread_label, meta.threadLabel, event.threadLabel, event.thread_label, ctx.threadLabel, ctx.thread_label),
+      groupSubject: pickFirst(meta.group_subject, meta.groupSubject, event.groupSubject, event.group_subject, ctx.groupSubject, ctx.group_subject),
+      groupChannel: pickFirst(meta.group_channel, meta.groupChannel, event.groupChannel, event.group_channel, ctx.groupChannel, ctx.group_channel),
+      groupSpace: pickFirst(meta.group_space, meta.groupSpace, event.groupSpace, event.group_space, ctx.groupSpace, ctx.group_space),
+      inboundEventKind: pickFirst(meta.inbound_event_kind, meta.inboundEventKind, event.inboundEventKind, event.inbound_event_kind, ctx.inboundEventKind, ctx.inbound_event_kind),
+      isGroupChat: pickFirst(meta.is_group_chat, meta.isGroupChat, event.isGroupChat, event.is_group_chat, ctx.isGroupChat, ctx.is_group_chat),
+      messageTimestamp: pickFirst(meta.timestamp, meta.message_timestamp, event.timestamp, ctx.timestamp)
+    };
+  }
+
+
+    async function post(path, body) {
     const res = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -324,17 +369,7 @@ module.exports = function superMemoryPlugin(api) {
                 eventAgentId,
                 runId: event.runId || ctx.runId,
                 sessionKey: event.sessionKey || ctx.sessionKey,
-                topicId: event.topicId || event.topic_id || ctx.topicId || ctx.topic_id || null,
-                conversationLabel: event.conversation_label || ctx.conversation_label || null,
-                groupSubject: event.group_subject || ctx.group_subject || null,
-                groupChannel: event.group_channel || ctx.group_channel || null,
-                groupSpace: event.group_space || ctx.group_space || null,
-                threadLabel: event.thread_label || ctx.thread_label || null,
-                chatId: event.chatId || event.chat_id || ctx.chatId || ctx.chat_id || null,
-                senderId: event.senderId || event.sender_id || ctx.senderId || ctx.sender_id || null,
-                senderName: event.senderName || event.sender || ctx.senderName || ctx.sender || null,
-                inboundEventKind: event.inbound_event_kind || ctx.inbound_event_kind || null,
-                isGroupChat: event.is_group_chat !== undefined ? event.is_group_chat : ctx.is_group_chat !== undefined ? ctx.is_group_chat : null
+                ...extractConversationMetadata(event, ctx)
               }
             });
           } else {
