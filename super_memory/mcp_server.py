@@ -266,6 +266,24 @@ ADVANCED_TOOLS = {
     "super_memory_recall_record_correction",
     "super_memory_recall_feedback_stats",
     "super_memory_recall_generate_training_cases",
+    # P2: Projection Drift Repair
+    "super_memory_audit_drift",
+    "super_memory_repair_orphans",
+    "super_memory_full_drift_repair",
+    "super_memory_register_projection",
+    # P2: Adapter-driven Watcher
+    "super_memory_adapter_scan_once",
+    "super_memory_adapter_settle_scan",
+    "super_memory_adapter_monitor_status",
+    # P2: Line Citations / Neighbor Expansion
+    "super_memory_enrich_recall_with_citations",
+    "super_memory_track_source",
+    # P2: Agentic Dialectic Mode
+    "super_memory_dialectic_answer",
+    # P2: Self-Education Curriculum
+    "super_memory_analyze_recall_failures",
+    "super_memory_generate_curriculum",
+    "super_memory_run_benchmark_tests",
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
@@ -809,6 +827,24 @@ for _name, _desc, _props, _required in [
     ("super_memory_recall_record_correction", "Record a correction + generate training case.", {"query": {"type": "string"}, "memory_id": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_recall_feedback_stats", "Get recall feedback statistics (success/correction rates).", {"config_path": {"type": "string"}}, []),
     ("super_memory_recall_generate_training_cases", "Generate benchmark training cases from corrected recall events.", {"min_corrections": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, []),
+    # P2: Projection Drift Repair
+    ("super_memory_audit_drift", "Audit drift across all derived projections (orphaned, stale, missing).", {"config_path": {"type": "string"}}, []),
+    ("super_memory_repair_orphans", "Repair orphaned projection entries.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_full_drift_repair", "Full drift repair: audit + orphans + missing closets.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_register_projection", "Register a derived projection for drift tracking.", {"table_name": {"type": "string"}, "memory_id": {"type": "string"}, "projection_key": {"type": "string"}, "config_path": {"type": "string"}}, ["table_name", "memory_id", "projection_key"]),
+    # P2: Adapter-driven Watcher
+    ("super_memory_adapter_scan_once", "One-shot scan using SourceAdapters (detect changes + ingest through adapters).", {"directories": {"type": "array", "items": {"type": "string"}}, "exclude": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, []),
+    ("super_memory_adapter_settle_scan", "Debounced adapter-driven scan with settle detection.", {"directories": {"type": "array", "items": {"type": "string"}}, "exclude": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, []),
+    ("super_memory_adapter_monitor_status", "Get adapter monitor status.", {"config_path": {"type": "string"}}, []),
+    # P2: Line Citations
+    ("super_memory_enrich_recall_with_citations", "Build enriched citations from a recall result with line numbers and neighbor context.", {"recall_result": {"type": "object"}, "neighbor_lines": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, ["recall_result"]),
+    ("super_memory_track_source", "Register source file tracking for a memory.", {"memory_id": {"type": "string"}, "file_path": {"type": "string"}, "line_start": {"type": "integer", "default": 0}, "config_path": {"type": "string"}}, ["memory_id", "file_path"]),
+    # P2: Agentic Dialectic Mode
+    ("super_memory_dialectic_answer", "Answer using optional dialectic reasoning (format or synthesize).", {"query": {"type": "string"}, "recall_result": {"type": "object"}, "mode": {"type": "string", "default": "format"}, "config_path": {"type": "string"}}, ["query"]),
+    # P2: Self-Education Curriculum
+    ("super_memory_analyze_recall_failures", "Analyze recall feedback for failure patterns.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_generate_curriculum", "Full curriculum pipeline: analyze -> generate cases -> generate tests.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_run_benchmark_tests", "Run benchmark tests against training cases.", {"config_path": {"type": "string"}}, []),
 ]:
     TOOLS[_name] = {"description": _desc, "inputSchema": _schema(_props, _required)}
 
@@ -1276,7 +1312,77 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.project_state_update(project=args.get("project", "super-memory-github"), summary=args.get("summary", ""), facts=args.get("facts") or {}, config_path=args.get("config_path"))
     if name == "super_memory_issue_memory_update":
         return bridge.issue_memory_update(title=args.get("title", ""), status=args.get("status", "open"), cause=args.get("cause", ""), fix=args.get("fix", ""), verification=args.get("verification", ""), config_path=args.get("config_path"))
-    # ── P0 fixes: forget + edit ──────────────────────────────
+    # ── P0: MemoryEnvelope ───────────────────────────────────
+    if name == "super_memory_build_envelope":
+        return bridge.build_envelope(args.get("content"), memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
+    if name == "super_memory_remember_through_envelope":
+        return bridge.remember_through_envelope(args.get("content"), memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
+    # ── P0: SourceAdapter ────────────────────────────────────
+    if name == "super_memory_ingest_through_adapter":
+        return bridge.ingest_through_adapter(args.get("source_path"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
+    if name == "super_memory_list_source_adapters":
+        return bridge.list_source_adapters(config_path=args.get("config_path"))
+    if name == "super_memory_ingest_and_remember":
+        return bridge.ingest_and_remember(args.get("source_path"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
+    # ── P0: Semantic Closets ─────────────────────────────────
+    if name == "super_memory_build_closets":
+        return bridge.build_closets_for_memory(args.get("memory_id"), config_path=args.get("config_path"))
+    if name == "super_memory_rebuild_all_closets":
+        return bridge.rebuild_all_closets(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_search_closets":
+        return bridge.search_closets(args.get("query"), limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_hydrate_drawers":
+        return bridge.hydrate_drawers(drawer_ids=args.get("drawer_ids"), closet_ids=args.get("closet_ids"), config_path=args.get("config_path"))
+    if name == "super_memory_closet_stats":
+        return bridge.closet_stats(config_path=args.get("config_path"))
+    # ── P0: Recall Arbitration v3 ────────────────────────────
+    if name == "super_memory_recall_arbitrate_v3":
+        return bridge.recall_arbitrate_v3(args.get("query"), limit=args.get("limit", 10), config_path=args.get("config_path"), min_score=args.get("min_score", 0.0))
+    if name == "super_memory_recall_quick":
+        return bridge.recall_quick(args.get("query"), limit=args.get("limit", 5), config_path=args.get("config_path"))
+    # ── P0: Recall Feedback Loop ─────────────────────────────
+    if name == "super_memory_recall_record_event":
+        return bridge.recall_record_event(args.get("query"), args.get("selected_memory_ids", []), shown_to_user=args.get("shown_to_user", True), config_path=args.get("config_path"))
+    if name == "super_memory_recall_record_feedback":
+        return bridge.recall_record_feedback(args.get("recall_event_id"), args.get("memory_id"), args.get("outcome"), confidence=args.get("confidence", 1.0), notes=args.get("notes", ""), config_path=args.get("config_path"))
+    if name == "super_memory_recall_record_correction":
+        return bridge.recall_record_correction(args.get("query"), args.get("memory_id", ""), wrong_answer=args.get("wrong_answer", ""), expected_answer=args.get("expected_answer", ""), notes=args.get("notes", ""), config_path=args.get("config_path"))
+    if name == "super_memory_recall_feedback_stats":
+        return bridge.recall_feedback_stats(config_path=args.get("config_path"))
+    if name == "super_memory_recall_generate_training_cases":
+        return bridge.recall_generate_training_cases(min_corrections=args.get("min_corrections", 3), config_path=args.get("config_path"))
+    # ── P2: Projection Drift Repair ──────────────────────────
+    if name == "super_memory_audit_drift":
+        return bridge.audit_drift(config_path=args.get("config_path"))
+    if name == "super_memory_repair_orphans":
+        return bridge.repair_orphans(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_full_drift_repair":
+        return bridge.full_drift_repair(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_register_projection":
+        return bridge.register_projection(table_name=args.get("table_name"), memory_id=args.get("memory_id"), projection_key=args.get("projection_key"), config_path=args.get("config_path"))
+    # ── P2: Adapter-driven Watcher ───────────────────────────
+    if name == "super_memory_adapter_scan_once":
+        return bridge.adapter_scan_once(directories=args.get("directories"), exclude=args.get("exclude"), config_path=args.get("config_path"))
+    if name == "super_memory_adapter_settle_scan":
+        return bridge.adapter_settle_scan(directories=args.get("directories"), exclude=args.get("exclude"), config_path=args.get("config_path"))
+    if name == "super_memory_adapter_monitor_status":
+        return bridge.adapter_monitor_status(config_path=args.get("config_path"))
+    # ── P2: Line Citations / Neighbor Expansion ──────────────
+    if name == "super_memory_enrich_recall_with_citations":
+        return bridge.enrich_recall_with_citations(recall_result=args.get("recall_result", {}), neighbor_lines=args.get("neighbor_lines", 3), config_path=args.get("config_path"))
+    if name == "super_memory_track_source":
+        return bridge.track_source(memory_id=args.get("memory_id"), file_path=args.get("file_path"), line_start=args.get("line_start", 0), config_path=args.get("config_path"))
+    # ── P2: Agentic Dialectic Mode ───────────────────────────
+    if name == "super_memory_dialectic_answer":
+        return bridge.dialectic_answer(query=args.get("query"), recall_result=args.get("recall_result"), mode=args.get("mode", "format"), config_path=args.get("config_path"))
+    # ── P2: Self-Education Curriculum ────────────────────────
+    if name == "super_memory_analyze_recall_failures":
+        return bridge.analyze_recall_failures(config_path=args.get("config_path"))
+    if name == "super_memory_generate_curriculum":
+        return bridge.generate_curriculum(config_path=args.get("config_path"))
+    if name == "super_memory_run_benchmark_tests":
+        return bridge.run_benchmark_tests(config_path=args.get("config_path"))
+    # ── P0/P2 fixes: forget + edit ──────────────────────────
     if name == "super_memory_forget":
         return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
     if name == "super_memory_edit":

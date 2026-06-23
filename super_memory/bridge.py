@@ -1302,3 +1302,119 @@ def recall_generate_training_cases(
     """Generate training cases from corrected recall events."""
     from .recall.feedback import generate_training_cases
     return generate_training_cases(min_corrections=min_corrections, config_path=config_path)
+
+
+# ── P2: Projection Drift Repair ─────────────────────────────────────────────
+
+
+def audit_drift(config_path: str | None = None) -> dict[str, Any]:
+    """Audit drift across all derived projections."""
+    from .projections.drift_repair import audit_drift
+    return audit_drift(config_path=config_path)
+
+
+def repair_orphans(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Repair orphaned projection entries."""
+    from .projections.drift_repair import repair_orphans
+    return repair_orphans(dry_run=dry_run, config_path=config_path)
+
+
+def full_drift_repair(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Full drift repair: audit + orphans + missing closets."""
+    from .projections.drift_repair import full_repair
+    return full_repair(dry_run=dry_run, config_path=config_path)
+
+
+def register_projection(table_name: str, memory_id: str, projection_key: str, config_path: str | None = None) -> dict[str, Any]:
+    """Register a derived projection for drift tracking."""
+    from .projections.drift_repair import register_projection
+    return register_projection(table_name, memory_id, projection_key, config_path=config_path)
+
+
+# ── P2: Adapter-driven Watcher ─────────────────────────────────────────────
+
+
+def adapter_scan_once(
+    directories: list[str] | None = None,
+    exclude: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """One-shot scan using SourceAdapters."""
+    from .watcher_adapter import adapter_scan_once
+    return adapter_scan_once(directories=directories, exclude=exclude, config_path=config_path)
+
+
+def adapter_settle_scan(
+    directories: list[str] | None = None,
+    exclude: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Debounced adapter-driven scan with settle detection."""
+    from .watcher_adapter import adapter_settle_scan
+    return adapter_settle_scan(directories=directories, exclude=exclude, config_path=config_path)
+
+
+def adapter_monitor_status(config_path: str | None = None) -> dict[str, Any]:
+    """Get adapter monitor status."""
+    from .watcher_adapter import get_adapter_monitor
+    monitor = get_adapter_monitor(config_path=config_path)
+    return monitor.status()
+
+
+# ── P2: Line Citations / Neighbor Expansion ────────────────────────────────
+
+
+def enrich_recall_with_citations(
+    recall_result: dict[str, Any],
+    neighbor_lines: int = 3,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Build enriched citations from a recall result with line numbers and neighbor context."""
+    from .recall.line_citations import build_citations_from_recall
+    return build_citations_from_recall(recall_result, neighbor_lines=neighbor_lines, config_path=config_path)
+
+
+def track_source(
+    memory_id: str,
+    file_path: str,
+    line_start: int = 0,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Register source file tracking for a memory."""
+    from .recall.line_citations import track_memory_source
+    return track_memory_source(memory_id, file_path, line_start=line_start, config_path=config_path)
+
+
+# ── P2: Agentic Dialectic Mode ─────────────────────────────────────────────
+
+
+def dialectic_answer(
+    query: str,
+    recall_result: dict[str, Any] | None = None,
+    mode: str = "format",
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Answer using optional dialectic reasoning (format or synthesize)."""
+    from .recall.dialectic import dialectic_answer as _da
+    return _da(query=query, recall_result=recall_result, mode=mode, config_path=config_path)
+
+
+# ── P2: Self-Education Curriculum ──────────────────────────────────────────
+
+
+def analyze_recall_failures(config_path: str | None = None) -> dict[str, Any]:
+    """Analyze recall feedback for failure patterns."""
+    from .evals.curriculum import analyze_feedback_patterns
+    return analyze_feedback_patterns(config_path=config_path)
+
+
+def generate_curriculum(config_path: str | None = None) -> dict[str, Any]:
+    """Full curriculum pipeline: analyze → generate cases → generate tests."""
+    from .evals.curriculum import run_curriculum
+    return run_curriculum(config_path=config_path)
+
+
+def run_benchmark_tests(config_path: str | None = None) -> dict[str, Any]:
+    """Run benchmark tests against training cases."""
+    from .evals.curriculum import run_benchmarks
+    return run_benchmarks(config_path=config_path)
