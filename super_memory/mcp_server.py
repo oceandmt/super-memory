@@ -51,6 +51,21 @@ NORMAL_TOOLS = {
     "super_memory_search_sessions",
     "super_memory_cooldown_status",
     "super_memory_cooldown_clear",
+    # P1 Search Quality
+    "super_memory_hybrid_fuse",
+    "super_memory_diversify_results",
+    "super_memory_temporal_decay",
+    "super_memory_session_boost",
+    # P2 Embedding Providers
+    "super_memory_list_embedding_providers",
+    "super_memory_embed_text",
+    # P3 Infrastructure
+    "super_memory_rem_search",
+    "super_memory_rem_health",
+    "super_memory_watcher_scan",
+    "super_memory_flush_plan_status",
+    "super_memory_flush_session_memories",
+    "super_memory_reindex_all",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -412,6 +427,92 @@ TOOLS: dict[str, JSON] = {
         "description": "Clear all cooldown entries (reset unavailable state).",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
+    # ── P1: Search Quality ──────────────────────────────────────
+    "super_memory_hybrid_fuse": {
+        "description": "RRF-fuse text and vector search results for hybrid ranking.",
+        "inputSchema": _schema({
+            "text_results": {"type": "array", "items": {"type": "object"}},
+            "vector_results": {"type": "array", "items": {"type": "object"}},
+            "text_weight": {"type": "number", "default": 0.5},
+            "vector_weight": {"type": "number", "default": 0.5},
+            "top_k": {"type": "integer"},
+        }, ["text_results", "vector_results"]),
+    },
+    "super_memory_diversify_results": {
+        "description": "MMR-diversify search results for non-redundant ranking.",
+        "inputSchema": _schema({
+            "results": {"type": "array", "items": {"type": "object"}},
+            "query": {"type": "string"},
+            "top_k": {"type": "integer"},
+            "lambda_param": {"type": "number", "default": 0.7},
+        }, ["results", "query"]),
+    },
+    "super_memory_temporal_decay": {
+        "description": "Apply exponential temporal decay to search result scores.",
+        "inputSchema": _schema({
+            "results": {"type": "array", "items": {"type": "object"}},
+            "corpus": {"type": "string", "default": "memory"},
+            "half_life": {"type": "number"},
+        }, ["results"]),
+    },
+    "super_memory_session_boost": {
+        "description": "Boost search results from the current session.",
+        "inputSchema": _schema({
+            "results": {"type": "array", "items": {"type": "object"}},
+            "current_session_id": {"type": "string"},
+            "boost_factor": {"type": "number", "default": 0.3},
+        }, ["results"]),
+    },
+    # ── P2: Embedding Providers ───────────────────────────────────
+    "super_memory_list_embedding_providers": {
+        "description": "List all embedding providers with availability status.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_embed_text": {
+        "description": "Embed text to vector using the best available provider.",
+        "inputSchema": _schema({
+            "text": {"type": "string"},
+            "dimensions": {"type": "integer"},
+            "config_path": {"type": "string"},
+        }, ["text"]),
+    },
+    # ── P3: Infrastructure ───────────────────────────────────────
+    "super_memory_rem_search": {
+        "description": "REM nearest-neighbour vector search via sqlite_vec or numpy brute-force.",
+        "inputSchema": _schema({
+            "query_vector": {"type": "array", "items": {"type": "number"}},
+            "top_k": {"type": "integer", "default": 10},
+            "min_score": {"type": "number", "default": 0.0},
+            "config_path": {"type": "string"},
+        }, ["query_vector"]),
+    },
+    "super_memory_rem_health": {
+        "description": "REM health check (vector count).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_watcher_scan": {
+        "description": "One-shot file watcher scan for changed markdown files.",
+        "inputSchema": _schema({
+            "directories": {"type": "array", "items": {"type": "string"}},
+            "exclude": {"type": "array", "items": {"type": "string"}},
+            "config_path": {"type": "string"},
+        }),
+    },
+    "super_memory_flush_plan_status": {
+        "description": "Get flush plan status (pending session→project memories).",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_flush_session_memories": {
+        "description": "Execute flush: promote session-scoped memories to project scope.",
+        "inputSchema": _schema({
+            "limit": {"type": "integer", "default": 100},
+            "config_path": {"type": "string"},
+        }),
+    },
+    "super_memory_reindex_all": {
+        "description": "Atomic rebuild of all FTS5 + vector indices.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
 }
 
 for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
@@ -607,6 +708,66 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.cooldown_status(config_path=args.get("config_path"))
     if name == "super_memory_cooldown_clear":
         return bridge.cooldown_clear(config_path=args.get("config_path"))
+    # P1 Search Quality
+    if name == "super_memory_hybrid_fuse":
+        return bridge.hybrid_fuse(
+            args["text_results"], args["vector_results"],
+            text_weight=args.get("text_weight", 0.5),
+            vector_weight=args.get("vector_weight", 0.5),
+            top_k=args.get("top_k"),
+        )
+    if name == "super_memory_diversify_results":
+        return bridge.diversify_results(
+            args["results"], args["query"],
+            top_k=args.get("top_k"),
+            lambda_param=args.get("lambda_param", 0.7),
+        )
+    if name == "super_memory_temporal_decay":
+        return bridge.apply_temporal_decay(
+            args["results"],
+            corpus=args.get("corpus", "memory"),
+            half_life=args.get("half_life"),
+        )
+    if name == "super_memory_session_boost":
+        return bridge.boost_current_session(
+            args["results"],
+            current_session_id=args.get("current_session_id"),
+            boost_factor=args.get("boost_factor", 0.3),
+        )
+    # P2 Embedding Providers
+    if name == "super_memory_list_embedding_providers":
+        return bridge.list_embedding_providers(config_path=args.get("config_path"))
+    if name == "super_memory_embed_text":
+        return bridge.embed_text(
+            args["text"],
+            dimensions=args.get("dimensions"),
+            config_path=args.get("config_path"),
+        )
+    # P3 Infrastructure
+    if name == "super_memory_rem_search":
+        return bridge.rem_search(
+            args["query_vector"],
+            top_k=args.get("top_k", 10),
+            min_score=args.get("min_score", 0.0),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_rem_health":
+        return bridge.rem_health(config_path=args.get("config_path"))
+    if name == "super_memory_watcher_scan":
+        return bridge.watcher_scan(
+            directories=args.get("directories"),
+            exclude=args.get("exclude"),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_flush_plan_status":
+        return bridge.flush_plan_status(config_path=args.get("config_path"))
+    if name == "super_memory_flush_session_memories":
+        return bridge.flush_session_memories(
+            limit=args.get("limit", 100),
+            config_path=args.get("config_path"),
+        )
+    if name == "super_memory_reindex_all":
+        return bridge.reindex_all(config_path=args.get("config_path"))
     if name == "super_memory_conflicts":
         return bridge.conflicts(content=args.get("content"), memory_id=args.get("memory_id"), config_path=args.get("config_path"))
     if name == "super_memory_provenance":

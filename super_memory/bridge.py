@@ -13,7 +13,7 @@ from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize
 from .quality_gate import apply_quality_gate
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
-from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown
+from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown, mmr, temporal_decay, hybrid_search, session_visibility, embeddings_registry, rem, watcher, flush_plan, reindex
 
 
 
@@ -736,3 +736,130 @@ def cooldown_clear(config_path: str | None = None) -> dict[str, Any]:
     mgr = cooldown.get_cooldown_manager()
     mgr.clear()
     return {"ok": True, "cleared": True}
+
+
+# ── P1: Search Quality ───────────────────────────────────────────────────
+
+
+def diversify_results(
+    results: list[dict[str, Any]],
+    query: str,
+    *,
+    top_k: int | None = None,
+    lambda_param: float = 0.7,
+) -> list[dict[str, Any]]:
+    """Diversity-rerank search results via MMR."""
+    return mmr.diversify_results(results, query, top_k=top_k, lambda_param=lambda_param)
+
+
+def apply_temporal_decay(
+    results: list[dict[str, Any]],
+    corpus: str = "memory",
+    half_life: float | None = None,
+) -> list[dict[str, Any]]:
+    """Apply exponential temporal decay to scores."""
+    return temporal_decay.apply_temporal_decay(
+        results, corpus=corpus, half_life=half_life
+    )
+
+
+def hybrid_fuse(
+    text_results: list[dict[str, Any]],
+    vector_results: list[dict[str, Any]],
+    *,
+    text_weight: float = 0.5,
+    vector_weight: float = 0.5,
+    top_k: int | None = None,
+) -> list[dict[str, Any]]:
+    """RRF-fuse text and vector results."""
+    return hybrid_search.hybrid_search(
+        text_results, vector_results,
+        text_weight=text_weight, vector_weight=vector_weight, top_k=top_k,
+    )
+
+
+def boost_current_session(
+    results: list[dict[str, Any]],
+    current_session_id: str | None = None,
+    boost_factor: float = 0.3,
+) -> list[dict[str, Any]]:
+    """Boost results from the current session."""
+    return session_visibility.boost_current_session(
+        results, current_session_id, boost_factor=boost_factor
+    )
+
+
+# ── P2: Embedding Providers ──────────────────────────────────────────────
+
+
+def list_embedding_providers(config_path: str | None = None) -> dict[str, Any]:
+    """List all embedding providers with availability."""
+    providers = embeddings_registry.list_providers()
+    best = embeddings_registry.select_best_adapter()
+    return {
+        "ok": True,
+        "providers": providers,
+        "best": best.name if best else None,
+    }
+
+
+def embed_text(
+    text: str,
+    *,
+    dimensions: int | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Embed text using the best available provider."""
+    vec = embeddings_registry.embed_with_best(text, dimensions=dimensions)
+    if vec is None:
+        return {"ok": False, "error": "no embedding provider available"}
+    return {"ok": True, "vector": vec, "dimensions": len(vec)}
+
+
+# ── P3: Infrastructure ────────────────────────────────────────────────────
+
+
+def rem_search(
+    query_vector: list[float],
+    *,
+    top_k: int = 10,
+    min_score: float = 0.0,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """REM nearest-neighbour vector search."""
+    results = rem.rem_search(
+        query_vector, top_k=top_k, min_score=min_score, config_path=config_path
+    )
+    return {"ok": True, "results": results, "count": len(results)}
+
+
+def rem_health(config_path: str | None = None) -> dict[str, Any]:
+    """REM health check (vector count)."""
+    return rem.rem_health(config_path=config_path)
+
+
+def watcher_scan(
+    directories: list[str] | None = None,
+    exclude: list[str] | None = None,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """One-shot file watcher scan."""
+    return watcher.watcher_scan(directories=directories, exclude=exclude, config_path=config_path)
+
+
+def flush_plan_status(config_path: str | None = None) -> dict[str, Any]:
+    """Flush plan status (pending session-scoped memories)."""
+    return flush_plan.flush_plan_status(config_path=config_path)
+
+
+def flush_session_memories(
+    limit: int = 100,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Execute flush: session→project scope."""
+    return flush_plan.flush_session_memories(limit=limit, config_path=config_path)
+
+
+def reindex_all(config_path: str | None = None) -> dict[str, Any]:
+    """Atomic rebuild of all FTS5 + vector indices."""
+    return reindex.reindex_all(config_path=config_path)

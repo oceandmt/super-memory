@@ -58,6 +58,21 @@ from . import (
     cooldown,
     session_index,
 
+    # P1 — Search Quality
+    mmr,
+    temporal_decay,
+    hybrid_search,
+    session_visibility,
+
+    # P2 — Embedding Providers
+    embeddings_registry,
+
+    # P3 — Infrastructure
+    rem,
+    watcher,
+    flush_plan,
+    reindex,
+
     # Dev Tools
     auto_deep,
     diagnostics,
@@ -83,6 +98,12 @@ __all__ = [
     "sync", "telemetry", "agent_isolation",
     # P0
     "cooldown", "session_index",
+    # P1
+    "mmr", "temporal_decay", "hybrid_search", "session_visibility",
+    # P2
+    "embeddings_registry",
+    # P3
+    "rem", "watcher", "flush_plan", "reindex",
     # Dev
     "auto_deep", "diagnostics",
 ]
