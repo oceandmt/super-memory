@@ -26,3 +26,15 @@ Each skill covers one usage mode/flow of super-memory.
 | **Maintenance agent** | auto-deep → lifecycle → self-improve |
 | **Self-learning agent** | self-improve → auto-deep |
 | **Production agent** | all skills |
+
+## Recommended Cron Jobs
+
+For automated Dream Engine, Self-Improvement, and daily maintenance without manual intervention, set up these 3 cron jobs on new OpenClaw installs:
+
+| Job | Schedule | Description |
+|-----|----------|-------------|
+| **smem-daily-maintenance** | Daily 2AM | Semantic index, dedup, compression (`POST /maintenance/run light`) |
+| **smem-weekly-dream** | Sunday 3AM | Dream Engine full cycle (insight → weak tie → pattern summary) |
+| **smem-monthly-deep** | Day 1 4AM | Drift repair + self-heal + full maintenance |
+
+See [`docs/recommended-cron-jobs.md`](../docs/recommended-cron-jobs.md) for exact JSON payloads and setup instructions.
