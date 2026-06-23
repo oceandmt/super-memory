@@ -33,12 +33,21 @@ from . import (
     priming,
     reflex_arc,
 
+    # P0 — Quality & Arbitration
+    quality_gate,
+    recall_arbitration,
+    self_training,
+
+    # P1 — Semantic
+    semantic_taxonomy,
+
     # P2 — Workflows & Integration
     preference_detector,
     schema_assimilation,
     spaced_repetition,
     token_budget,
     query_expander,
+    workflows,
 
     # P3 — Sync Foundation & Observability
     sync,
@@ -60,6 +69,9 @@ __all__ = [
     "extraction", "embeddings", "cache", "triggers", "eternal_context",
     "brain_mode", "pipeline_integration", "hippocampal_replay",
     "pipeline_steps", "storage_mixins", "quality_scorer", "priming", "reflex_arc",
+    # P0-P2
+    "quality_gate", "recall_arbitration", "self_training",
+    "semantic_taxonomy", "workflows",
     # P2
     "preference_detector", "schema_assimilation", "spaced_repetition",
     "token_budget", "query_expander",
