@@ -384,6 +384,69 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                 changed2 = []
                 changed2.extend(_migrate_memories(conn))
                 changed2.extend(_migrate_honcho_events(conn))
+                # P0/P1 additive tables for projection drift, long-memory drawers,
+                # and Honcho-style peer/perspective memory.  CREATE IF NOT EXISTS
+                # keeps live DB migrations safe and repeatable.
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS projection_manifest (
+                        projection_id TEXT PRIMARY KEY,
+                        memory_id TEXT NOT NULL,
+                        projection_type TEXT NOT NULL,
+                        source_hash TEXT NOT NULL,
+                        projection_hash TEXT,
+                        adapter_name TEXT,
+                        adapter_version TEXT,
+                        status TEXT NOT NULL DEFAULT 'active',
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_projection_manifest_memory ON projection_manifest(memory_id);
+                    CREATE INDEX IF NOT EXISTS idx_projection_manifest_type_status ON projection_manifest(projection_type,status);
+                    CREATE TABLE IF NOT EXISTS semantic_drawers (
+                        drawer_id TEXT PRIMARY KEY,
+                        memory_id TEXT NOT NULL,
+                        layer TEXT,
+                        start_offset INTEGER,
+                        end_offset INTEGER,
+                        content TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                    CREATE TABLE IF NOT EXISTS semantic_closets (
+                        closet_id TEXT PRIMARY KEY,
+                        drawer_id TEXT NOT NULL,
+                        memory_id TEXT NOT NULL,
+                        closet_text TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                    );
+                    CREATE TABLE IF NOT EXISTS peer_profiles (
+                        peer_id TEXT PRIMARY KEY,
+                        workspace TEXT NOT NULL DEFAULT 'openclaw',
+                        role TEXT,
+                        display_name TEXT,
+                        stable_facts_json TEXT NOT NULL DEFAULT '[]',
+                        preferences_json TEXT NOT NULL DEFAULT '[]',
+                        goals_json TEXT NOT NULL DEFAULT '[]',
+                        habits_json TEXT NOT NULL DEFAULT '[]',
+                        constraints_json TEXT NOT NULL DEFAULT '[]',
+                        confidence REAL DEFAULT 0.7,
+                        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                    CREATE TABLE IF NOT EXISTS perspective_memories (
+                        id TEXT PRIMARY KEY,
+                        memory_id TEXT NOT NULL,
+                        observer_peer_id TEXT NOT NULL,
+                        observed_peer_id TEXT NOT NULL,
+                        workspace TEXT NOT NULL DEFAULT 'openclaw',
+                        session_id TEXT,
+                        observation_type TEXT,
+                        confidence REAL,
+                        source_ids_json TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                        metadata_json TEXT NOT NULL DEFAULT '{}'
+                    );
+                """)
                 view_changed = _migrate_views(conn)
                 fts5_changed = _migrate_fts5(conn)
             conn.commit()

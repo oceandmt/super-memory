@@ -65,6 +65,8 @@ def deep_audit(config_path=None):
         active_memory_ids: set[str] = set()
         canonical_memory_ids: set[str] = set()
         canonical_content_lens: list[int] = []
+        unresolved_long_canonical_lens: list[int] = []
+        mitigated_long_memories = 0
         for row in rows:
             rec = row_to_memory(row)
             is_soft_deleted = bool(rec.metadata.get("soft_deleted"))
@@ -82,7 +84,13 @@ def deep_audit(config_path=None):
                 active_memory_ids.add(rec.id)
                 if row["layer"] == "workspace_markdown":
                     canonical_memory_ids.add(rec.id)
-                    canonical_content_lens.append(len(rec.content))
+                    clen = len(rec.content)
+                    canonical_content_lens.append(clen)
+                    if clen > 2000:
+                        if rec.metadata.get("compression_policy") == "verbatim_drawers_plus_summary" and rec.metadata.get("canonical_retained"):
+                            mitigated_long_memories += 1
+                        else:
+                            unresolved_long_canonical_lens.append(clen)
 
             norm_tags = set(rec.normalized_tags())
             if not any(t.startswith("agent:") for t in norm_tags):
@@ -105,9 +113,11 @@ def deep_audit(config_path=None):
     canonical_compliance_pct = round(canonical_count / max(total_active, 1) * 100, 1)
     avg_len = sum(content_lens) / max(1, len(content_lens))
     max_len = max(content_lens) if content_lens else 0
-    # Long-memory audit should track active canonical source records only;
-    # counting every layer mirror inflates the number 3-4x.
-    long_memories = sum(1 for l in canonical_content_lens if l > 2000)
+    # Long-memory audit tracks unresolved active canonical source records only.
+    # Canonical long records that have been split into verbatim drawers +
+    # semantic closets are counted as mitigated because canonical content is
+    # intentionally retained for provenance.
+    long_memories = len(unresolved_long_canonical_lens)
 
     audit = {
         "total_memories": total,
@@ -123,6 +133,7 @@ def deep_audit(config_path=None):
         "avg_content_length": round(avg_len, 1),
         "max_content_length": max_len,
         "long_memories_over_2k": long_memories,
+        "mitigated_long_memories_over_2k": mitigated_long_memories,
         "duplicate_clusters": len(duplicates),
         "duplicates": duplicates[:10],
         "memories_without_agent_tag": no_agent_tag,

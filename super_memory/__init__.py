@@ -1,7 +1,7 @@
 from __future__ import annotations
 """Super Memory: local multi-layer memory app for OpenClaw multi-agents."""
 
-__version__ = "2.2.1"
+__version__ = "2.3.0"
 
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType
 from .service import SuperMemoryService

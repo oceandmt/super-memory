@@ -1584,3 +1584,68 @@ def run_benchmark_tests(config_path: str | None = None) -> dict[str, Any]:
     """Run benchmark tests against training cases."""
     from .evals.curriculum import run_benchmarks
     return run_benchmarks(config_path=config_path)
+
+
+# ── Improvement roadmap v2.3 additive bridge wrappers ─────────────────────
+def build_memory_envelope(content: str, memory_type: str = "context", scope: str = "session", agent_id: str = "lucas", session_id: str | None = None, project: str | None = None, tags: list[str] | None = None, source_adapter: str = "direct", trust_score: float | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from .core.envelope import build_envelope
+    env = build_envelope(content, memory_type=memory_type, scope=scope, agent_id=agent_id, session_id=session_id, project=project, tags=tags or [], source_adapter=source_adapter, trust_score=trust_score)
+    return {"ok": True, "envelope": env.to_memory_record()["metadata"] | {"id": env.id, "content": env.content, "type": env.type.value, "scope": env.scope.value}}
+
+def evaluate_write_gate(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    from .core.envelope import build_envelope
+    from .core.write_gate import evaluate_write
+    env = build_envelope(payload.get("content", ""), memory_type=payload.get("type"), scope=payload.get("scope"), agent_id=payload.get("agent_id", "lucas"), session_id=payload.get("session_id"), project=payload.get("project"), tags=payload.get("tags") or [], source_adapter=payload.get("source") or "direct", trust_score=payload.get("trust_score"), metadata=payload.get("metadata") or {})
+    return {"ok": True, "write_gate": evaluate_write(env).to_dict()}
+
+def projection_manifest_register(memory_id: str, projection_type: str, source_content: str = "", projection_content: str = "", config_path: str | None = None) -> dict[str, Any]:
+    from .projections.manifest import register_projection
+    return register_projection(memory_id, projection_type, source_content, projection_content, config_path=config_path)
+
+def projection_manifest_audit(config_path: str | None = None, limit: int = 200) -> dict[str, Any]:
+    from .projections.manifest import audit_projection_drift
+    return audit_projection_drift(config_path=config_path, limit=limit)
+
+def projection_manifest_repair(config_path: str | None = None, dry_run: bool = True) -> dict[str, Any]:
+    from .projections.manifest import repair_projection_drift
+    return repair_projection_drift(config_path=config_path, dry_run=dry_run)
+
+def projection_manifest_backfill(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
+    from .projections.manifest import backfill_projection_manifest
+    return backfill_projection_manifest(config_path=config_path, limit=limit)
+
+def long_memory_review(threshold: int = 2000, limit: int = 100, config_path: str | None = None) -> dict[str, Any]:
+    from .long_memory import review_long_memories
+    return review_long_memories(threshold=threshold, limit=limit, config_path=config_path)
+
+def long_memory_compress(memory_id: str, layer: str = "workspace_markdown", dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from .long_memory import compress_long_memory
+    return compress_long_memory(memory_id, layer=layer, dry_run=dry_run, config_path=config_path)
+
+def recall_arbitrate_v4(query: str, channels: dict[str, list[dict[str, Any]]], limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    from .recall.arbitration_v4 import arbitrate_v4
+    return arbitrate_v4(query, channels, limit=limit)
+
+def peer_profile_upsert(peer_id: str, facts: list[str] | None = None, preferences: list[str] | None = None, goals: list[str] | None = None, role: str = "human", workspace: str = "openclaw", config_path: str | None = None) -> dict[str, Any]:
+    from .peer_profile import upsert_peer_profile
+    return upsert_peer_profile(peer_id, workspace=workspace, role=role, facts=facts, preferences=preferences, goals=goals, config_path=config_path)
+
+def peer_profile_get(peer_id: str, config_path: str | None = None) -> dict[str, Any]:
+    from .peer_profile import get_peer_profile
+    return get_peer_profile(peer_id, config_path=config_path)
+
+def perspective_record(memory_id: str, observer_peer_id: str, observed_peer_id: str, session_id: str | None = None, observation_type: str = "explicit", config_path: str | None = None) -> dict[str, Any]:
+    from .peer_profile import record_perspective
+    return record_perspective(memory_id, observer_peer_id, observed_peer_id, session_id=session_id, observation_type=observation_type, config_path=config_path)
+
+def recall_benchmark_create(query: str, expected_contains: list[str] | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from .recall_benchmark import create_recall_case
+    return create_recall_case(query, expected_contains=expected_contains, config_path=config_path)
+
+def recall_benchmark_run(config_path: str | None = None, limit: int = 50) -> dict[str, Any]:
+    from .recall_benchmark import run_recall_benchmark
+    return run_recall_benchmark(config_path=config_path, limit=limit)
+
+def scheduled_maintenance_report(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+    from .maintenance_reports import run_scheduled_maintenance
+    return run_scheduled_maintenance(config_path=config_path, dry_run=dry_run)

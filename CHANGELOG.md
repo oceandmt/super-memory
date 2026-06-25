@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.3.0 (25 June 2026) — Memory quality roadmap
+
+### Added
+- Universal MemoryEnvelope/write-gate contract scaffolding.
+- Projection manifest with drift audit/repair/backfill.
+- Long-memory verbatim drawer + semantic closet compression workflow.
+- Recall evidence model and arbitration v4.
+- Peer profiles and perspective memory tables.
+- Recall regression benchmark and self-training queue integration.
+- Scheduled maintenance report workflow.
+
+### Improved
+- Deep audit now treats retained canonical long memories as mitigated when verbatim drawers + semantic closets exist.
+- Long-memory review skips already mitigated canonical records.
+- Live maintenance reduced unresolved long memories to threshold and kept vectors healthy.
+
+### Validation
+- Live DB self-heal: missing_vectors=0, skipped_empty=0.
+- Deep audit: A / health 100.
+- Deep qualify: A / 90.0.
+- Deep debug: 0 problems.
+- Projection drift sample: orphans=0, stale=0, missing=0.
+- Targeted tests: 6 passed.
+
 ## 2.2.1 (25 June 2026) — Maintenance, Recall Fallback, Self-Heal Accuracy
 
 ### Data-maintenance correctness

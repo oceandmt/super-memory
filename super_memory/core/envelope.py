@@ -318,7 +318,6 @@ def build_envelope(
     Use this as the primary entry point for creating envelopes.
     """
     import uuid
-    from .quality_gate import score_quality  # reuse existing scorer
 
     mem_id = str(uuid.uuid4())
 
