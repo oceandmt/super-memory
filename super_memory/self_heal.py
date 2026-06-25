@@ -58,7 +58,9 @@ def self_heal_embeddings(
                 "note": "no memory_vectors table exists",
             }
 
-        # Find memories missing vectors
+        # Find active, non-empty memories missing vectors.  Soft-deleted and
+        # empty-content rows are intentionally excluded: they cannot support
+        # useful embedding/recall and otherwise pollute the missing-vector count.
         missing = conn.execute(
             """
             SELECT m.id, m.content, m.layer
@@ -66,6 +68,7 @@ def self_heal_embeddings(
             LEFT JOIN memory_vectors v ON v.memory_id = m.id AND v.layer = m.layer
             WHERE m.content IS NOT NULL
               AND m.content != ''
+              AND COALESCE(json_extract(m.metadata_json, '$.soft_deleted'), 0) != 1
               AND v.id IS NULL
             LIMIT ?
             """,
@@ -115,13 +118,40 @@ def self_heal_status(config_path: str | None = None) -> dict[str, Any]:
                 """
                 SELECT COUNT(*) FROM memories m
                 LEFT JOIN memory_vectors v ON v.memory_id = m.id AND v.layer = m.layer
-                WHERE v.id IS NULL
+                WHERE m.content IS NOT NULL
+                  AND m.content != ''
+                  AND COALESCE(json_extract(m.metadata_json, '$.soft_deleted'), 0) != 1
+                  AND v.id IS NULL
+                """
+            ).fetchone()[0]
+            eligible = conn.execute(
+                """
+                SELECT COUNT(*) FROM memories
+                WHERE content IS NOT NULL
+                  AND content != ''
+                  AND COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) != 1
+                """
+            ).fetchone()[0]
+            skipped_soft_deleted = conn.execute(
+                """
+                SELECT COUNT(*) FROM memories
+                WHERE COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) = 1
+                """
+            ).fetchone()[0]
+            skipped_empty = conn.execute(
+                """
+                SELECT COUNT(*) FROM memories
+                WHERE COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) != 1
+                  AND (content IS NULL OR content = '')
                 """
             ).fetchone()[0]
             return {
                 "ok": True,
                 "total_memories": total,
+                "eligible_memories": eligible,
                 "missing_vectors": missing,
+                "skipped_soft_deleted": skipped_soft_deleted,
+                "skipped_empty": skipped_empty,
                 "table_exists": True,
             }
     except Exception as exc:

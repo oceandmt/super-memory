@@ -149,6 +149,21 @@ class RecallRequest(BaseModel):
     config_path: str | None = None
 
 
+class RecallRecordEventRequest(BaseModel):
+    query: str
+    selected_memory_ids: list[str] = Field(default_factory=list)
+    shown_to_user: bool = True
+    source: str = "plugin_auto"
+    config_path: str | None = None
+
+class RecallRecordFeedbackRequest(BaseModel):
+    recall_event_id: str
+    memory_id: str
+    outcome: str
+    confidence: float = 1.0
+    notes: str = ""
+    config_path: str | None = None
+
 class MemorySearchRequest(BaseModel):
     query: str
     max_results: int = 5
@@ -412,6 +427,27 @@ def normalize_memory(req: NormalizeMemoryRequest) -> dict[str, Any]:
 def recall(req: RecallRequest) -> dict[str, Any]:
     return bridge.recall(req.query, limit=req.limit, config_path=req.config_path)
 
+
+@app.post("/recall-record-event")
+def recall_record_event(req: RecallRecordEventRequest) -> dict[str, Any]:
+    return bridge.recall_record_event(
+        req.query,
+        req.selected_memory_ids,
+        shown_to_user=req.shown_to_user,
+        source=req.source,
+        config_path=req.config_path,
+    )
+
+@app.post("/recall-record-feedback")
+def recall_record_feedback(req: RecallRecordFeedbackRequest) -> dict[str, Any]:
+    return bridge.recall_record_feedback(
+        req.recall_event_id,
+        req.memory_id,
+        req.outcome,
+        confidence=req.confidence,
+        notes=req.notes,
+        config_path=req.config_path,
+    )
 
 @app.post("/memory-search")
 def memory_search(req: MemorySearchRequest) -> dict[str, Any]:

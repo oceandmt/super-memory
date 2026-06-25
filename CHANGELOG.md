@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.2.1 (25 June 2026) — Maintenance, Recall Fallback, Self-Heal Accuracy
+
+### Data-maintenance correctness
+- Fix `self_heal_status()` and `self_heal_embeddings()` to count only active, non-empty, non-soft-deleted memories as vector-eligible.
+- Add status breakdown: `eligible_memories`, `skipped_soft_deleted`, `skipped_empty`.
+- Prevent soft-deleted/empty rows from inflating missing-vector counts.
+
+### FTS / recall stability
+- Remove manual `memories_fts` writes from `layers.py`; current content-table FTS is maintained by triggers.
+- Add recall fallback paths for long diagnostic queries and stale/empty FTS states.
+- Filter soft-deleted rows from layer FTS search results.
+
+### Quality lifecycle
+- Add conservative `lifecycle_quality_cleanup()` wrapper for duplicate soft-delete and long-memory compression marking.
+- Improve dedup behavior to avoid writing duplicate marker rows.
+- Improve RRF dedup by content hash across layers.
+
+### Operations / indexing
+- Add recall event/feedback HTTP endpoints.
+- Add deterministic sqlite-vec lexical hash fallback when sqlite-vec lacks text embedding support.
+- Extend session indexing fallback to OpenClaw agent transcript locations and `.jsonl` files.
+
+### Tests
+- Add `tests/test_self_heal_status.py` for active/non-empty self-heal accounting.
+- Adjust lifecycle/contract tests for dedup guard behavior.
+
 ## 2.2.0 (23 June 2026) — P0+P2 + SKILLS Release
 
 ### P0 — MemoryEnvelope + SourceAdapter + Semantic Closets + Recall Arbitration v3

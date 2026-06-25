@@ -83,6 +83,27 @@ class SuperMemoryService:
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
 
+        # P0 Dedup guard: skip if same content_hash exists in active workspace_markdown
+        dedup_result = self.dedup_check(record)
+        if dedup_result.get("skipped"):
+            logger.info(
+                "save.dedup_skip",
+                skipped_id=record.id,
+                matched_id=dedup_result["matched_id"],
+                content_type=dedup_result.get("matched_type"),
+                content_hash=content_hash[:16],
+            )
+            # Mark metadata to indicate dedup was triggered
+            record.metadata["dedup_skipped"] = True
+            record.metadata["dedup_matched_id"] = dedup_result["matched_id"]
+            record.metadata["dedup_original_id"] = record.id
+            # Return existing record reference only. Do NOT write any marker row here:
+            # writing with matched_id would overwrite the canonical workspace row, and
+            # writing with a new ID would reintroduce duplicate noise.
+            return [SaveResult(layer=MemoryLayer.WORKSPACE_MARKDOWN, ok=True,
+                               message=f"dedup-skip: matched {dedup_result['matched_id']}",
+                               reference=dedup_result["matched_id"])]
+
         # P0 Firewall: check content before saving
         try:
             from .pipeline_integration import run_safety_firewall, enrich_with_relations, check_triggers
@@ -449,11 +470,12 @@ class SuperMemoryService:
 
         for records_in_layer in layered.values():
             for rank, rec in enumerate(records_in_layer):
-                key = f"{rec.id}:{rec.content}"
-                if key not in records:
-                    records[key] = rec
+                # Dedup by content_hash (canonical) or content (fallback) — across layers
+                content_hash = rec.metadata.get("content_hash") or rec.content
+                if content_hash not in records:
+                    records[content_hash] = rec
                 # RRF score: 1 / (k + rank)
-                scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+                scores[content_hash] = scores.get(content_hash, 0.0) + 1.0 / (k + rank + 1)
 
         if not scores:
             return []

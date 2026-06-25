@@ -84,7 +84,25 @@ class SQLiteVecAdapter(EmbeddingAdapter):
             from sqlite_vec.experimental import vector_from_text
             return vector_from_text(text, dim)
         except Exception:
-            raise RuntimeError(f"{self.name}: embed failed")
+            # sqlite-vec 0.1.x exposes vector storage/search but not text embedding.
+            # Provide a deterministic local lexical hash fallback so REM can be
+            # initialized without external APIs. This is not semantic embedding, but
+            # it gives stable approximate lexical vectors until a real provider
+            # (sentence_transformers/openai/etc.) is configured.
+            import hashlib
+            import math
+            import re
+            vec = [0.0] * dim
+            tokens = re.findall(r"[\w\u0080-\uffff]+", str(text).lower())
+            if not tokens:
+                return vec
+            for tok in tokens:
+                h = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()
+                idx = int.from_bytes(h[:4], "little") % dim
+                sign = -1.0 if (h[4] & 1) else 1.0
+                vec[idx] += sign
+            norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+            return [v / norm for v in vec]
 
     def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
         return [self.embed(t, dimensions=dimensions) for t in texts]

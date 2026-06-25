@@ -137,14 +137,12 @@ class SQLiteLayerBackend(MemoryBackend):
                     record.metadata.get("content_hash"),
                 ),
             )
-            # Fetch rowid after upsert, delete old FTS row to prevent duplicates
-            row = conn.execute("SELECT rowid FROM memories WHERE id = ? AND layer = ?", (record.id, self.layer.value)).fetchone()
-            if row:
-                conn.execute("DELETE FROM memories_fts WHERE rowid = ?", (row["rowid"],))
-                conn.execute(
-                    "INSERT INTO memories_fts(rowid, id, layer, content, tags) VALUES (?, ?, ?, ?, ?)",
-                    (row["rowid"], record.id, self.layer.value, record.content, " ".join(tags)),
-                )
+            # FTS maintenance is handled by migrations-created triggers.  Older
+            # databases used a standalone memories_fts(id, layer, content, tags)
+            # table; current DBs use content-table form memories_fts(content,
+            # content=memories, content_rowid=rowid).  Avoid manual writes here
+            # so the save path remains compatible with both schemas and does not
+            # break English FTS after a rebuild.
             if self.layer == MemoryLayer.MEMPALACE:
                 self._save_palace_projection(conn, record, tags)
             elif self.layer == MemoryLayer.HONCHO:
@@ -250,10 +248,26 @@ class SQLiteLayerBackend(MemoryBackend):
                         SELECT m.* FROM memories_fts f
                         JOIN memories m ON m.rowid = f.rowid
                         WHERE f.memories_fts MATCH ? AND m.layer = ?
+                          AND COALESCE(json_extract(m.metadata_json, '$.soft_deleted'), 0) != 1
                         ORDER BY rank LIMIT ?
                         """,
                         (fts_query, self.layer.value, limit),
                     ).fetchall()
+                    # Some live DBs had an empty/stale memories_fts after migration.
+                    # Fall back to tokenized LIKE so recall_arbitrate_v3 still works.
+                    if not rows:
+                        terms = [t for t in query.split() if len(t) > 2][:6]
+                        if terms:
+                            where = " AND ".join(["content LIKE ?" for _ in terms])
+                            rows = conn.execute(
+                                f"""
+                                SELECT * FROM memories
+                                WHERE layer = ? AND COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) != 1
+                                  AND {where}
+                                ORDER BY created_at DESC LIMIT ?
+                                """,
+                                (self.layer.value, *[f"%{t}%" for t in terms], limit),
+                            ).fetchall()
                 else:
                     rows = []
             except sqlite3.OperationalError:

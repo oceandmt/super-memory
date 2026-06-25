@@ -164,6 +164,12 @@ def index_all_sessions(
     root = Path(cfg.workspace_root)
     sdir = Path(sessions_dir) if sessions_dir else root / "sessions"
 
+    # Fallback: if default sessions dir missing, try agents subdirs
+    if not sdir.exists():
+        agents_root = Path.home() / ".openclaw" / "agents"
+        if agents_root.exists():
+            sdir = agents_root
+    
     if not sdir.exists():
         return {"ok": False, "error": f"sessions dir not found: {sdir}"}
 
@@ -174,8 +180,16 @@ def index_all_sessions(
     results: list[dict[str, Any]] = []
     errors = 0
 
-    for md_file in sorted(sdir.glob("*.md")):
+    # Support .jsonl and .md session transcript files
+    for md_file in sorted(sdir.rglob("*.md")):
         r = index_session_file(conn, md_file, root)
+        results.append(r)
+        if not r.get("ok"):
+            errors += 1
+    for jsonl_file in sorted(sdir.rglob("*.jsonl")):
+        if jsonl_file.name == 'sessions.json' or '.usage-' in jsonl_file.name:
+            continue
+        r = index_session_file(conn, jsonl_file, root)
         results.append(r)
         if not r.get("ok"):
             errors += 1

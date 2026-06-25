@@ -404,7 +404,112 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
     query = sanitize_prompt(query)
     layered = recall(query, limit=max(limit, 10), config_path=config_path)
     from .recall_arbitration import arbitrate
-    return arbitrate(query, layered, limit=limit)
+    result = arbitrate(query, layered, limit=limit)
+    if result.get("answer_context"):
+        return result
+
+    # Robust fallback for long diagnostic/natural-language queries: the legacy
+    # arbiter receives no candidates when strict FTS requires every query term.
+    # Compatible search already applies per-layer fallbacks, so route through it
+    # before reporting a false-negative recall miss.
+    try:
+        compat = memory_search(query, max_results=limit, min_score=0.0, corpus="all", config_path=config_path)
+        answer_context = []
+        selected = []
+        layer_votes: dict[str, int] = {}
+        for idx, hit in enumerate(compat.get("results", [])[:limit]):
+            rec = {
+                "id": hit.get("memory_id") or hit.get("id"),
+                "content": hit.get("snippet") or "",
+                "source": hit.get("path") or hit.get("source"),
+                "metadata": {"compat_hit": hit},
+            }
+            layer = hit.get("layer") or "compat"
+            layer_votes[layer] = layer_votes.get(layer, 0) + 1
+            item = {
+                "layer": layer,
+                "rank": idx,
+                "score": hit.get("score", 0.0),
+                "record": rec,
+                "why_selected": ["fallback=memory_search_compatible"],
+                "citation": hit.get("citation") or hit.get("path"),
+            }
+            answer_context.append(item)
+            selected.append(rec)
+        if answer_context:
+            return {
+                "query": query,
+                "answer_context": answer_context,
+                "selected_memories": selected,
+                "excluded_memories": result.get("excluded_memories", []),
+                "layer_votes": layer_votes,
+                "winner_policy": answer_context[0]["layer"],
+                "confidence": answer_context[0].get("score", 0.0),
+                "citations": [c.get("citation") for c in answer_context if c.get("citation")],
+                "why": "fallback via compatible memory_search after strict arbitration returned no candidates",
+                "fallback_terms": True,
+            }
+    except Exception:
+        pass
+
+    # Last-resort token-OR scan. This keeps diagnostics useful when FTS tables are
+    # stale/empty or strict AND semantics over-constrain a long query.
+    try:
+        import re as _re
+        from .config import load_config as _load_config
+        from .storage import SuperMemoryStore as _Store, row_to_memory as _row_to_memory
+        qterms = [t for t in _re.split(r"\W+", query.lower()) if len(t) > 3 and t not in {"super", "memory"}][:12]
+        if qterms:
+            cfg = _load_config(config_path)
+            store = _Store(cfg)
+            with store.connect() as conn:
+                clauses = " OR ".join(["LOWER(content) LIKE ?" for _ in qterms])
+                rows = conn.execute(
+                    f"""
+                    SELECT * FROM memories
+                    WHERE COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) != 1
+                      AND ({clauses})
+                    ORDER BY created_at DESC LIMIT ?
+                    """,
+                    (*[f"%{t}%" for t in qterms], limit * 4),
+                ).fetchall()
+            scored = []
+            seen = set()
+            for row in rows:
+                rec_obj = _row_to_memory(row)
+                rec = rec_obj.model_dump(mode="json")
+                key = rec.get("id") or rec.get("content", "")[:200]
+                if key in seen:
+                    continue
+                seen.add(key)
+                content_l = (rec.get("content") or "").lower()
+                overlap = sum(1 for t in qterms if t in content_l)
+                if overlap <= 0:
+                    continue
+                score = min(1.0, overlap / max(1, len(qterms)))
+                scored.append({
+                    "layer": row["layer"], "rank": len(scored), "score": score, "record": rec,
+                    "why_selected": [f"fallback_token_overlap={overlap}/{len(qterms)}"],
+                    "citation": rec.get("source") or rec.get("id"),
+                })
+            scored.sort(key=lambda x: x["score"], reverse=True)
+            if scored:
+                top = scored[:limit]
+                return {
+                    "query": query,
+                    "answer_context": top,
+                    "selected_memories": [c["record"] for c in top],
+                    "excluded_memories": result.get("excluded_memories", []),
+                    "layer_votes": {k: sum(1 for c in top if c["layer"] == k) for k in {c["layer"] for c in top}},
+                    "winner_policy": top[0]["layer"],
+                    "confidence": top[0]["score"],
+                    "citations": [c.get("citation") for c in top if c.get("citation")],
+                    "why": "fallback via token-OR scan after strict arbitration returned no candidates",
+                    "fallback_terms": qterms,
+                }
+    except Exception:
+        pass
+    return result
 
 def capture_failed_recall(query: str, wrong_answer: str = "", expected_answer: str = "", notes: str = "", config_path: str | None = None) -> dict[str, Any]:
     from .self_training import capture_failed_recall as _capture
@@ -457,6 +562,67 @@ def lifecycle_tier(action: str = "evaluate", dry_run: bool = True, limit: int = 
 
 def lifecycle_compression(action: str = "review", dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.compression(action=action, dry_run=dry_run, config_path=config_path, limit=limit)
+
+def lifecycle_quality_cleanup(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
+    """Quality cleanup wrapper for lifecycle tests/operators.
+
+    Conservative actions:
+    - Review active duplicate groups from lifecycle.review().
+    - Soft-delete all but the first ID in each duplicate group when apply.
+    - Mark long-content compression candidates via lifecycle.compression(action='mark').
+
+    This wrapper intentionally avoids hard deletes and does not truncate content.
+    """
+    import json as _json
+    from datetime import datetime, timezone
+    from .config import load_config as _load_config
+    from .storage import SuperMemoryStore as _Store
+
+    report = lifecycle.review(config_path=config_path, limit=limit)
+    duplicates = []
+    now = datetime.now(timezone.utc).isoformat()
+    for group in report.get("duplicates", []):
+        ids = list(dict.fromkeys(group.get("ids", [])))
+        if len(ids) <= 1:
+            continue
+        keep = ids[0]
+        for dup_id in ids[1:]:
+            duplicates.append({"id": dup_id, "kept": keep, "reason": "lifecycle_quality_duplicate"})
+
+    compression = lifecycle.compression(action="review", dry_run=True, config_path=config_path, limit=limit)
+    compression_candidates = compression.get("candidates", [])
+
+    applied_rows = 0
+    if not dry_run:
+        store = _Store(_load_config(config_path))
+        with store.connect() as conn:
+            for item in duplicates:
+                rows = conn.execute("SELECT id, layer, metadata_json FROM memories WHERE id=?", (item["id"],)).fetchall()
+                for row in rows:
+                    meta = _json.loads(row["metadata_json"] or "{}")
+                    if meta.get("soft_deleted") == 1:
+                        continue
+                    meta["soft_deleted"] = 1
+                    meta["deleted_at"] = now
+                    meta["deleted_reason"] = item["reason"]
+                    meta["merged_into"] = item["kept"]
+                    conn.execute(
+                        "UPDATE memories SET metadata_json=? WHERE id=? AND layer=?",
+                        (_json.dumps(meta, ensure_ascii=False), row["id"], row["layer"]),
+                    )
+                    applied_rows += 1
+        # Mark compression candidates after duplicate cleanup.
+        lifecycle.compression(action="mark", dry_run=False, config_path=config_path, limit=limit)
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "duplicates_count": len(duplicates),
+        "compression_count": len(compression_candidates),
+        "duplicates": duplicates,
+        "compression_candidates": compression_candidates[:50],
+        "applied_rows": applied_rows,
+    }
 
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)

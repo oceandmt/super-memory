@@ -37,14 +37,17 @@ def test_mcp_tools():
 
 
 def test_remember_and_show():
+    # Use unique content each run to avoid P2 dedup guard collision
+    import uuid
+    unique_content = f"Phase 8 contract memory {uuid.uuid4().hex[:12]}"
     # save
-    r = client.post("/remember", json={"content": "Phase 8 contract memory", "type": "fact"})
+    r = client.post("/remember", json={"content": unique_content, "type": "fact"})
     assert r.status_code == 200
     data = r.json()
     # Accept either top-level ok or nested record
     assert data.get("ok") or data.get("record")
     record = data.get("record") or {}
-    mem_id = record.get("id") or data.get("memory_id", "")
+    mem_id = record.get("id") or data.get("memory_id", "") or data.get("reference", "")
     assert mem_id
 
     # show
