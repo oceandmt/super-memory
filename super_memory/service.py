@@ -53,7 +53,11 @@ def infer_project_for_record(record: MemoryRecord, workspace_root: str | None = 
         return "super-memory-github"
     if "super memory" in text or "super-memory" in text or "super_memory" in text:
         return "super-memory"
-    if workspace_root and "super-memory-github" in str(workspace_root).lower():
+    if "openclaw-memory-system" in text:
+        return "openclaw-memory-system"
+    if ("source:neural_memory" in text or "openclaw-bridge" in text or "route:local-neural" in text or "source:memory" in text) and (record.scope.value == "project" or "scope:project" in text):
+        return "openclaw-memory-system"
+    if workspace_root and "super-memory-github" in str(workspace_root).lower() and ("super-memory" in text or "super_memory" in text):
         return "super-memory-github"
     return None
 

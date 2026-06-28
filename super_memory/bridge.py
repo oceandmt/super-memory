@@ -1924,3 +1924,11 @@ def duplicate_resolution_v2(threshold: float = 0.92, simhash_distance: int = 3, 
 def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     from .project_inference import backfill_projects
     return backfill_projects(limit=limit, dry_run=dry_run, config_path=config_path)
+
+def vector_coverage(config_path: str | None = None) -> dict[str, Any]:
+    from .validation import vector_coverage as _vector_coverage
+    return _vector_coverage(config_path=config_path)
+
+def graph_multihop_validation(query: str = "super memory project recall graph", limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    from .validation import graph_multihop_validation as _graph_multihop_validation
+    return _graph_multihop_validation(query=query, limit=limit, config_path=config_path)

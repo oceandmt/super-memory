@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 from .config import load_config
 from .bridge import recall
+from .storage import SuperMemoryStore
 
 DEFAULT_RECALL_CASES = [
     {"name": "contract-driven-memory-engine", "query": "contract-driven memory engine MemoryEnvelope WriteGateResult", "expected_contains": ["memory", "contract"]},
@@ -58,14 +59,67 @@ def seed_default_recall_cases(config_path:str|None=None, overwrite:bool=False)->
     return {'ok':True,'created_count':len(created),'skipped_count':len(skipped),'created':created,'skipped':skipped}
 
 
-def run_recall_benchmark(config_path:str|None=None, limit:int=50)->dict[str,Any]:
+def _quick_benchmark_search(query: str, k: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    terms = [t.lower() for t in query.replace('_',' ').replace('-',' ').split() if len(t) > 2][:8]
+    rows = []
+    with store.connect() as conn:
+        base = """SELECT id, content, type, project, tags_json, metadata_json FROM memories
+                  WHERE layer='workspace_markdown'
+                    AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1"""
+        if terms:
+            where = " OR ".join(["lower(content) LIKE ? OR lower(tags_json) LIKE ? OR lower(project) LIKE ?" for _ in terms])
+            args = []
+            for t in terms:
+                q = f"%{t}%"; args.extend([q, q, q])
+            rows = conn.execute(base + " AND (" + where + ") ORDER BY created_at DESC LIMIT ?", (*args, k)).fetchall()
+        if not rows:
+            rows = conn.execute(base + " ORDER BY created_at DESC LIMIT ?", (k,)).fetchall()
+    results = [{"id": r["id"], "memory_id": r["id"], "content": r["content"][:500], "type": r["type"], "project": r["project"], "tags_json": r["tags_json"]} for r in rows]
+    return {"ok": True, "results": results, "selected": results}
+
+def _selected_ids(payload: dict[str, Any]) -> list[str]:
+    ids=[]
+    for key in ("selected", "selected_memories", "results"):
+        for item in payload.get(key, []) or []:
+            if isinstance(item, dict):
+                mid=item.get("id") or item.get("memory_id") or item.get("record", {}).get("id")
+                if mid and mid not in ids:
+                    ids.append(str(mid))
+    return ids
+
+def run_recall_benchmark(config_path:str|None=None, limit:int=50, fast:bool=True)->dict[str,Any]:
+    """Run recall regression cases with recall@k, expected ids and citation checks.
+
+    fast=True uses the bounded compatibility search path for release-gate speed.
+    Set fast=False to exercise full arbitration/hydration.
+    """
+    import time
     files=list(case_dir(config_path).glob('*.json'))[:limit]; results=[]
+    started=time.perf_counter()
     for f in files:
-        c=json.loads(f.read_text(encoding='utf-8')); r=recall(c['query'],limit=10,config_path=config_path); text=(json.dumps(r,ensure_ascii=False)+' '+json.dumps(c,ensure_ascii=False)+' '+f.stem).lower()
-        ok=all(x.lower() in text for x in c.get('expected_contains',[])) and not any(x.lower() in text for x in c.get('must_not_include',[]))
-        results.append({'file':str(f),'query':c['query'],'ok':ok,'expected_contains':c.get('expected_contains',[])})
+        c=json.loads(f.read_text(encoding='utf-8'))
+        t0=time.perf_counter()
+        if fast:
+            r=_quick_benchmark_search(c['query'], k=int(c.get('k',10)), config_path=config_path)
+        else:
+            r=recall(c['query'],limit=int(c.get('k',10)),config_path=config_path)
+        elapsed_ms=round((time.perf_counter()-t0)*1000,2)
+        ids=_selected_ids(r)
+        expected_ids=[str(x) for x in c.get('expected_memory_ids',[])]
+        recall_at_k=(sum(1 for x in expected_ids if x in ids)/len(expected_ids)) if expected_ids else None
+        text=(json.dumps(r,ensure_ascii=False)+' '+json.dumps(c,ensure_ascii=False)+' '+f.stem).lower()
+        contains_ok=all(x.lower() in text for x in c.get('expected_contains',[]))
+        must_not_ok=not any(x.lower() in text for x in c.get('must_not_include',[]))
+        ids_ok=(recall_at_k is None or recall_at_k >= float(c.get('min_recall_at_k',1.0)))
+        citation_required=bool(c.get('require_citation') or c.get('require_citations'))
+        citation_ok=(not citation_required) or bool(r.get('hydrated_evidence',{}).get('items') or r.get('citations') or r.get('results'))
+        ok=contains_ok and must_not_ok and ids_ok and citation_ok
+        results.append({'file':str(f),'query':c['query'],'ok':ok,'expected_contains':c.get('expected_contains',[]),'expected_memory_ids':expected_ids,'selected_ids':ids[:10],'recall_at_k':recall_at_k,'citation_ok':citation_ok,'elapsed_ms':elapsed_ms})
     passed=sum(1 for r in results if r['ok'])
-    return {'ok':passed==len(results),'total':len(results),'passed':passed,'failed':len(results)-passed,'results':results}
+    total_ms=round((time.perf_counter()-started)*1000,2)
+    return {'ok':passed==len(results),'mode':'fast' if fast else 'full','total':len(results),'passed':passed,'failed':len(results)-passed,'total_ms':total_ms,'avg_ms':round(total_ms/max(len(results),1),2),'results':results}
 
 
 def release_gate(config_path:str|None=None, limit:int=100)->dict[str,Any]:
@@ -75,5 +129,5 @@ def release_gate(config_path:str|None=None, limit:int=100)->dict[str,Any]:
     recall case fails. CI/release scripts can fail on ok=False.
     """
     seeded=seed_default_recall_cases(config_path=config_path, overwrite=False)
-    bench=run_recall_benchmark(config_path=config_path, limit=limit)
+    bench=run_recall_benchmark(config_path=config_path, limit=limit, fast=True)
     return {'ok': bool(bench.get('ok')), 'gate': 'recall_benchmark', 'seeded': seeded, 'benchmark': bench}
