@@ -35,48 +35,145 @@ def _safe_memories_update(
         sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}';"
     conn.executescript(sql)
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    """Save a memory through MemoryEnvelope + WriteGate + canonical-first layer order.
+
+    Integrates MemoryEnvelope v1 (quality/trust/provenance/lifecycle) and
+    WriteGateResult (dedup/quarantine/allow) into the save path.
+    """
+    from .core.envelope import build_envelope as _build_envelope
+    from .core.write_gate import evaluate_write, WriteGateResult
+
     payload = apply_quality_gate(normalize_memory_payload(payload))
+
+    # Build envelope for contract metadata
+    env = _build_envelope(
+        content=payload["content"],
+        memory_type=payload.get("type", "context"),
+        scope=payload.get("scope", "session"),
+        agent_id=payload.get("agent_id", "lucas"),
+        session_id=payload.get("session_id"),
+        project=payload.get("project"),
+        tags=payload.get("tags", []),
+        source_adapter=payload.get("source") or "direct",
+        trust_score=payload.get("trust_score"),
+        metadata=payload.get("metadata", {}),
+    )
+
+    # WriteGate evaluation
     cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg) if payload.get("source") else None
+    existing_hashes = None
+    if store:
+        try:
+            with store.connect() as conn:
+                rows = conn.execute(
+                    "SELECT content_hash, id FROM memories WHERE content_hash IS NOT NULL AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 ORDER BY created_at DESC LIMIT 50"
+                ).fetchall()
+                existing_hashes = {r["content_hash"]: r["id"] for r in rows if r["content_hash"]}
+        except Exception:
+            pass
+    write_gate: WriteGateResult = evaluate_write(env, existing_hashes=existing_hashes)
+
+    if not write_gate.allow:
+        return {
+            "ok": False,
+            "envelope": env.__dict__,
+            "write_gate": write_gate.to_dict(),
+            "reason": f"WriteGate blocked: {write_gate.action} ({', '.join(write_gate.reasons)})",
+        }
+
+    # Pass envelope metadata + id through to MemoryRecord
+    record_id = payload.get("id") or env.id
     svc = SuperMemoryService(cfg)
     record = MemoryRecord(
+        id=record_id,
         content=payload["content"],
         type=payload.get("type", MemoryType.CONTEXT),
         scope=payload.get("scope", MemoryScope.SESSION),
         agent_id=payload.get("agent_id", "lucas"),
         session_id=payload.get("session_id"),
         project=payload.get("project"),
-        tags=payload.get("tags", []),
+        tags=payload.get("tags", []) + write_gate.suggested_tags,
         source=payload.get("source"),
-        trust_score=payload.get("trust_score"),
-        metadata=payload.get("metadata", {}),
+        trust_score=payload.get("trust_score") or env.effective_trust,
+        metadata={
+            **(payload.get("metadata", {})),
+            "envelope_id": env.id,
+            "quality_score": env.quality_score,
+            "content_hash": env.content_hash,
+            "write_gate_action": write_gate.action,
+            "write_gate_reasons": write_gate.reasons,
+            "provenance": [e.__dict__ if hasattr(e, '__dict__') else e for e in env.provenance.entries],
+            "lifecycle_policy": env.lifecycle_policy.__dict__,
+        },
     )
     results = svc.save(record)
     graph_projection = None
     try:
         graph_projection = graph.project_memory(record, config_path=config_path)
-    except Exception as exc:  # graph projection is derived and must not break canonical-first save
+    except Exception as exc:
         graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-    return {"record": record.model_dump(mode="json"), "results": [r.model_dump(mode="json") for r in results], "graph_projection": graph_projection}
+    return {
+        "ok": True,
+        "envelope": env.__dict__,
+        "write_gate": write_gate.to_dict(),
+        "record": record.model_dump(mode="json"),
+        "results": [r.model_dump(mode="json") for r in results],
+        "graph_projection": graph_projection,
+    }
 
 
 
 def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = None) -> dict[str, Any]:
+    """Save multiple memories through MemoryEnvelope + WriteGate + canonical-first."""
+    from .core.envelope import build_envelope as _build_envelope
+    from .core.write_gate import evaluate_write, WriteGateResult
+
     payloads = [apply_quality_gate(p) for p in normalize_memory_batch(payloads)]
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
     items = []
     for payload in payloads:
+        env = _build_envelope(
+            content=payload["content"],
+            memory_type=payload.get("type", "context"),
+            scope=payload.get("scope", "session"),
+            agent_id=payload.get("agent_id", "lucas"),
+            session_id=payload.get("session_id"),
+            project=payload.get("project"),
+            tags=payload.get("tags", []),
+            source_adapter=payload.get("source") or "direct",
+            trust_score=payload.get("trust_score"),
+            metadata=payload.get("metadata", {}),
+        )
+        write_gate: WriteGateResult = evaluate_write(env)
+        if not write_gate.allow:
+            items.append({
+                "ok": False,
+                "envelope": env.__dict__,
+                "write_gate": write_gate.to_dict(),
+                "reason": f"WriteGate blocked: {write_gate.action}",
+            })
+            continue
         record = MemoryRecord(
+            id=payload.get("id") or env.id,
             content=payload["content"],
             type=payload.get("type", MemoryType.CONTEXT),
             scope=payload.get("scope", MemoryScope.SESSION),
             agent_id=payload.get("agent_id", "lucas"),
             session_id=payload.get("session_id"),
             project=payload.get("project"),
-            tags=payload.get("tags", []),
+            tags=payload.get("tags", []) + write_gate.suggested_tags,
             source=payload.get("source"),
-            trust_score=payload.get("trust_score"),
-            metadata=payload.get("metadata", {}),
+            trust_score=payload.get("trust_score") or env.effective_trust,
+            metadata={
+                **(payload.get("metadata", {})),
+                "envelope_id": env.id,
+                "quality_score": env.quality_score,
+                "content_hash": env.content_hash,
+                "write_gate_action": write_gate.action,
+                "write_gate_reasons": write_gate.reasons,
+            },
         )
         results = svc.save(record)
         graph_projection = None
@@ -87,6 +184,8 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         canonical = next((r for r in results if r.layer.value == "workspace_markdown"), None)
         items.append({
             "ok": bool(canonical and canonical.ok),
+            "envelope": env.__dict__,
+            "write_gate": write_gate.to_dict(),
             "record": record.model_dump(mode="json"),
             "results": [r.model_dump(mode="json") for r in results],
             "graph_projection": graph_projection,
@@ -219,23 +318,98 @@ def optional_heavy(action: str, **kwargs: Any) -> dict[str, Any]:
         )
     return intelligence.heavy_optional(action, **kwargs)
 
-def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
-    query = sanitize_prompt(query)
+def _build_recall_channels(query: str, limit: int, config_path: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Collect recall candidates from all implemented recall channels."""
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
-    hits = svc.recall(query, limit=limit)
-    return {layer.value: [r.model_dump(mode="json") for r in records] for layer, records in hits.items()}
+    hits = svc.recall(query, limit=max(limit * 2, 20))
+    channels: dict[str, list[dict[str, Any]]] = {
+        layer.value: [r.model_dump(mode="json") for r in records]
+        for layer, records in hits.items()
+    }
+
+    # Add semantic closet/drawer evidence as a first-class channel when available.
+    try:
+        from .projections.closet import search_closets
+        closet_hits = search_closets(query, limit=limit, config_path=config_path)
+        rows = closet_hits.get("results") or closet_hits.get("items") or []
+        if rows:
+            channels["semantic_closet"] = rows
+    except Exception:
+        pass
+
+    # Add graph recall as a channel when available.
+    try:
+        grecall = graph.recall(query, limit=limit, config_path=config_path)
+        rows = grecall.get("results") or grecall.get("records") or []
+        if rows:
+            channels["graph"] = rows
+    except Exception:
+        pass
+
+    return channels
+
+
+def _hydrate_recall_selection(result: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    """Hydrate drawer/closet references from selected recall evidence."""
+    from .projections.closet import hydrate_closets
+    drawer_ids: list[str] = []
+    closet_ids: list[str] = []
+    for ev in result.get("selected", result.get("selected_memories", [])):
+        meta = ev.get("metadata") or {}
+        if meta.get("drawer_id"):
+            drawer_ids.append(str(meta["drawer_id"]))
+        if meta.get("closet_id"):
+            closet_ids.append(str(meta["closet_id"]))
+        # Some closet search rows expose ids directly.
+        if ev.get("channel") == "semantic_closet":
+            if ev.get("memory_id"):
+                drawer_ids.append(str(ev["memory_id"]))
+    if not drawer_ids and not closet_ids:
+        return {"ok": True, "results": [], "reason": "no drawer/closet refs"}
+    return hydrate_closets(drawer_ids=drawer_ids[:10], closet_ids=closet_ids[:10], config_path=config_path)
+
+
+def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    """Recall memories via Recall Arbitration V4 across all channels."""
+    query = sanitize_prompt(query)
+    from .recall.arbitration_v4 import arbitrate_v4
+    channels = _build_recall_channels(query, limit, config_path=config_path)
+    result = arbitrate_v4(query, channels, limit=limit)
+    result.setdefault("selected", result.get("selected_memories", []))
+    result.setdefault("excluded", result.get("excluded_memories", []))
+    result["channels"] = {k: len(v) for k, v in channels.items()}
+    try:
+        result["hydrated_evidence"] = _hydrate_recall_selection(result, config_path=config_path)
+    except Exception as exc:
+        result["hydrated_evidence"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return result
 
 
 def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    """Prefetch top memories through Recall Arbitration V4."""
     query = sanitize_prompt(query)
-    cfg = load_config(config_path)
-    svc = SuperMemoryService(cfg)
-    records = svc.prefetch(query, limit=limit)
-    return {"records": [r.model_dump(mode="json") for r in records]}
-
+    from .recall.arbitration_v4 import arbitrate_v4
+    channels = _build_recall_channels(query, limit, config_path=config_path)
+    result = arbitrate_v4(query, channels, limit=limit)
+    result.setdefault("selected", result.get("selected_memories", []))
+    result.setdefault("excluded", result.get("excluded_memories", []))
+    records = []
+    for ev in result.get("selected", result.get("selected_memories", [])):
+        records.append({
+            "id": ev.get("memory_id"),
+            "content": ev.get("content"),
+            "source": ev.get("citation"),
+            "layer": ev.get("layer"),
+            "score": ev.get("score"),
+            "why_selected": ev.get("why_selected"),
+            "channel": ev.get("channel"),
+            "metadata": ev.get("metadata", {}),
+        })
+    return {"records": records, "arbitration": result}
 
 def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
+    """Save compact turn event + auto-create perspective memory from metadata."""
     payload = dict(payload)
     if payload.get("user_message"):
         payload["user_message"] = sanitize_auto_capture(payload["user_message"])
@@ -252,7 +426,64 @@ def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[s
         metadata=payload.get("metadata", {}),
     )
     results = svc.sync_turn(ctx)
-    return {"results": [r.model_dump(mode="json") for r in results]}
+
+    # Auto-create perspective memory from chat/sender metadata.
+    perspective = None
+    meta = payload.get("metadata") or {}
+    sender = meta.get("sender") or meta.get("sender_id") or meta.get("username") or meta.get("name")
+    channel = meta.get("channel") or meta.get("conversation_label") or meta.get("chat_id")
+    group = meta.get("group_subject") or meta.get("group_channel")
+    if sender and ctx.user_message:
+        tags = ["agent:" + ctx.agent_id, "perspective:observed_turn"]
+        if channel:
+            tags.append("channel:" + str(channel)[:60])
+        if group:
+            tags.append("group:" + str(group)[:60])
+        perspective_note = (
+            f"[Perspective] Observed turn from {sender}"
+            f"{' in ' + group if group else ''}"
+            f"{' on ' + str(channel)[:40] if channel else ''}"
+        )
+        try:
+            from .core.envelope import build_envelope as _env
+            from .core.write_gate import evaluate_write
+            env = _env(
+                content=perspective_note,
+                memory_type="observation",
+                scope="session",
+                agent_id=ctx.agent_id,
+                session_id=ctx.session_id,
+                project=payload.get("project"),
+                tags=tags,
+                source_adapter="chat",
+                trust_score=0.5,
+                metadata={"sender": str(sender)[:120], "user_message_preview": ctx.user_message[:200]},
+            )
+            wg = evaluate_write(env)
+            if wg.allow:
+                record = MemoryRecord(
+                    id=env.id,
+                    content=perspective_note,
+                    type=MemoryType.CONTEXT,
+                    scope=MemoryScope.SESSION,
+                    agent_id=ctx.agent_id,
+                    session_id=ctx.session_id,
+                    project=payload.get("project"),
+                    tags=tags,
+                    source="chat",
+                    trust_score=env.effective_trust,
+                    metadata={"envelope_id": env.id, "quality_score": env.quality_score,
+                              "content_hash": env.content_hash, "perspective_auto": True,
+                              "sender": str(sender)[:120]},
+                )
+                perspective = svc.save(record)
+        except Exception as exc:
+            perspective = [{"ok": False, "error": f"{type(exc).__name__}: {exc}"}]
+
+    return {
+        "results": [r.model_dump(mode="json") for r in results],
+        "perspective": [r.model_dump(mode="json") for r in perspective] if perspective else None,
+    }
 
 
 def promote(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
@@ -825,9 +1056,15 @@ def deep_debug(config_path: str | None = None) -> dict[str, Any]:
     from . import deep_auto
     return deep_auto.deep_debug(config_path=config_path)
 
-def deep_improve(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+def deep_improve(dry_run: bool = True, config_path: str | None = None, compact: bool = False, max_seconds: int | None = None, async_mode: bool = False) -> dict[str, Any]:
+    if async_mode:
+        from .maintenance_jobs import deep_improve_mcp_safe
+        return deep_improve_mcp_safe(dry_run=dry_run, config_path=config_path, async_mode=True, compact=compact, max_seconds=max_seconds or 3)
     from . import deep_auto
-    return deep_auto.deep_improve(dry_run=dry_run, config_path=config_path)
+    result = deep_auto.deep_improve(dry_run=dry_run, config_path=config_path)
+    if compact:
+        return {"ok": result.get("ok", True), "mode": "sync", "compact": True, "summary": result.get("summary"), "audit_grade": result.get("audit_grade"), "qualify_grade": result.get("qualify_grade"), "problems_found": result.get("problems_found"), "applied_count": len(result.get("applied", [])), "improvement_count": len(result.get("improvement_proposals", []))}
+    return result
 
 def auto_deep_pipeline(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     from . import deep_auto
@@ -1646,6 +1883,44 @@ def recall_benchmark_run(config_path: str | None = None, limit: int = 50) -> dic
     from .recall_benchmark import run_recall_benchmark
     return run_recall_benchmark(config_path=config_path, limit=limit)
 
-def scheduled_maintenance_report(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+
+def recall_benchmark_seed(config_path: str | None = None, overwrite: bool = False) -> dict[str, Any]:
+    from .recall_benchmark import seed_default_recall_cases
+    return seed_default_recall_cases(config_path=config_path, overwrite=overwrite)
+
+
+def recall_release_gate(config_path: str | None = None, limit: int = 100) -> dict[str, Any]:
+    from .recall_benchmark import release_gate
+    return release_gate(config_path=config_path, limit=limit)
+
+
+def scheduled_maintenance_report(config_path: str | None = None, dry_run: bool = False, profile: str = "daily") -> dict[str, Any]:
     from .maintenance_reports import run_scheduled_maintenance
-    return run_scheduled_maintenance(config_path=config_path, dry_run=dry_run)
+    return run_scheduled_maintenance(config_path=config_path, dry_run=dry_run, profile=profile)
+
+
+def maintenance_enqueue(job_type: str, args: dict[str, Any] | None = None, config_path: str | None = None) -> dict[str, Any]:
+    from .maintenance_jobs import enqueue
+    return enqueue(job_type, args or {}, config_path=config_path)
+
+def maintenance_job_status(job_id: str, config_path: str | None = None) -> dict[str, Any]:
+    from .maintenance_jobs import status
+    return status(job_id, config_path=config_path)
+
+def maintenance_process_jobs(limit: int = 5, config_path: str | None = None) -> dict[str, Any]:
+    from .maintenance_jobs import process_jobs
+    return process_jobs(limit=limit, config_path=config_path)
+# ── Self-improvement orchestration ──────────────────────────────────────────
+
+def self_improvement_orchestrator(dry_run: bool = True, limit: int = 500, remember_lesson: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from .self_improvement.orchestrator import run_self_improvement_cycle
+    return run_self_improvement_cycle(dry_run=dry_run, limit=limit, remember_lesson=remember_lesson, config_path=config_path)
+
+def duplicate_resolution_v2(threshold: float = 0.92, simhash_distance: int = 3, limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from .write_contract.semantic_merge import soft_delete_duplicate_clusters
+    return soft_delete_duplicate_clusters(threshold=threshold, simhash_distance=simhash_distance, limit=limit, dry_run=dry_run, config_path=config_path)
+
+
+def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    from .project_inference import backfill_projects
+    return backfill_projects(limit=limit, dry_run=dry_run, config_path=config_path)

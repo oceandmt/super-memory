@@ -17,6 +17,7 @@ from .layers import MemoryBackend, SQLiteLayerBackend, WorkspaceMarkdownBackend
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType, SaveResult, SuperMemoryConfig
 from .observability import traced
 from .storage import SuperMemoryStore
+from .write_contract import register_memory as _wc_register_memory, find_duplicate as _wc_find_duplicate, ensure_schema as _wc_ensure_schema
 
 _HAS_STRUCTLOG = _importlib_util.find_spec("structlog") is not None
 if _HAS_STRUCTLOG:
@@ -32,6 +33,29 @@ SAVE_ORDER = [
     MemoryLayer.HONCHO,
     MemoryLayer.NEURAL_MEMORY,
 ]
+
+
+def infer_project_for_record(record: MemoryRecord, workspace_root: str | None = None) -> str | None:
+    """Infer a project for records that arrive without explicit project metadata.
+
+    Conservative and deterministic: it only fills obvious project names from
+    source paths, cwd/workspace paths, tags, or strong content mentions.
+    """
+    if record.project:
+        return record.project
+    text = " ".join([record.content[:2000], record.source or "", " ".join(record.tags or [])]).lower()
+    source = (record.source or "").replace("\\", "/")
+    if "/projects/" in source:
+        tail = source.split("/projects/", 1)[1].split("/", 1)[0]
+        if tail:
+            return tail
+    if "super-memory-github" in text or "projects/super-memory-github" in text:
+        return "super-memory-github"
+    if "super memory" in text or "super-memory" in text or "super_memory" in text:
+        return "super-memory"
+    if workspace_root and "super-memory-github" in str(workspace_root).lower():
+        return "super-memory-github"
+    return None
 
 
 def _run_auto_deep_background() -> None:
@@ -82,6 +106,13 @@ class SuperMemoryService:
         # Compute content hash for cross-layer drift detection
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
+
+        # Project inference/backfill for consistent project graph and recall scoping.
+        inferred_project = infer_project_for_record(record, workspace_root=str(self.config.workspace_root))
+        if inferred_project and not record.project:
+            record.project = inferred_project
+            record.metadata["project_inferred"] = True
+            record.metadata["project_inference_source"] = "service.save"
 
         # P0 Dedup guard: skip if same content_hash exists in active workspace_markdown
         dedup_result = self.dedup_check(record)
@@ -228,6 +259,13 @@ class SuperMemoryService:
             "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
             "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
         )
+        try:
+            with self.store.connect() as conn:
+                wc_dup = _wc_find_duplicate(conn, record.content, record.metadata, source=record.source)
+            if wc_dup.get("skipped"):
+                return {"skipped": True, "matched_id": wc_dup["matched_id"], "matched_content": "", "matched_type": "unknown", "reason": wc_dup.get("reason")}
+        except Exception:
+            pass
         with self.store.connect() as conn:
             row = conn.execute(
                 "SELECT id, content, type, created_at FROM memories "
@@ -278,6 +316,10 @@ class SuperMemoryService:
                     record.metadata.get("content_hash"),
                 ),
             )
+            try:
+                _wc_register_memory(conn, record, MemoryLayer.WORKSPACE_MARKDOWN.value)
+            except Exception as exc:
+                logger.warning("write_contract register failed (non-fatal)", memory_id=record.id, error=f"{type(exc).__name__}: {exc}")
             conn.commit()
 
     def _fallback_save(self, layer: MemoryLayer, record: MemoryRecord) -> SaveResult:
@@ -290,6 +332,13 @@ class SuperMemoryService:
         try:
             result = self.backends[layer].save(pending_record)
             result.pending_canonical_sync = True
+            if result.ok:
+                try:
+                    with self.store.connect() as conn:
+                        _wc_register_memory(conn, pending_record, layer.value)
+                        conn.commit()
+                except Exception:
+                    pass
             return result
         except Exception as exc:
             return SaveResult(

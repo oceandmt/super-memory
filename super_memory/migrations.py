@@ -447,6 +447,16 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                         metadata_json TEXT NOT NULL DEFAULT '{}'
                     );
                 """)
+                try:
+                    from .write_contract.migrations import ensure_schema as _wc_ensure_schema
+                    _wc_ensure_schema(conn)
+                    from .health_cache import ensure_schema as _hc_ensure_schema
+                    from .maintenance_jobs import ensure_schema as _mj_ensure_schema
+                    _hc_ensure_schema(conn)
+                    _mj_ensure_schema(conn)
+                    changed2.append("write_contract_health_maintenance_schema")
+                except Exception as exc:
+                    changed2.append(f"write_contract_schema_error:{type(exc).__name__}:{exc}")
                 view_changed = _migrate_views(conn)
                 fts5_changed = _migrate_fts5(conn)
             conn.commit()

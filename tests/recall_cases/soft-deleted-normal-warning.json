@@ -1,0 +1,9 @@
+{
+  "query": "soft-deleted records normal deep_debug warning",
+  "expected_contains": [
+    "soft"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.591539Z"
+}

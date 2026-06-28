@@ -197,6 +197,44 @@ def _ensure_tables(store: SuperMemoryStore) -> None:
                 content_hash TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+        """)
+        # Backward-compatible migration for pre-v1 drawer tables.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(palace_drawers)").fetchall()}
+        required = {"drawer_id", "memory_id", "content", "chunk_index", "offset_start", "offset_end", "content_hash", "created_at"}
+        if "drawer_id" not in cols:
+            # Old derived projection schemas are safe to rebuild from canonical memories.
+            conn.executescript("DROP TABLE IF EXISTS palace_closets; DROP TABLE IF EXISTS palace_drawers;")
+            conn.executescript("""
+            CREATE TABLE palace_drawers (
+                drawer_id TEXT PRIMARY KEY,
+                memory_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL DEFAULT 0,
+                offset_start INTEGER NOT NULL DEFAULT 0,
+                offset_end INTEGER NOT NULL DEFAULT 0,
+                content_hash TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """)
+            cols = required
+        if "content_hash" not in cols:
+            conn.execute("ALTER TABLE palace_drawers ADD COLUMN content_hash TEXT")
+        # Coexist with older MemPalace spatial schema users that expect wing/room/hall/id.
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(palace_drawers)").fetchall()}
+        compat_cols = {
+            "id": "TEXT",
+            "wing": "TEXT NOT NULL DEFAULT 'semantic'",
+            "room": "TEXT NOT NULL DEFAULT 'closets'",
+            "hall": "TEXT NOT NULL DEFAULT 'drawers'",
+            "checksum": "TEXT",
+            "source": "TEXT",
+            "source_file": "TEXT",
+            "metadata_json": "TEXT DEFAULT '{}'",
+        }
+        for col, spec in compat_cols.items():
+            if col not in cols:
+                conn.execute(f"ALTER TABLE palace_drawers ADD COLUMN {col} {spec}")
+        conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_drawers_memory_id ON palace_drawers(memory_id);
             CREATE INDEX IF NOT EXISTS idx_drawers_content_hash ON palace_drawers(content_hash);
 
@@ -251,6 +289,21 @@ def build_closets(memory_id: str, content: str, memory_type: str = "context", co
                 f"INSERT OR REPLACE INTO palace_closets ({cols}) VALUES ({placeholders})",
                 vals,
             )
+        # Mark long canonical memories as mitigated once their verbatim drawers and
+        # semantic closets are present. Canonical content is retained for provenance.
+        if len(content) > 2000:
+            try:
+                row = conn.execute("SELECT metadata_json FROM memories WHERE id=? AND layer='workspace_markdown'", (memory_id,)).fetchone()
+                meta = json.loads(row["metadata_json"] or "{}") if row else {}
+                meta["compression_policy"] = "verbatim_drawers_plus_summary"
+                meta["canonical_retained"] = True
+                meta["closet_status"] = "built"
+                meta["drawer_count"] = len(drawers)
+                meta["closet_count"] = len(closets)
+                conn.execute("UPDATE memories SET metadata_json=? WHERE id=? AND layer='workspace_markdown'", (json.dumps(meta, ensure_ascii=False), memory_id))
+                conn.commit()
+            except Exception:
+                pass
         conn.commit()
 
     return {

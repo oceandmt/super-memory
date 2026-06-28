@@ -1,0 +1,9 @@
+{
+  "query": "self_improvement_orchestrator audit qualify debug benchmark safe fixes",
+  "expected_contains": [
+    "improvement"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.541070Z"
+}

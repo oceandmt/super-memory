@@ -71,6 +71,12 @@ NORMAL_TOOLS = {
     "super_memory_set_index_identity",
     "super_memory_self_heal_embeddings",
     "super_memory_self_heal_status",
+    "super_memory_write_contract_process_jobs",
+    "super_memory_write_contract_reconcile",
+    "super_memory_write_contract_semantic_merge",
+    "super_memory_maintenance_enqueue",
+    "super_memory_maintenance_job_status",
+    "super_memory_maintenance_process_jobs",
     "super_memory_build_prompt_section",
     "super_memory_generate_narrative",
     "super_memory_rem_extract_all",
@@ -266,6 +272,9 @@ ADVANCED_TOOLS = {
     "super_memory_recall_record_correction",
     "super_memory_recall_feedback_stats",
     "super_memory_recall_generate_training_cases",
+    "super_memory_recall_benchmark_seed",
+    "super_memory_recall_release_gate",
+    "super_memory_scheduled_maintenance_report",
     # P2: Projection Drift Repair
     "super_memory_audit_drift",
     "super_memory_repair_orphans",
@@ -604,7 +613,43 @@ TOOLS: dict[str, JSON] = {
     },
     "super_memory_self_heal_status": {
         "description": "Show self-heal status (count of memories missing vectors).",
-        "inputSchema": _schema({"config_path": {"type": "string"}}),
+        "inputSchema": _schema({"config_path": {"type": "string"}, "mode": {"type": "string", "default": "fast"}}),
+    },
+    "super_memory_write_contract_process_jobs": {
+        "description": "Process write-contract outbox jobs (embedding/projection workers).",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_write_contract_reconcile": {
+        "description": "Reconcile write-contract integrity gaps and enqueue repair jobs.",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 200}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_write_contract_semantic_merge": {
+        "description": "Soft-delete normalized/semantic near-duplicate canonical memories.",
+        "inputSchema": _schema({"threshold": {"type": "number", "default": 0.92}, "simhash_distance": {"type": "integer", "default": 3}, "limit": {"type": "integer", "default": 500}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_duplicate_resolution_v2": {
+        "description": "Resolve duplicate clusters with canonical selection and soft-delete cleanup.",
+        "inputSchema": _schema({"threshold": {"type": "number", "default": 0.92}, "simhash_distance": {"type": "integer", "default": 3}, "limit": {"type": "integer", "default": 500}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_self_improvement_orchestrator": {
+        "description": "Run full self-improvement cycle: audit, qualify, debug, benchmark, safe fixes, snapshot, lesson.",
+        "inputSchema": _schema({"dry_run": {"type": "boolean", "default": True}, "limit": {"type": "integer", "default": 500}, "remember_lesson": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_project_backfill": {
+        "description": "Infer and backfill missing project metadata for active memories.",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_maintenance_enqueue": {
+        "description": "Enqueue an async maintenance job.",
+        "inputSchema": _schema({"job_type": {"type": "string"}, "args": {"type": "object"}, "config_path": {"type": "string"}}, ["job_type"]),
+    },
+    "super_memory_maintenance_job_status": {
+        "description": "Get async maintenance job status/result.",
+        "inputSchema": _schema({"job_id": {"type": "string"}, "config_path": {"type": "string"}}, ["job_id"]),
+    },
+    "super_memory_maintenance_process_jobs": {
+        "description": "Process async maintenance jobs.",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 5}, "config_path": {"type": "string"}}),
     },
     "super_memory_build_prompt_section": {
         "description": "Build markdown memory context section from search results.",
@@ -800,7 +845,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_deep_audit", "Comprehensive memory health audit.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_qualify", "Score memory quality and recall pipeline.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_debug", "Find operational issues and misconfigurations.", {"config_path": {"type": "string"}}, []),
-    ("super_memory_deep_improve", "Generate and optionally apply improvement proposals.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
+    ("super_memory_deep_improve", "Generate and optionally apply improvement proposals.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}, "async_mode": {"type": "boolean", "default": True}, "compact": {"type": "boolean", "default": True}, "max_seconds": {"type": "integer", "default": 3}}, []),
     ("super_memory_auto_deep_pipeline", "Run full Auto Deep pipeline: Audit -> Qualify -> Debug -> Improve.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     ("super_memory_capture_failed_recall", "Capture a failed recall/correction into self-training queue and recall regression case.", {"query": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_project_state_update", "Append a structured project-state update to canonical project memory markdown.", {"project": {"type": "string"}, "summary": {"type": "string"}, "facts": {"type": "object"}, "config_path": {"type": "string"}}, []),
@@ -827,6 +872,9 @@ for _name, _desc, _props, _required in [
     ("super_memory_recall_record_correction", "Record a correction + generate training case.", {"query": {"type": "string"}, "memory_id": {"type": "string"}, "wrong_answer": {"type": "string"}, "expected_answer": {"type": "string"}, "notes": {"type": "string"}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_recall_feedback_stats", "Get recall feedback statistics (success/correction rates).", {"config_path": {"type": "string"}}, []),
     ("super_memory_recall_generate_training_cases", "Generate benchmark training cases from corrected recall events.", {"min_corrections": {"type": "integer", "default": 3}, "config_path": {"type": "string"}}, []),
+    ("super_memory_recall_benchmark_seed", "Seed default recall benchmark cases for release gating.", {"overwrite": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, []),
+    ("super_memory_recall_release_gate", "Run release-gating recall benchmark check.", {"limit": {"type": "integer", "default": 100}, "config_path": {"type": "string"}}, []),
+    ("super_memory_scheduled_maintenance_report", "Run daily/weekly/release maintenance profile.", {"profile": {"type": "string", "default": "daily"}, "dry_run": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, []),
     # P2: Projection Drift Repair
     ("super_memory_audit_drift", "Audit drift across all derived projections (orphaned, stale, missing).", {"config_path": {"type": "string"}}, []),
     ("super_memory_repair_orphans", "Repair orphaned projection entries.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
@@ -1014,7 +1062,25 @@ def _call_tool(name: str, args: JSON) -> Any:
             config_path=args.get("config_path"),
         )
     if name == "super_memory_self_heal_status":
-        return bridge.self_heal_status(config_path=args.get("config_path"))
+        return bridge.self_heal_status(config_path=args.get("config_path"), mode=args.get("mode", "fast"))
+    if name == "super_memory_write_contract_process_jobs":
+        return bridge.write_contract_process_jobs(limit=args.get("limit", 50), config_path=args.get("config_path"))
+    if name == "super_memory_write_contract_reconcile":
+        return bridge.write_contract_reconcile(limit=args.get("limit", 200), config_path=args.get("config_path"))
+    if name == "super_memory_write_contract_semantic_merge":
+        return bridge.write_contract_semantic_merge(threshold=args.get("threshold", 0.92), simhash_distance=args.get("simhash_distance", 3), limit=args.get("limit", 500), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_duplicate_resolution_v2":
+        return bridge.duplicate_resolution_v2(threshold=args.get("threshold", 0.92), simhash_distance=args.get("simhash_distance", 3), limit=args.get("limit", 500), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_self_improvement_orchestrator":
+        return bridge.self_improvement_orchestrator(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), remember_lesson=args.get("remember_lesson", True), config_path=args.get("config_path"))
+    if name == "super_memory_project_backfill":
+        return bridge.project_backfill(limit=args.get("limit", 2000), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+    if name == "super_memory_maintenance_enqueue":
+        return bridge.maintenance_enqueue(args["job_type"], args=args.get("args") or {}, config_path=args.get("config_path"))
+    if name == "super_memory_maintenance_job_status":
+        return bridge.maintenance_job_status(args["job_id"], config_path=args.get("config_path"))
+    if name == "super_memory_maintenance_process_jobs":
+        return bridge.maintenance_process_jobs(limit=args.get("limit", 5), config_path=args.get("config_path"))
     if name == "super_memory_build_prompt_section":
         return bridge.build_prompt_section(
             args["results"],
@@ -1303,7 +1369,7 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_deep_debug":
         return bridge.deep_debug(config_path=args.get("config_path"))
     if name == "super_memory_deep_improve":
-        return bridge.deep_improve(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+        return bridge.deep_improve(dry_run=args.get("dry_run", True), config_path=args.get("config_path"), async_mode=args.get("async_mode", True), compact=args.get("compact", True), max_seconds=args.get("max_seconds", 3))
     if name == "super_memory_auto_deep_pipeline":
         return bridge.auto_deep_pipeline(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
     if name == "super_memory_capture_failed_recall":
@@ -1351,6 +1417,12 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.recall_feedback_stats(config_path=args.get("config_path"))
     if name == "super_memory_recall_generate_training_cases":
         return bridge.recall_generate_training_cases(min_corrections=args.get("min_corrections", 3), config_path=args.get("config_path"))
+    if name == "super_memory_recall_benchmark_seed":
+        return bridge.recall_benchmark_seed(config_path=args.get("config_path"), overwrite=args.get("overwrite", False))
+    if name == "super_memory_recall_release_gate":
+        return bridge.recall_release_gate(config_path=args.get("config_path"), limit=args.get("limit", 100))
+    if name == "super_memory_scheduled_maintenance_report":
+        return bridge.scheduled_maintenance_report(config_path=args.get("config_path"), dry_run=args.get("dry_run", False), profile=args.get("profile", "daily"))
     # ── P2: Projection Drift Repair ──────────────────────────
     if name == "super_memory_audit_drift":
         return bridge.audit_drift(config_path=args.get("config_path"))

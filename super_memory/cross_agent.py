@@ -169,7 +169,7 @@ class CrossAgentTools:
                 by[aid]["honcho_event_count"] = e["honcho_event_count"]
             elif not agent_id:
                 by[aid] = {"agent_id": aid, "memory_count": 0, "recent_activity": None, "honcho_event_count": e["honcho_event_count"]}
-        return {"ok": True, "days": days, "agents": sorted(by.values(), key=lambda x: max(x.get("recent_activity") or "", x.get("honcho_event_count") or ""), reverse=True)}
+        return {"ok": True, "days": days, "agents": sorted(by.values(), key=lambda x: (x.get("recent_activity") or "", int(x.get("honcho_event_count") or 0)), reverse=True)}
 
     def cross_agent_compare(self, agent_a: str = "lucas", agent_b: str = "alex", limit: int = 5) -> dict[str, Any]:
         """Compare two agents' memory overlap."""

@@ -1,0 +1,9 @@
+{
+  "query": "Recall Arbitration V4 channels quality trust hydration",
+  "expected_contains": [
+    "recall"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-25T23:16:01.040108Z"
+}

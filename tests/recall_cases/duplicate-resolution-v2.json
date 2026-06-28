@@ -1,0 +1,9 @@
+{
+  "query": "duplicate_resolution_v2 soft-delete duplicate clusters semantic merge",
+  "expected_contains": [
+    "duplicate"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.503513Z"
+}

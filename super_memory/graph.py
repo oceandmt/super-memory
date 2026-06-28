@@ -365,7 +365,7 @@ def cleanup_orphans(config_path: str | None = None) -> dict[str, Any]:
             """
             DELETE FROM cognitive_neurons
             WHERE source_memory_id IS NOT NULL
-              AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories)
+              AND source_memory_id NOT IN (SELECT DISTINCT id FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1)
             """
         )
         conn.execute("DELETE FROM cognitive_synapses WHERE source_neuron_id NOT IN (SELECT id FROM cognitive_neurons) OR target_neuron_id NOT IN (SELECT id FROM cognitive_neurons)")
