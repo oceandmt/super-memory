@@ -6,6 +6,7 @@ from .config import load_config
 from .models import MemoryRecord, MemoryType, MemoryScope
 from .service import infer_project_for_record
 from .storage import SuperMemoryStore, row_to_memory
+from . import graph
 
 
 def infer_project_text(content: str, source: str | None = None, tags: list[str] | None = None) -> str | None:
@@ -13,10 +14,10 @@ def infer_project_text(content: str, source: str | None = None, tags: list[str] 
     return infer_project_for_record(rec)
 
 
-def backfill_projects(limit: int = 2000, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+def backfill_projects(limit: int = 2000, dry_run: bool = True, config_path: str | None = None, rebuild_graph: bool = False) -> dict[str, Any]:
     cfg = load_config(config_path)
     store = SuperMemoryStore(cfg)
-    candidates=[]; updated=0
+    candidates=[]; updated=0; projected=0; projection_errors=[]
     with store.connect() as conn:
         rows=conn.execute("""
             SELECT * FROM memories
@@ -35,5 +36,13 @@ def backfill_projects(limit: int = 2000, dry_run: bool = True, config_path: str 
                 meta["project_inference_source"] = "backfill_projects"
                 conn.execute("UPDATE memories SET project=?, metadata_json=? WHERE id=? AND layer=?", (project, json.dumps(meta, ensure_ascii=False), rec.id, row["layer"]))
                 updated += 1
+                if rebuild_graph:
+                    rec.project = project
+                    rec.metadata = meta
+                    try:
+                        graph.project_memory(rec, config_path=config_path)
+                        projected += 1
+                    except Exception as exc:
+                        projection_errors.append({"id": rec.id, "error": f"{type(exc).__name__}: {exc}"})
         if not dry_run: conn.commit()
-    return {"ok": True, "dry_run": dry_run, "checked": len(rows), "candidate_count": len(candidates), "updated": updated, "candidates": candidates[:50]}
+    return {"ok": not projection_errors, "dry_run": dry_run, "checked": len(rows), "candidate_count": len(candidates), "updated": updated, "graph_projected": projected, "projection_errors": projection_errors[:20], "candidates": candidates[:50]}

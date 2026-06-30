@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import hashlib
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +63,9 @@ class WorkspaceMarkdownBackend(MemoryBackend):
         return hits
 
 
+_DB_INIT_LOCK = threading.Lock()
+_DB_INIT_DONE: set[str] = set()
+
 class SQLiteLayerBackend(MemoryBackend):
     """Local deterministic adapter for MemPalace/Honcho/NeuralMemory-style layers.
 
@@ -84,30 +88,35 @@ class SQLiteLayerBackend(MemoryBackend):
         return conn
 
     def _init_db(self) -> None:
-        # Use schema.sql as single source of truth for table definitions.
-        # run_migrations() handles CREATE IF NOT EXISTS + additive ALTERs.
-        from .migrations import run_migrations
-        run_migrations(self.config)
-        with self._connect() as conn:
-            # FTS5 is not in schema.sql (virtual table, tool-specific)
-            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
-            # Drop stale FTS triggers from previous schema versions to avoid
-            # UPDATE/INSERT failures. App manages FTS explicitly via code.
-            for _t_name in conn.execute('SELECT name FROM sqlite_master WHERE type="trigger" AND tbl_name="memories" AND name LIKE "memories_fts_%"').fetchall():
-                conn.execute(f'DROP TRIGGER IF EXISTS {_t_name["name"]}')
-            # FTS table may have stale schema (only content column). Detect and recreate.
-            try:
-                _fts_cols = {c[1] for c in conn.execute('PRAGMA table_info(memories_fts)').fetchall()}
-                if 'id' not in _fts_cols:
-                    conn.execute('DROP TABLE memories_fts')
-                    conn.execute('CREATE VIRTUAL TABLE memories_fts USING fts5(id, layer, content, tags)')
-            except Exception:
-                pass
-            try:
-                conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
-            except sqlite3.OperationalError as exc:
-                if "duplicate column" not in str(exc).lower():
-                    raise
+        db_key = str(self.path.resolve())
+        with _DB_INIT_LOCK:
+            if db_key in _DB_INIT_DONE:
+                return
+            # Use schema.sql as single source of truth for table definitions.
+            # run_migrations() handles CREATE IF NOT EXISTS + additive ALTERs.
+            from .migrations import run_migrations
+            run_migrations(self.config)
+            with self._connect() as conn:
+                # FTS5 is not in schema.sql (virtual table, tool-specific)
+                conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
+                # Drop stale FTS triggers from previous schema versions to avoid
+                # UPDATE/INSERT failures. App manages FTS explicitly via code.
+                for _t_name in conn.execute('SELECT name FROM sqlite_master WHERE type="trigger" AND tbl_name="memories" AND name LIKE "memories_fts_%"').fetchall():
+                    conn.execute(f'DROP TRIGGER IF EXISTS {_t_name["name"]}')
+                # FTS table may have stale schema (only content column). Detect and recreate.
+                try:
+                    _fts_cols = {c[1] for c in conn.execute('PRAGMA table_info(memories_fts)').fetchall()}
+                    if 'id' not in _fts_cols:
+                        conn.execute('DROP TABLE memories_fts')
+                        conn.execute('CREATE VIRTUAL TABLE memories_fts USING fts5(id, layer, content, tags)')
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE memories ADD COLUMN pending_canonical_sync INTEGER DEFAULT 0")
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        raise
+            _DB_INIT_DONE.add(db_key)
 
     def save(self, record: MemoryRecord) -> SaveResult:
         tags = record.normalized_tags()

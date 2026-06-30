@@ -24,9 +24,11 @@ DEFAULT_CONFIG_PATHS = [
 def load_config(path: str | Path | None = None) -> SuperMemoryConfig:
     candidates = [Path(path)] if path else DEFAULT_CONFIG_PATHS
     data: dict[str, Any] = {}
+    loaded_from: Path | None = None
     for candidate in candidates:
         if candidate.exists():
             data = yaml.safe_load(candidate.read_text(encoding="utf-8")) or {}
+            loaded_from = candidate.resolve()
             break
     if env_root := os.getenv("SUPER_MEMORY_WORKSPACE_ROOT"):
         data["workspace_root"] = env_root
@@ -34,4 +36,6 @@ def load_config(path: str | Path | None = None) -> SuperMemoryConfig:
         data["sqlite_path"] = env_sqlite
     if env_token := (os.getenv("SUPER_MEMORY_API_TOKEN") or os.getenv("API_TOKEN")):
         data["api_token"] = env_token
-    return SuperMemoryConfig(**data)
+    cfg = SuperMemoryConfig(**data)
+    object.__setattr__(cfg, "config_path", str(loaded_from) if loaded_from else (str(Path(path).resolve()) if path else None))
+    return cfg

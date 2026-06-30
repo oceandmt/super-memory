@@ -637,6 +637,10 @@ TOOLS: dict[str, JSON] = {
     },
     "super_memory_project_backfill": {
         "description": "Infer and backfill missing project metadata for active memories.",
+        "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "dry_run": {"type": "boolean", "default": True}, "rebuild_graph": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}),
+    },
+    "super_memory_project_synapse_backfill": {
+        "description": "Infer missing project metadata and rebuild project synapses.",
         "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}),
     },
     "super_memory_maintenance_enqueue": {
@@ -1074,7 +1078,9 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_self_improvement_orchestrator":
         return bridge.self_improvement_orchestrator(dry_run=args.get("dry_run", True), limit=args.get("limit", 500), remember_lesson=args.get("remember_lesson", True), config_path=args.get("config_path"))
     if name == "super_memory_project_backfill":
-        return bridge.project_backfill(limit=args.get("limit", 2000), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
+        return bridge.project_backfill(limit=args.get("limit", 2000), dry_run=args.get("dry_run", True), rebuild_graph=args.get("rebuild_graph", False), config_path=args.get("config_path"))
+    if name == "super_memory_project_synapse_backfill":
+        return bridge.project_synapse_backfill(limit=args.get("limit", 2000), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
     if name == "super_memory_maintenance_enqueue":
         return bridge.maintenance_enqueue(args["job_type"], args=args.get("args") or {}, config_path=args.get("config_path"))
     if name == "super_memory_maintenance_job_status":

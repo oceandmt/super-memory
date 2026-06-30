@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from .config import load_config
@@ -14,8 +15,29 @@ from .quality_gate import apply_quality_gate
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown, mmr, temporal_decay, hybrid_search, session_visibility, embeddings_registry, rem, watcher, flush_plan, reindex, index_identity, self_heal, prompt_section, narrative, rem_evidence, qmd
+from . import semantic as semantic_ops
+from . import maintenance as maintenance_ops
+from . import memory_core as memory_core_ops
 
 
+
+
+def _json_safe(value: Any) -> Any:
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    if hasattr(value, "value") and value.__class__.__module__ == "enum":
+        return value.value
+    return value
+
+
+def _envelope_dict(env: Any) -> dict[str, Any]:
+    if hasattr(env, "to_dict"):
+        return _json_safe(env.to_dict())
+    return _json_safe(asdict(env) if is_dataclass(env) else getattr(env, "__dict__", {}))
 
 
 def _safe_memories_update(
@@ -77,7 +99,7 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
     if not write_gate.allow:
         return {
             "ok": False,
-            "envelope": env.__dict__,
+            "envelope": _envelope_dict(env),
             "write_gate": write_gate.to_dict(),
             "reason": f"WriteGate blocked: {write_gate.action} ({', '.join(write_gate.reasons)})",
         }
@@ -115,7 +137,7 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return {
         "ok": True,
-        "envelope": env.__dict__,
+        "envelope": _envelope_dict(env),
         "write_gate": write_gate.to_dict(),
         "record": record.model_dump(mode="json"),
         "results": [r.model_dump(mode="json") for r in results],
@@ -182,14 +204,18 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         except Exception as exc:
             graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         canonical = next((r for r in results if r.layer.value == "workspace_markdown"), None)
-        items.append({
+        dedup_skipped = bool(canonical and canonical.message and str(canonical.message).startswith("dedup-skip"))
+        item = {
             "ok": bool(canonical and canonical.ok),
-            "envelope": env.__dict__,
+            "envelope": _envelope_dict(env),
             "write_gate": write_gate.to_dict(),
             "record": record.model_dump(mode="json"),
             "results": [r.model_dump(mode="json") for r in results],
             "graph_projection": graph_projection,
-        })
+        }
+        if dedup_skipped:
+            item["dedup"] = {"skipped": True, "matched_id": canonical.reference, "message": canonical.message}
+        items.append(item)
     return {"ok": all(item["ok"] for item in items), "items": items}
 
 def show(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
@@ -633,7 +659,16 @@ def parallel_save(payload: dict[str, Any], config_path: str | None = None) -> di
 
 def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
     query = sanitize_prompt(query)
-    layered = recall(query, limit=max(limit, 10), config_path=config_path)
+    raw_layered = recall(query, limit=max(limit, 10), config_path=config_path)
+    if isinstance(raw_layered, dict) and "selected_memories" in raw_layered and "answer_context" in raw_layered:
+        selected_records = []
+        for ev in raw_layered.get("selected_memories", []) or []:
+            rec = ev.get("record") if isinstance(ev, dict) else None
+            if isinstance(rec, dict):
+                selected_records.append(rec)
+        layered = {"arbitration_v4": selected_records}
+    else:
+        layered = raw_layered
     from .recall_arbitration import arbitrate
     result = arbitrate(query, layered, limit=limit)
     if result.get("answer_context"):
@@ -858,9 +893,20 @@ def lifecycle_quality_cleanup(dry_run: bool = True, limit: int = 500, config_pat
 def reflex_status(config_path: str | None = None) -> dict[str, Any]:
     return lifecycle.reflex_status(config_path=config_path)
 
+def embedding_doctor(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core_ops.embedding_doctor(config_path=config_path)
+
+def embedding_auto_select(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core_ops.embedding_auto_select(config_path=config_path)
+
 # Semantic quality / short-term maintenance
+def semantic_doctor(config_path: str | None = None, query: str = "semantic recall smoke test") -> dict[str, Any]:
+    """Bridge wrapper for semantic doctor checks."""
+    return semantic_ops.semantic_doctor(config_path=config_path, query=query)
+
 def semantic_quality_audit(config_path: str | None = None) -> dict[str, Any]:
-    return semantic_quality.quality_audit(config_path=config_path)
+    """Bridge wrapper preserving the semantic quality audit contract."""
+    return semantic_ops.semantic_quality_audit(config_path=config_path)
 
 def semantic_verify(query: str = "semantic recall smoke test", limit: int = 5, config_path: str | None = None) -> dict[str, Any]:
     return semantic_quality.verify(query=query, limit=limit, config_path=config_path)
@@ -869,24 +915,30 @@ def semantic_index(rebuild: bool = False, batch_size: int = 8, limit: int | None
     return semantic_quality.index(rebuild=rebuild, batch_size=batch_size, limit=limit, config_path=config_path)
 
 def short_term_audit(limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    return short_term.audit(limit=limit, config_path=config_path)
+    return memory_core_ops.short_term_audit(limit=limit, config_path=config_path)
 
 def short_term_mark_reviewed(cluster_key: str, decision: str = "deferred", config_path: str | None = None) -> dict[str, Any]:
-    return short_term.mark_reviewed(cluster_key=cluster_key, decision=decision, config_path=config_path)
+    return memory_core_ops.short_term_mark_reviewed(cluster_key=cluster_key, decision=decision, config_path=config_path)
 
 def short_term_repair(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    return short_term.repair(dry_run=dry_run, limit=limit, config_path=config_path)
+    return memory_core_ops.short_term_repair(dry_run=dry_run, limit=limit, config_path=config_path)
+
+
+def dreaming_audit(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core_ops.dreaming_audit(config_path=config_path)
+
+
+def dreaming_run(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return memory_core_ops.dreaming_run(limit=limit, dry_run=dry_run, config_path=config_path)
+
+
+def dreaming_repair(config_path: str | None = None) -> dict[str, Any]:
+    return memory_core_ops.dreaming_repair(config_path=config_path)
 
 def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | None = None) -> dict[str, Any]:
-    return {
-        "ok": True,
-        "dry_run": dry_run,
-        "semantic_index": semantic_index(rebuild=False, limit=limit, config_path=config_path),
-        "short_term": short_term_repair(dry_run=dry_run, limit=limit, config_path=config_path),
-        "compression": lifecycle_compression(action="mark", dry_run=dry_run, limit=limit, config_path=config_path),
-        "consolidation": consolidate(strategy="dedup", dry_run=dry_run, config_path=config_path),
-        "semantic_quality": semantic_quality_audit(config_path=config_path),
-    }
+    """Bridge wrapper for full safe maintenance workflow."""
+    SuperMemoryService(load_config(config_path))
+    return maintenance_ops.maintenance_run(dry_run=dry_run, limit=limit, config_path=config_path)
 
 def leitner_queue(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
     """Return memories due for Leitner review."""
@@ -1095,11 +1147,25 @@ def durable_pack(pack_name: str = "openclaw-super-memory-durable-pack-v1", proje
     qual_results = []
     for q in qualification_queries():
         res = recall(q, limit=3, config_path=config_path)
-        total = sum(len(v) for v in res.values())
+        # recall() now returns an arbitration payload with scalar fields plus
+        # selected/answer_context lists. Older durable-pack qualification code
+        # assumed a layer->list mapping and crashed on scalar values such as
+        # confidence. Count selected evidence first, then fall back to any
+        # list-valued legacy layer payloads for backwards compatibility.
+        selected = res.get("selected") or res.get("selected_memories") or res.get("answer_context") or []
+        if isinstance(selected, list):
+            total = len(selected)
+        else:
+            total = sum(len(v) for v in res.values() if isinstance(v, list))
         qual_results.append({"ok": total > 0, "query": q[:60], "hit_count": total})
-    has_duplicates = sum(1 for r in saved.get('results', []) if not r.get('ok')) == 0
+    saved_items = saved.get("items", []) if isinstance(saved, dict) else []
+    has_duplicates = all(item.get("ok") or item.get("dedup", {}).get("skipped") for item in saved_items)
     st = {"ok": True, "duplicates_count": 0}
-    return {"ok": True, "pack_name": pack_name, "saved": {"ok": has_duplicates, "items": saved}, "qualification": qual_results, "status": st}
+    debug_payload = {"health": cross_layer_health(config_path=config_path)} if debug else None
+    out = {"ok": True, "pack_name": pack_name, "saved": {"ok": has_duplicates, "items": saved_items, "raw": saved}, "qualification": qual_results, "status": st}
+    if debug_payload is not None:
+        out["debug"] = debug_payload
+    return out
 
 def durable_pack_status(pack_name: str = "openclaw-super-memory-durable-pack-v1", project: str = "super-memory", config_path: str | None = None) -> dict[str, Any]:
     return {"ok": True, "found_items": 6, "expected_items": 6, "duplicates_count": 0}
@@ -1921,9 +1987,15 @@ def duplicate_resolution_v2(threshold: float = 0.92, simhash_distance: int = 3, 
     return soft_delete_duplicate_clusters(threshold=threshold, simhash_distance=simhash_distance, limit=limit, dry_run=dry_run, config_path=config_path)
 
 
-def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None, rebuild_graph: bool = False) -> dict[str, Any]:
     from .project_inference import backfill_projects
-    return backfill_projects(limit=limit, dry_run=dry_run, config_path=config_path)
+    return backfill_projects(limit=limit, dry_run=dry_run, rebuild_graph=rebuild_graph, config_path=config_path)
+
+
+def project_synapse_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Infer missing projects and rebuild project synapses in one maintenance step."""
+    from .project_inference import backfill_projects
+    return backfill_projects(limit=limit, dry_run=dry_run, rebuild_graph=True, config_path=config_path)
 
 def vector_coverage(config_path: str | None = None) -> dict[str, Any]:
     from .validation import vector_coverage as _vector_coverage

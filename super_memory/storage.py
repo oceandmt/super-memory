@@ -24,7 +24,7 @@ def sqlite_path(config: SuperMemoryConfig) -> Path:
 
 # ── Thread-safe connection cache ──────────────────────────────────────────────
 _connection_cache: dict[str, sqlite3.Connection] = {}
-_connection_lock = threading.Lock()
+_connection_lock = threading.RLock()
 
 
 # Micro-gap 6: Read-only recovery constants

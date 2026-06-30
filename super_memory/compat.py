@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .storage import sqlite_path
+
 from .config import load_config
 from .models import MemoryLayer, MemoryRecord, SuperMemoryConfig
 from .service import SuperMemoryService
@@ -132,7 +134,7 @@ def _layer_in_corpus(layer: MemoryLayer, corpus: str) -> bool:
 
 def _score_record(query: str, record: MemoryRecord, *, base: float) -> float:
     q = query.lower()
-    c = record.content.lower()
+    c = _ranking_content(record).lower()
     if q in c:
         return max(base, 0.95)
     terms = [t for t in q.split() if t]
@@ -151,6 +153,26 @@ def _snippet(content: str, query: str, max_chars: int = 500) -> str:
     start = max(0, idx - max_chars // 3)
     end = min(len(content), start + max_chars)
     return ("…" if start else "") + content[start:end] + ("…" if end < len(content) else "")
+
+
+def _ranking_content(record: MemoryRecord) -> str:
+    """Return compact text for scoring/snippets without losing provenance.
+
+    Long-memory mitigation keeps canonical verbatim content in workspace_markdown
+    and stores a compact summary in metadata. Search ranking/snippets should use
+    that summary so raw transcripts do not dominate recall by sheer length; callers
+    can still hydrate/show the canonical record for evidence.
+    """
+    meta = record.metadata or {}
+    summary = meta.get("summary")
+    if (
+        meta.get("compression_policy") == "verbatim_drawers_plus_summary"
+        and meta.get("canonical_retained") in (True, 1, "true", "True")
+        and isinstance(summary, str)
+        and summary.strip()
+    ):
+        return summary.strip()
+    return record.content
 
 
 # ── Main search ─────────────────────────────────────────────────────────────
@@ -177,6 +199,18 @@ def memory_search_compatible(
     """
     cfg = config or load_config(None)
     cd_key = cooldown_key or f"search:{corpus}:{_hash_query(query)}"
+
+    # Fast path for fresh/local test configs: avoid booting the full layered
+    # service and migration stack when there is obviously nothing to search.
+    db_path = sqlite_path(cfg)
+    memory_dir = Path(cfg.workspace_root) / cfg.daily_memory_dir
+    if corpus in ("all", "memory", "super-memory") and not db_path.exists() and not memory_dir.exists():
+        return {
+            "results": [],
+            "provider": "super-memory",
+            "citations": "auto",
+            "debug": {"backend": "super-memory", "corpus": corpus, "hits": 0, "fast_path": "empty_workspace"},
+        }
 
     # Check cooldown
     cd_mgr = get_cooldown_manager()
@@ -281,7 +315,7 @@ def _run_search(
         try:
             from .session_index import search_sessions as _ss
 
-            sres = _ss(query, max_results=max_results, min_score=min_score, config_path=None)
+            sres = _ss(query, max_results=max_results, min_score=min_score, config_path=getattr(cfg, 'config_path', None))
             for sr in sres.get("results", []):
                 sr_key = sr.get("path", sr.get("id", ""))
                 if sr_key not in seen_paths and sr.get("score", 0) >= min_score:
@@ -352,12 +386,13 @@ def _search_layer(
 
 def _record_to_hit(record: MemoryRecord, *, layer: MemoryLayer, score: float, query: str) -> MemorySearchHit:
     source_path = record.source or f"super-memory://{layer.value}/{record.id}"
-    snippet = _snippet(record.content, query)
+    display_content = _ranking_content(record)
+    snippet = _snippet(display_content, query)
     return MemorySearchHit(
         id=f"{layer.value}:{record.id}",
         path=source_path,
         startLine=1,
-        endLine=max(1, len(record.content.splitlines())),
+        endLine=max(1, len(display_content.splitlines())),
         score=score,
         textScore=score,
         snippet=snippet,

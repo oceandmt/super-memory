@@ -214,10 +214,14 @@ def import_local(path: str, *, source_name: str = "local-import", recursive: boo
                     "metadata": {**_object_dict(record.get("metadata")), "flow": "import", "source_name": source_name, "import_index": idx},
                 }
                 result = bridge.remember(payload, config_path=config_path)
-                if result["results"] and result["results"][0]["ok"]:
+                if result.get("results") and result["results"][0].get("ok"):
                     saved_count += 1
                     file_item["saved"] += 1
                     _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=result["record"]["id"])
+                elif (result.get("write_gate") or {}).get("action") == "skip_duplicate":
+                    skipped_count += 1
+                    file_item["skipped"] += 1
+                    _manifest_record(store, key=key, flow="import", path=rel, sha256=digest, chunk_index=idx, memory_id=(result.get("write_gate") or {}).get("duplicate_id") or "duplicate")
         imported.append(file_item)
     return {"ok": True, "enabled": True, "mode": "local_import", "path": str(target), "files": imported, "saved_records": saved_count, "skipped_records": skipped_count, "external_backends": "disabled"}
 
