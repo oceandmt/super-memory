@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 193,
+  "total_tools": 232,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -1099,6 +1099,165 @@
       "inputSchema": {
         "type": "object",
         "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "default": "fast"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_write_contract_process_jobs",
+      "category": "other",
+      "description": "Process write-contract outbox jobs (embedding/projection workers).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 50
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_write_contract_reconcile",
+      "category": "other",
+      "description": "Reconcile write-contract integrity gaps and enqueue repair jobs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 200
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_write_contract_semantic_merge",
+      "category": "other",
+      "description": "Soft-delete normalized/semantic near-duplicate canonical memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "threshold": {
+            "type": "number",
+            "default": 0.92
+          },
+          "simhash_distance": {
+            "type": "integer",
+            "default": 3
+          },
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_maintenance_enqueue",
+      "category": "other",
+      "description": "Enqueue an async maintenance job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_type": {
+            "type": "string"
+          },
+          "args": {
+            "type": "object"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_type"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_maintenance_job_status",
+      "category": "other",
+      "description": "Get async maintenance job status/result.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ]
+      },
+      "profiles": [
+        "user",
+        "admin",
+        "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_maintenance_process_jobs",
+      "category": "other",
+      "description": "Process async maintenance jobs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 5
+          },
           "config_path": {
             "type": "string"
           }
@@ -4756,6 +4915,18 @@
           },
           "config_path": {
             "type": "string"
+          },
+          "async_mode": {
+            "type": "boolean",
+            "default": true
+          },
+          "compact": {
+            "type": "boolean",
+            "default": true
+          },
+          "max_seconds": {
+            "type": "integer",
+            "default": 3
           }
         },
         "required": []
@@ -4775,6 +4946,885 @@
             "type": "boolean",
             "default": true
           },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_build_envelope",
+      "category": "other",
+      "description": "Build a MemoryEnvelope v1 with quality/trust/provenance/lifecycle metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "memory_type": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_adapter": {
+            "type": "string",
+            "default": "direct"
+          },
+          "trust_score": {
+            "type": "number"
+          },
+          "lifecycle_tier": {
+            "type": "string",
+            "default": "warm"
+          },
+          "auto_pin": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_remember_through_envelope",
+      "category": "core",
+      "description": "Build envelope + save through canonical bridge.remember().",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "memory_type": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source_adapter": {
+            "type": "string",
+            "default": "direct"
+          },
+          "trust_score": {
+            "type": "number"
+          },
+          "lifecycle_tier": {
+            "type": "string",
+            "default": "warm"
+          },
+          "auto_pin": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_ingest_through_adapter",
+      "category": "other",
+      "description": "Ingest a source through the best matching SourceAdapter (chat/file/url).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source_path": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_list_source_adapters",
+      "category": "other",
+      "description": "List all registered SourceAdapters with versions and transformations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_ingest_and_remember",
+      "category": "other",
+      "description": "Ingest through adapter + save all payloads via canonical bridge.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source_path": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "default": "lucas"
+          },
+          "session_id": {
+            "type": "string"
+          },
+          "project": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_build_closets",
+      "category": "other",
+      "description": "Build semantic closet/drawer entries for one memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_rebuild_all_closets",
+      "category": "other",
+      "description": "Rebuild closets for all active workspace_markdown memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_search_closets",
+      "category": "other",
+      "description": "Search semantic closets by keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_hydrate_drawers",
+      "category": "other",
+      "description": "Hydrate verbatim content from closet/drawer references with neighbor expansion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "drawer_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "closet_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_closet_stats",
+      "category": "other",
+      "description": "Get closet/drawer statistics.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_arbitrate_v3",
+      "category": "core",
+      "description": "Unified recall arbitration v3 with explanations, layer votes, and citations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
+          "config_path": {
+            "type": "string"
+          },
+          "min_score": {
+            "type": "number",
+            "default": 0.0
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_quick",
+      "category": "core",
+      "description": "Lightweight quick search (lexical only, no graph).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_record_event",
+      "category": "core",
+      "description": "Record a recall event for feedback tracking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "selected_memory_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shown_to_user": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "selected_memory_ids"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_record_feedback",
+      "category": "core",
+      "description": "Record outcome feedback for a recall event (used/ignored/corrected/contradicted/missed).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recall_event_id": {
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "number",
+            "default": 1.0
+          },
+          "notes": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recall_event_id",
+          "memory_id",
+          "outcome"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_record_correction",
+      "category": "core",
+      "description": "Record a correction + generate training case.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "wrong_answer": {
+            "type": "string"
+          },
+          "expected_answer": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_feedback_stats",
+      "category": "core",
+      "description": "Get recall feedback statistics (success/correction rates).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_generate_training_cases",
+      "category": "core",
+      "description": "Generate benchmark training cases from corrected recall events.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "min_corrections": {
+            "type": "integer",
+            "default": 3
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_benchmark_seed",
+      "category": "core",
+      "description": "Seed default recall benchmark cases for release gating.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "overwrite": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recall_release_gate",
+      "category": "core",
+      "description": "Run release-gating recall benchmark check.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 100
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_scheduled_maintenance_report",
+      "category": "other",
+      "description": "Run daily/weekly/release maintenance profile.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "string",
+            "default": "daily"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": false
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_audit_drift",
+      "category": "other",
+      "description": "Audit drift across all derived projections (orphaned, stale, missing).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_repair_orphans",
+      "category": "other",
+      "description": "Repair orphaned projection entries.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_full_drift_repair",
+      "category": "other",
+      "description": "Full drift repair: audit + orphans + missing closets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_register_projection",
+      "category": "other",
+      "description": "Register a derived projection for drift tracking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string"
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "projection_key": {
+            "type": "string"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_name",
+          "memory_id",
+          "projection_key"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_adapter_scan_once",
+      "category": "other",
+      "description": "One-shot scan using SourceAdapters (detect changes + ingest through adapters).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_adapter_settle_scan",
+      "category": "other",
+      "description": "Debounced adapter-driven scan with settle detection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_adapter_monitor_status",
+      "category": "other",
+      "description": "Get adapter monitor status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_enrich_recall_with_citations",
+      "category": "other",
+      "description": "Build enriched citations from a recall result with line numbers and neighbor context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recall_result": {
+            "type": "object"
+          },
+          "neighbor_lines": {
+            "type": "integer",
+            "default": 3
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "recall_result"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_track_source",
+      "category": "other",
+      "description": "Register source file tracking for a memory.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "line_start": {
+            "type": "integer",
+            "default": 0
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "memory_id",
+          "file_path"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dialectic_answer",
+      "category": "other",
+      "description": "Answer using optional dialectic reasoning (format or synthesize).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "recall_result": {
+            "type": "object"
+          },
+          "mode": {
+            "type": "string",
+            "default": "format"
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_analyze_recall_failures",
+      "category": "other",
+      "description": "Analyze recall feedback for failure patterns.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_generate_curriculum",
+      "category": "other",
+      "description": "Full curriculum pipeline: analyze -> generate cases -> generate tests.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_run_benchmark_tests",
+      "category": "other",
+      "description": "Run benchmark tests against training cases.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
           "config_path": {
             "type": "string"
           }

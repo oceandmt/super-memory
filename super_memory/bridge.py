@@ -1385,8 +1385,21 @@ def self_heal_embeddings(
     return self_heal.self_heal_embeddings(batch_size=batch_size, config_path=config_path)
 
 
-def self_heal_status(config_path: str | None = None) -> dict[str, Any]:
-    """Show self-heal status (missing vector count)."""
+def self_heal_status(config_path: str | None = None, mode: str = "fast") -> dict[str, Any]:
+    """Show self-heal status (missing vector count).
+
+    The MCP schema exposes ``mode`` and defaults to ``fast``. Keep this path
+    bounded so health checks do not time out on large/locked databases; callers
+    can request ``mode='full'`` for the complete count.
+    """
+    if mode == "fast":
+        from .health_cache import self_heal_status_fast
+        try:
+            return self_heal_status_fast(config_path=config_path)
+        except Exception as exc:
+            # If cache update or a transient lock fails, fall back to a read-only
+            # bounded status instead of timing out the MCP call.
+            return {"ok": False, "mode": "fast", "error": f"{type(exc).__name__}: {exc}", "timeout_resilient": True}
     return self_heal.self_heal_status(config_path=config_path)
 
 

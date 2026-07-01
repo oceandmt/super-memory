@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.3 (1 July 2026) — MCP self-heal + closet coverage maintenance
+
+- Fix `self_heal_status(mode="fast")` bridge path to use the bounded health cache implementation exposed by MCP, preventing live MCP timeout during vector self-heal status checks.
+- Preserve `mode="full"` for complete vector coverage scans while keeping fast health checks bounded and timeout-resilient.
+- Include short workspace memories in semantic closet chunking so closet coverage can reach the 80%+ diagnostics threshold.
+- Verified installed OpenClaw Super Memory symlink, project repository, diagnostics, recall release gate, and live MCP `super_memory_self_heal_status` after gateway reload.
+
 ## 2.3.0 (25 June 2026) — Memory quality roadmap
 
 ### Added

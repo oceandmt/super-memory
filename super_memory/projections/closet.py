@@ -88,7 +88,7 @@ class ClosetEntry:
 
 def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[dict[str, Any]]:
     """Split text into overlapping chunks with offset tracking."""
-    if not text or len(text) < MIN_CHUNK_SIZE:
+    if not text:
         return []
     chunks = []
     start = 0
