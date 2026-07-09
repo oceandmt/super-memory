@@ -1,5 +1,21 @@
 # Changelog
 
+
+## 2.3.4 - 2026-07-09
+
+### Fixed
+- Expose write-contract maintenance wrappers through the bridge so MCP tools `write_contract_reconcile`, `write_contract_process_jobs`, and `write_contract_semantic_merge` run bounded maintenance instead of timing out.
+- Correct memory pollution duplicate accounting to use active canonical `workspace_markdown` memories only, excluding derived layer mirrors and soft-deleted rows.
+- Dedupe short/no-agent/stale pollution report entries by memory id and ignore soft-deleted records.
+
+### Improved
+- Add canonical-first semantics metadata to the pollution report response.
+- Keep duplicate-resolution v2 routed through the same semantic merge implementation used by write-contract maintenance.
+- Update OpenClaw plugin metadata/schema shape and UI hints for safer additive/default operation.
+
+### Safety
+- No database files, local memory contents, private runtime config, or generated personal data are included in this release.
+
 ## 2.3.3 (1 July 2026) — MCP self-heal + closet coverage maintenance
 
 - Fix `self_heal_status(mode="fast")` bridge path to use the bounded health cache implementation exposed by MCP, preventing live MCP timeout during vector self-heal status checks.

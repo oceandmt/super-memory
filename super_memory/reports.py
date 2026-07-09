@@ -120,48 +120,87 @@ class Reports(DBMixin):
         }
 
     def memory_pollution_report(self) -> dict[str, Any]:
-        """Find stale/duplicate/low-quality memory entries."""
+        """Memory pollution and quality report.
+
+        Canonical-first semantics:
+        - Short/no-agent/stale checks ignore soft-deleted rows and dedupe by memory id.
+        - Duplicate checks operate on active canonical workspace_markdown rows only.
+          Derived projections (mempalace/honcho/neural_memory) intentionally mirror
+          canonical content and must not be counted as pollution duplicates.
+        """
         issues = {"short_entries": [], "no_agent": [], "duplicates": [], "stale_entries": []}
-        stale_cutoff = (datetime.now() - timedelta(days=90)).isoformat()
-
         with self._conn() as conn:
-            if self._has(conn, "memories"):
-                # Short entries
-                rows = conn.execute("""
-                    SELECT id, content, agent_id, created_at FROM memories
-                    WHERE LENGTH(content) < 20 LIMIT 50
-                """).fetchall()
-                issues["short_entries"] = [dict(r) for r in rows]
+            # Short active canonical/session entries, deduped by id.
+            rows = conn.execute(
+                """
+                SELECT id, content, agent_id, created_at
+                FROM memories
+                WHERE LENGTH(COALESCE(content,'')) < 20
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
+                GROUP BY id
+                ORDER BY created_at DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            issues["short_entries"] = [dict(r) for r in rows]
 
-                # No agent_id
-                rows = conn.execute("""
-                    SELECT id, content, created_at FROM memories
-                    WHERE agent_id IS NULL LIMIT 50
-                """).fetchall()
-                issues["no_agent"] = [dict(r) for r in rows]
+            rows = conn.execute(
+                """
+                SELECT id, content, layer, created_at
+                FROM memories
+                WHERE (agent_id IS NULL OR agent_id='')
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
+                GROUP BY id
+                ORDER BY created_at DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            issues["no_agent"] = [dict(r) for r in rows]
 
-                # Stale entries
-                rows = conn.execute("""
-                    SELECT id, content, agent_id, created_at FROM memories
-                    WHERE created_at < ? LIMIT 50
-                """, (stale_cutoff,)).fetchall()
-                issues["stale_entries"] = [dict(r) for r in rows]
+            # Canonical-only duplicate content. Multi-layer projections share the
+            # same id/content by design and are not duplicate memories.
+            dup_rows = conn.execute(
+                """
+                SELECT content, COUNT(DISTINCT id) AS count, GROUP_CONCAT(DISTINCT id) AS ids
+                FROM memories
+                WHERE layer='workspace_markdown'
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
+                  AND content IS NOT NULL AND content != ''
+                GROUP BY content
+                HAVING COUNT(DISTINCT id) > 1
+                ORDER BY count DESC
+                LIMIT 50
+                """
+            ).fetchall()
+            issues["duplicates"] = [
+                {
+                    "content": r["content"][:100],
+                    "count": int(r["count"]),
+                    "ids": (r["ids"] or "").split(","),
+                }
+                for r in dup_rows
+            ]
 
-                # Duplicates already handled in session_health
-                rows = conn.execute("""
-                    SELECT content, COUNT(*) AS dup_count, GROUP_CONCAT(id) AS ids
-                    FROM memories WHERE LENGTH(content) > 20
-                    GROUP BY content HAVING dup_count > 1 LIMIT 20
-                """).fetchall()
-                issues["duplicates"] = [{"content": r["content"][:100], "count": r["dup_count"], "ids": r["ids"].split(",")} for r in rows]
-
+            rows = conn.execute(
+                """
+                SELECT id, content, agent_id, created_at
+                FROM memories
+                WHERE created_at < datetime('now','-180 days')
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
+                GROUP BY id
+                ORDER BY created_at ASC
+                LIMIT 50
+                """
+            ).fetchall()
+            issues["stale_entries"] = [dict(r) for r in rows]
         return {
             "ok": True,
             "short_count": len(issues["short_entries"]),
             "no_agent_count": len(issues["no_agent"]),
             "stale_count": len(issues["stale_entries"]),
             "duplicate_count": len(issues["duplicates"]),
-            "issues": issues
+            "duplicate_semantics": "active canonical workspace_markdown only; derived layer mirrors excluded",
+            "issues": issues,
         }
 
     def export_memory_graph(self, format: str = "json") -> dict[str, Any]:

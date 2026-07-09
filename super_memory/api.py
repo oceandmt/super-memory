@@ -18,7 +18,7 @@ from .observability import metrics as _metrics_snapshot, prometheus_metrics as _
 
 _logger = structlog.get_logger("super-memory.api")
 
-app = FastAPI(title="Super Memory API", version="1.1.3")
+app = FastAPI(title="Super Memory API", version="2.3.4")
 
 # ── In-memory rate limiter ──────────────────────────────────────────────────
 _RATE_LIMIT_WINDOW_S = 60

@@ -1995,9 +1995,30 @@ def self_improvement_orchestrator(dry_run: bool = True, limit: int = 500, rememb
     from .self_improvement.orchestrator import run_self_improvement_cycle
     return run_self_improvement_cycle(dry_run=dry_run, limit=limit, remember_lesson=remember_lesson, config_path=config_path)
 
-def duplicate_resolution_v2(threshold: float = 0.92, simhash_distance: int = 3, limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+def write_contract_process_jobs(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
+    """Process bounded write-contract projection/embed jobs.
+
+    MCP exposes this name directly, so keep a thin bridge wrapper instead of
+    relying on missing dynamic attributes. The worker itself enforces the
+    supplied limit.
+    """
+    from .write_contract.worker import process_memory_jobs
+    return process_memory_jobs(limit=limit, config_path=config_path)
+
+
+def write_contract_reconcile(limit: int = 200, config_path: str | None = None) -> dict[str, Any]:
+    """Reconcile write-contract integrity gaps and enqueue bounded jobs."""
+    from .write_contract.worker import reconcile_memory_integrity
+    return reconcile_memory_integrity(limit=limit, config_path=config_path)
+
+
+def write_contract_semantic_merge(threshold: float = 0.92, simhash_distance: int = 3, limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
     from .write_contract.semantic_merge import soft_delete_duplicate_clusters
     return soft_delete_duplicate_clusters(threshold=threshold, simhash_distance=simhash_distance, limit=limit, dry_run=dry_run, config_path=config_path)
+
+
+def duplicate_resolution_v2(threshold: float = 0.92, simhash_distance: int = 3, limit: int = 500, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    return write_contract_semantic_merge(threshold=threshold, simhash_distance=simhash_distance, limit=limit, dry_run=dry_run, config_path=config_path)
 
 
 def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None, rebuild_graph: bool = False) -> dict[str, Any]:

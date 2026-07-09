@@ -1,121 +1,113 @@
 {
   "id": "super-memory",
   "name": "Super Memory",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Local multi-layer memory for OpenClaw; can run as additive tools/corpus or exclusive memory-slot provider.",
   "main": "index.js",
   "configSchema": {
-    "jsonSchema": {
-      "type": "object",
-      "properties": {
-        "mode": {
-          "type": "string",
-          "enum": [
-            "safe",
-            "admin",
-            "exclusive"
-          ],
-          "default": "safe",
-          "description": "Install/activation profile hint. safe=additive tools only; admin=additive plus capture/context hooks; exclusive=development memory-slot replacement."
-        },
-        "apiBaseUrl": {
-          "type": "string",
-          "default": "http://127.0.0.1:8765"
-        },
-        "manageApiService": {
-          "type": "boolean",
-          "default": false,
-          "description": "Experimental: allow the plugin wrapper to start/stop super-memory-api when OpenClaw exposes a service lifecycle."
-        },
-        "apiCommand": {
-          "type": "string",
-          "default": "super-memory-api --host 127.0.0.1 --port 8765",
-          "description": "Command used when manageApiService=true."
-        },
-        "apiHealthTimeoutMs": {
-          "type": "number",
-          "default": 1500,
-          "description": "Health-check timeout budget for Super Memory API reachability checks."
-        },
-        "autoSyncTurns": {
-          "type": "boolean",
-          "default": false
-        },
-        "autoContext": {
-          "type": "boolean",
-          "default": false,
-          "description": "Inject Super Memory prefetch context during before_prompt_build. Keep false until live hook validation passes."
-        },
-        "autoFlush": {
-          "type": "boolean",
-          "default": false,
-          "description": "Flush compact/reset summaries through Super Memory hooks. Keep false until live hook validation passes."
-        },
-        "startupConsolidation": {
-          "type": "boolean",
-          "default": false,
-          "description": "Run dry-run startup consolidation on gateway_start."
-        },
-        "agentId": {
-          "type": "string",
-          "default": "lucas"
-        },
-        "prefetchTimeoutMs": {
-          "type": "number",
-          "default": 1500
-        },
-        "registerExclusiveMemoryCapability": {
-          "type": "boolean",
-          "default": false,
-          "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
-        },
-        "registerLegacyMemoryShims": {
-          "type": "boolean",
-          "default": false,
-          "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
-        },
-        "registerLegacyMemoryTools": {
-          "type": "boolean",
-          "default": false,
-          "description": "Backward-compatible alias for registerLegacyMemoryShims."
-        },
-        "registerDynamicMcpToolProxy": {
-          "type": "boolean",
-          "default": false,
-          "description": "Development-only guard. Register a dynamic MCP tools/list proxy tool for sandbox backtests."
-        },
-        "registerSuperMemoryHooks": {
-          "type": "boolean",
-          "default": false,
-          "description": "Development-only guard. Register experimental OpenClaw hook skeletons only after live hook API validation."
-        },
-        "prePromptLimit": {
-          "type": "number",
-          "default": 8,
-          "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
-        },
-        "toolProfile": {
-          "type": "string",
-          "default": "normal",
-          "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
-        },
-        "agentChannelMap": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "description": "Optional channel/account id to agent id map used by autoSyncTurns hooks for cross-agent capture."
-        }
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "safe",
+          "admin",
+          "exclusive"
+        ],
+        "default": "safe",
+        "description": "Install/activation profile hint. safe=additive tools only; admin=additive plus capture/context hooks; exclusive=development memory-slot replacement."
       },
-      "additionalProperties": false
-    },
-    "uiHints": {
-      "_setup": {
-        "label": "Optional exclusive memory slot",
-        "help": "Recommended default: mode=safe or mode=admin as additive plugin. Use mode=exclusive only for explicit memory-slot replacement testing."
+      "apiBaseUrl": {
+        "type": "string",
+        "default": "http://127.0.0.1:8765"
+      },
+      "manageApiService": {
+        "type": "boolean",
+        "default": false,
+        "description": "Experimental: allow the plugin wrapper to start/stop super-memory-api when OpenClaw exposes a service lifecycle."
+      },
+      "apiCommand": {
+        "type": "string",
+        "default": "super-memory-api --host 127.0.0.1 --port 8765",
+        "description": "Command used when manageApiService=true."
+      },
+      "apiHealthTimeoutMs": {
+        "type": "number",
+        "default": 1500,
+        "description": "Health-check timeout budget for Super Memory API reachability checks."
+      },
+      "autoSyncTurns": {
+        "type": "boolean",
+        "default": false
+      },
+      "autoContext": {
+        "type": "boolean",
+        "default": false,
+        "description": "Inject Super Memory prefetch context during before_prompt_build. Keep false until live hook validation passes."
+      },
+      "autoFlush": {
+        "type": "boolean",
+        "default": false,
+        "description": "Flush compact/reset summaries through Super Memory hooks. Keep false until live hook validation passes."
+      },
+      "startupConsolidation": {
+        "type": "boolean",
+        "default": false,
+        "description": "Run dry-run startup consolidation on gateway_start."
+      },
+      "agentId": {
+        "type": "string",
+        "default": "lucas"
+      },
+      "prefetchTimeoutMs": {
+        "type": "number",
+        "default": 1500
+      },
+      "registerExclusiveMemoryCapability": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Keep false unless explicitly testing Super Memory as the active OpenClaw memory slot."
+      },
+      "registerLegacyMemoryShims": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register memory_search/memory_get compatibility shims only when Super Memory is the exclusive memory slot."
+      },
+      "registerLegacyMemoryTools": {
+        "type": "boolean",
+        "default": false,
+        "description": "Backward-compatible alias for registerLegacyMemoryShims."
+      },
+      "registerDynamicMcpToolProxy": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register a dynamic MCP tools/list proxy tool for sandbox backtests."
+      },
+      "registerSuperMemoryHooks": {
+        "type": "boolean",
+        "default": false,
+        "description": "Development-only guard. Register experimental OpenClaw hook skeletons only after live hook API validation."
+      },
+      "prePromptLimit": {
+        "type": "number",
+        "default": 8,
+        "description": "Maximum context records requested by the experimental pre-prompt hook skeleton."
+      },
+      "toolProfile": {
+        "type": "string",
+        "default": "normal",
+        "description": "Declared Super Memory tool exposure profile hint for docs/tests; static OpenClaw tools are registered synchronously."
+      },
+      "agentChannelMap": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        },
+        "default": {},
+        "description": "Optional channel/account id to agent id map used by autoSyncTurns hooks for cross-agent capture."
       }
-    }
+    },
+    "additionalProperties": false
   },
   "kind": "memory",
   "contracts": {
@@ -223,5 +215,11 @@
       "super_memory_train_local",
       "super_memory_update_handoff_status"
     ]
+  },
+  "uiHints": {
+    "_setup": {
+      "label": "Optional exclusive memory slot",
+      "help": "Recommended default: mode=safe or mode=admin as additive plugin. Use mode=exclusive only for explicit memory-slot replacement testing."
+    }
   }
 }
