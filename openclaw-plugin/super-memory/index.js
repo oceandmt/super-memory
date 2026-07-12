@@ -1,15 +1,17 @@
 module.exports = function superMemoryPlugin(api) {
-  const cfg = api.config || {};
+  const globalCfg = api.config || {};
   // api.config returns the global OpenClaw config, not plugin-specific config.
-  // Plugin config lives at plugins.entries.<id>.config. Merge into cfg.
-  const pluginCfg = (cfg.plugins && cfg.plugins.entries && cfg.plugins.entries['super-memory'] && cfg.plugins.entries['super-memory'].config) || cfg || {};
+  // Plugin config lives at plugins.entries.<id>.config. Merge into a local cfg copy.
+  // IMPORTANT: do not mutate api.config/globalCfg here. OpenClaw validates the
+  // root config after plugin hooks run; copying plugin-specific keys onto the
+  // root object makes doctor report them as invalid top-level keys.
+  const pluginCfg = (globalCfg.plugins && globalCfg.plugins.entries && globalCfg.plugins.entries['super-memory'] && globalCfg.plugins.entries['super-memory'].config) || {};
+  const cfg = { ...globalCfg, ...pluginCfg };
   const effectiveAutoSyncTurns = pluginCfg.autoSyncTurns === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
   const effectiveAutoFlush = pluginCfg.autoFlush === true || pluginCfg.mode === 'admin' || pluginCfg.mode === 'exclusive';
   const effectiveAutoContext = pluginCfg.autoContext === true || pluginCfg.mode === 'exclusive';
   const effectiveExclusiveMemory = pluginCfg.registerExclusiveMemoryCapability === true || pluginCfg.mode === 'exclusive';
   const effectiveLegacyMemoryShims = pluginCfg.registerLegacyMemoryShims === true || pluginCfg.mode === 'exclusive';
-  // Override cfg fields with plugin-specific values so downstream code works unchanged
-  Object.assign(cfg, pluginCfg);
   try { require('fs').appendFileSync('/tmp/super-memory-cfg-dump.ndjson', JSON.stringify({ts:new Date().toISOString(), cfgKeys:Object.keys(cfg), mode:cfg.mode, autoSyncTurns:cfg.autoSyncTurns, agentId:cfg.agentId, autoFlush:cfg.autoFlush, registerSuperMemoryHooks:cfg.registerSuperMemoryHooks, pluginCfgMode:pluginCfg.mode, pluginAutoSyncTurns:pluginCfg.autoSyncTurns, effectiveAutoSyncTurns:effectiveAutoSyncTurns}) + '\n'); } catch(_){}
   const childProcess = require('child_process');
   const baseUrl = pluginCfg.apiBaseUrl || cfg.apiBaseUrl || 'http://127.0.0.1:8765';
@@ -58,6 +60,29 @@ module.exports = function superMemoryPlugin(api) {
       .trim();
   }
 
+  function formatDateStamp(ms) {
+    const d = new Date(Number.isFinite(ms) ? ms : Date.now());
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function buildFlushPlan(params = {}) {
+    const dateStamp = formatDateStamp(params.nowMs);
+    const configured = cfg.memoryFlush || {};
+    const relativePath = String(configured.relativePath || `memory/${dateStamp}.md`).replace(/YYYY-MM-DD/g, dateStamp);
+    return {
+      softThresholdTokens: Number.isFinite(configured.softThresholdTokens) ? configured.softThresholdTokens : 4000,
+      forceFlushTranscriptBytes: Number.isFinite(configured.forceFlushTranscriptBytes) ? configured.forceFlushTranscriptBytes : 2097152,
+      reserveTokensFloor: Number.isFinite(configured.reserveTokensFloor) ? configured.reserveTokensFloor : 20000,
+      model: configured.model || undefined,
+      prompt: configured.prompt || `Summarize durable facts, decisions, preferences, and reusable context from this conversation. Append concise Markdown notes to ${relativePath}. Do not include secrets or transient chatter. Do not send a user-facing reply.`,
+      systemPrompt: configured.systemPrompt || `You are running OpenClaw memory flush for Super Memory. Write only durable, useful memory notes to ${relativePath}. Preserve secrets hygiene and do not reply to the user.`,
+      relativePath
+    };
+  }
+
 
   async function post(path, body) {
     const res = await fetch(`${baseUrl}${path}`, {
@@ -67,6 +92,24 @@ module.exports = function superMemoryPlugin(api) {
     });
     if (!res.ok) throw new Error(`super-memory ${path} failed: ${res.status} ${await res.text()}`);
     return res.json();
+  }
+
+  // Close the recall feedback loop: log recall events when prefetch supplies
+  // memories that are surfaced to the user. Fire-and-forget; never blocks the
+  // prompt build. Dedups consecutive identical recalls so the two prefetch
+  // paths (exclusive promptBuilder + before_prompt_build) do not double-log.
+  let __smLastRecallKey = '';
+  function recordRecallEvent(query, payload) {
+    try {
+      const records = (payload && Array.isArray(payload.records)) ? payload.records : [];
+      const ids = records.map((r) => r && r.id).filter(Boolean);
+      if (!query || ids.length === 0) return;
+      const key = query + '|' + ids.join(',');
+      if (key === __smLastRecallKey) return;
+      __smLastRecallKey = key;
+      post('/recall-record-event', { query, selected_memory_ids: ids, shown_to_user: true, source: 'plugin_auto' })
+        .catch((err) => api.logger?.warn?.(`Super Memory recall-record-event failed: ${err.message}`));
+    } catch (_) {}
   }
 
   function registerHookSkeleton(name, handler) {
@@ -187,6 +230,7 @@ module.exports = function superMemoryPlugin(api) {
             const query = cleanText(event.prompt || event.query || event.input || '');
             if (query) {
               const payload = await post('/prefetch', { query, limit: cfg.prePromptLimit || 8 });
+              recordRecallEvent(query, payload);
               const text = payload.answer || payload.context || payload.text || payload.summary;
               if (text) base.push(`[Super Memory semantic context]\n${text}`);
             }
@@ -195,15 +239,7 @@ module.exports = function superMemoryPlugin(api) {
           }
           return base;
         },
-        flushPlanResolver: () => ({
-          provider: 'super-memory',
-          canonical: 'workspace_markdown',
-          captureTurns: true,
-          captureToolOutcomes: true,
-          captureDecisions: true,
-          redactSecrets: true,
-          maintenance: { cleanup: true, semanticIndex: true, dreaming: true }
-        }),
+        flushPlanResolver: buildFlushPlan,
         runtime: {
           async getMemorySearchManager() {
             return { manager: createSearchManager() };
@@ -261,6 +297,7 @@ module.exports = function superMemoryPlugin(api) {
           const query = cleanText(event.prompt || event.query || '');
           if (query) {
             const payload = await post('/prefetch', { query, limit: cfg.prePromptLimit || 8 });
+            recordRecallEvent(query, payload);
             const text = payload.answer || payload.context || payload.text || payload.summary;
             if (text) result.prependContext = `[Super Memory — relevant context]\n${text}`;
           }
