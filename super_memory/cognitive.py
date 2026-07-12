@@ -315,8 +315,14 @@ def promotion_candidates(limit: int = 20, config_path: str | None = None) -> dic
     store = _store(config_path)
     rows = store.list_memory_rows(limit=300)
     candidates = []
+    seen_ids: set[str] = set()
     for row in rows:
         rec = row_to_memory(row)
+        if (rec.metadata or {}).get("soft_deleted") == 1:
+            continue
+        if rec.id in seen_ids:
+            continue
+        seen_ids.add(rec.id)
         scored = attention_score({"content": rec.content, "type": rec.type.value, "project": rec.project, "tags": rec.tags, "trust_score": rec.trust_score})
         if scored["promotion_candidate"] or rec.type.value in {"decision", "workflow", "blocker", "lesson", "doctrine"}:
             candidates.append({"id": rec.id, "type": rec.type.value, "score": scored["attention_score"], "content": rec.content[:240], "reasons": scored["reasons"]})

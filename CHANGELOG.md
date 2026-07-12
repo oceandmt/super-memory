@@ -1,6 +1,25 @@
 # Changelog
 
 
+## 2.3.5 - 2026-07-12
+
+### Fixed
+- Dedupe `promotion_candidates` (cognitive.py) by memory id and skip soft-deleted rows so derived layer mirrors no longer appear four times.
+- Dedupe `lifecycle.review` `compression_candidates` by memory id, keeping the canonical `workspace_markdown` layer entry only.
+
+### Added
+- `recommendations` bridge + CLI/MCP surface for ranked Super Memory maintenance and UX suggestions.
+- `autocomplete-rebuild` and `autocomplete-suggest` CLI commands wired to the prefix index.
+- Default `trust_score` by `source_adapter` in the MemoryEnvelope factory (chat/direct/file/tool/url/auto/todo/feedback) with a 0.5 fallback.
+- Promote `FACT` memories into `facts.md` register.
+- New `super_memory/recommendation.py` module and autocomplete recommendation tests.
+
+### Added (MCP tools)
+- `super_memory_graph_cleanup_orphans` and `super_memory_dedup_neurons` exposed on the admin profile.
+
+### Safety
+- No database files, local memory contents, private runtime config, or generated personal data are included in this release.
+
 ## 2.3.4 - 2026-07-09
 
 ### Fixed

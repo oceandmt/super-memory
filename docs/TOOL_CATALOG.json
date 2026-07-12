@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 232,
+  "total_tools": 233,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -4841,6 +4841,27 @@
       "inputSchema": {
         "type": "object",
         "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_recommendations",
+      "category": "other",
+      "description": "Recommend ranked next actions for Super Memory maintenance and UX.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 10
+          },
           "config_path": {
             "type": "string"
           }

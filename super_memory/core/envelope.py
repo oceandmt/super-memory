@@ -286,6 +286,30 @@ class MemoryEnvelope:
         }
 
 
+# ── Trust Defaults ──────────────────────────────────────────────────────────
+
+# Default trust_score by source_adapter when the caller does not supply one.
+# Higher trust = more deliberate/verified input (direct human chat, explicit
+# decision capture). Lower trust = automated/inferred capture (auto-extraction,
+# raw event logging, unverified external URLs).
+DEFAULT_TRUST_BY_SOURCE: dict[str, float] = {
+    "chat": 0.75,          # direct human chat turn
+    "direct": 0.6,         # explicit remember() call, no adapter context
+    "file": 0.6,           # ingested from a local file
+    "tool": 0.5,           # tool-call output
+    "url": 0.4,            # external web content, unverified
+    "super-memory.auto": 0.35,      # auto-extracted candidate from free text
+    "super-memory.todo": 0.55,      # explicit todo capture
+    "super-memory.feedback": 0.6,   # recorded outcome feedback
+}
+DEFAULT_TRUST_FALLBACK = 0.5
+
+
+def _default_trust_for_source(source_adapter: str) -> float:
+    """Resolve a default trust_score for a source_adapter with no explicit value."""
+    return DEFAULT_TRUST_BY_SOURCE.get(source_adapter, DEFAULT_TRUST_FALLBACK)
+
+
 # ── Factory ──────────────────────────────────────────────────────────────────
 
 def build_envelope(
@@ -354,6 +378,9 @@ def build_envelope(
     # Transformations
     tfs = [Transformation(**t) for t in (transformations or [])]
 
+    # Default trust_score by source when caller did not supply one explicitly.
+    resolved_trust = trust_score if trust_score is not None else _default_trust_for_source(source_adapter)
+
     return MemoryEnvelope(
         id=mem_id,
         content=content,
@@ -364,8 +391,8 @@ def build_envelope(
         project=project,
         tags=tags or [],
         quality_score=round(quality_score, 4),
-        trust_score=trust_score,
-        confidence_score=0.5 if trust_score is None else trust_score,
+        trust_score=resolved_trust,
+        confidence_score=resolved_trust,
         provenance=prov,
         source_adapter=source_adapter,
         source_id=source_id,

@@ -225,6 +225,41 @@ def durable_pack_audit_cmd(
     for rec in result.get("recommendations", []):
         console.print(f"- {rec}")
 
+@app.command("autocomplete-rebuild")
+def autocomplete_rebuild_cmd(config: Optional[str] = None, json_out: bool = False):
+    """Rebuild the autocomplete prefix index."""
+    from . import bridge as _bridge
+
+    result = _bridge.autocomplete_rebuild(config_path=config)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(f"[green]Autocomplete rebuild[/green] entries_inserted={result.get('entries_inserted', 0)}")
+
+@app.command("autocomplete-suggest")
+def autocomplete_suggest_cmd(prefix: str, limit: int = 5, type_filter: Optional[str] = None, config: Optional[str] = None, json_out: bool = False):
+    """Suggest memory completions from a prefix."""
+    from . import bridge as _bridge
+
+    result = _bridge.autocomplete_suggest(prefix=prefix, limit=limit, type_filter=type_filter, config_path=config)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    for item in result.get("suggestions", []):
+        console.print(f"- {item.get('text')} [dim]({item.get('memory_id')})[/dim]")
+
+@app.command("recommendations")
+def recommendations_cmd(limit: int = 10, config: Optional[str] = None, json_out: bool = False):
+    """Show ranked Super Memory recommendations."""
+    from . import bridge as _bridge
+
+    result = _bridge.recommendations(limit=limit, config_path=config)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    for rec in result.get("recommendations", []):
+        console.print(f"[{rec.get('priority')}] {rec.get('action')} — {rec.get('reason')}")
+
 @app.command("promote")
 def promote(
     memory_id: str = typer.Argument(..., help="Memory ID to promote"),

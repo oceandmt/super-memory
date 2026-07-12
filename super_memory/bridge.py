@@ -1093,6 +1093,10 @@ def autocomplete_status(config_path: str | None = None) -> dict[str, Any]:
     from . import autocomplete
     return autocomplete.status(config_path=config_path)
 
+def recommendations(limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+    from . import recommendation
+    return recommendation.recommendations(limit=limit, config_path=config_path)
+
 
 # ── Auto Deep Pipeline ───────────────────────────────────────────────────────
 

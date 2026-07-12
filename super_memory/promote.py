@@ -13,6 +13,7 @@ PROMOTABLE_TYPES = frozenset(
         MemoryType.BLOCKER,
         MemoryType.WORKFLOW,
         MemoryType.LESSON,
+        MemoryType.FACT,
     }
 )
 
@@ -23,6 +24,7 @@ REGISTER_MAP: dict[MemoryType, str] = {
     MemoryType.WORKFLOW: "workflows.md",
     MemoryType.DECISION: "decisions.md",
     MemoryType.LESSON: "lessons.md",
+    MemoryType.FACT: "facts.md",
 }
 
 
@@ -140,5 +142,6 @@ def _register_title(memory_type: MemoryType) -> str:
         MemoryType.WORKFLOW: "Workflow Register",
         MemoryType.DECISION: "Decision Register",
         MemoryType.LESSON: "Lesson Register",
+        MemoryType.FACT: "Facts Register",
     }
     return titles.get(memory_type, memory_type.value.title())

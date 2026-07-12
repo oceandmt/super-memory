@@ -75,6 +75,7 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
     rows = _rows(store, limit=limit)
     tier_counts = {"hot": 0, "warm": 0, "cold": 0}
     compression_candidates: list[dict[str, Any]] = []
+    compression_seen: set[str] = set()
     content_seen: dict[str, list[str]] = {}
     type_counts: dict[str, int] = {}
     layer_counts: dict[str, int] = {}
@@ -91,7 +92,8 @@ def review(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
         layer_counts[row["layer"]] = layer_counts.get(row["layer"], 0) + 1
         norm = " ".join(rec.content.lower().split())
         content_seen.setdefault(norm, []).append(rec.id)
-        if len(rec.content) > 1200:
+        if len(rec.content) > 1200 and rec.id not in compression_seen:
+            compression_seen.add(rec.id)
             compression_candidates.append({"id": rec.id, "layer": row["layer"], "chars": len(rec.content), "reason": "long content"})
     # Canonical markdown is file-backed, not stored in SQLite. Missing canonical
     # here means a derived SQLite id has no sqlite canonical twin, not necessarily

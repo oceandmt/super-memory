@@ -138,6 +138,8 @@ ADVANCED_TOOLS = {
     "super_memory_spreading_activation_recall",
     "nmem_recall",
     "super_memory_graph_rebuild",
+    "super_memory_graph_cleanup_orphans",
+    "super_memory_dedup_neurons",
     "super_memory_hypothesis_create",
     "super_memory_hypothesis_get",
     "super_memory_hypothesis_list",
@@ -241,6 +243,7 @@ ADVANCED_TOOLS = {
     "super_memory_autocomplete_idle",
     "super_memory_autocomplete_rebuild",
     "super_memory_autocomplete_status",
+    "super_memory_recommendations",
     # Auto Deep pipeline
     "super_memory_deep_audit",
     "super_memory_deep_qualify",
@@ -804,6 +807,8 @@ for _name, _desc, _props, _required in [
     ("super_memory_spreading_activation_recall", "Neural-memory-style spreading activation recall through the cognitive graph.", {"query": {"type": "string"}, "depth": {"type": "integer", "default": 2}, "top_k": {"type": "integer", "default": 20}, "seed_limit": {"type": "integer", "default": 30}, "config_path": {"type": "string"}}, ["query"]),
     ("nmem_recall", "Compatibility alias: neural-memory-style spreading activation recall.", {"query": {"type": "string"}, "depth": {"type": "integer", "default": 2}, "top_k": {"type": "integer", "default": 20}, "seed_limit": {"type": "integer", "default": 30}, "config_path": {"type": "string"}}, ["query"]),
     ("super_memory_graph_rebuild", "Rebuild derived Layer 4 graph from SQLite memories.", {"limit": {"type": "integer", "default": 500}, "config_path": {"type": "string"}}, []),
+    ("super_memory_graph_cleanup_orphans", "Delete orphan graph neurons/synapses/fibers pointing to soft-deleted/missing memories.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_dedup_neurons", "Merge duplicate cognitive neurons (same content_hash), rewiring synapses to the kept neuron.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     ("super_memory_hypothesis_create", "Create a deterministic cognitive hypothesis.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.5}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
     ("super_memory_hypothesis_get", "Get hypothesis detail with evidence/predictions.", {"hypothesis_id": {"type": "string"}, "config_path": {"type": "string"}}, ["hypothesis_id"]),
     ("super_memory_hypothesis_list", "List hypotheses.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
@@ -846,6 +851,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_autocomplete_idle", "Find idle/neglected memories needing reinforcement.", {"config_path": {"type": "string"}}, []),
     ("super_memory_autocomplete_rebuild", "Rebuild full autocomplete prefix index.", {"config_path": {"type": "string"}}, []),
     ("super_memory_autocomplete_status", "Show autocomplete prefix index status.", {"config_path": {"type": "string"}}, []),
+    ("super_memory_recommendations", "Recommend ranked next actions for Super Memory maintenance and UX.", {"limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, []),
     ("super_memory_deep_audit", "Comprehensive memory health audit.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_qualify", "Score memory quality and recall pipeline.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_debug", "Find operational issues and misconfigurations.", {"config_path": {"type": "string"}}, []),
@@ -1203,6 +1209,15 @@ def _call_tool(name: str, args: JSON) -> Any:
         return {"answer": result.get("results", []), "confidence": 1.0 if result.get("results") else 0.0, "neurons_activated": result.get("total_activated", 0), "depth_used": result.get("depth", args.get("depth", 2)), "elapsed_ms": result.get("elapsed_ms", 0), "raw": result}
     if name == "super_memory_graph_rebuild":
         return bridge.graph_rebuild(limit=args.get("limit", 500), config_path=args.get("config_path"))
+    if name == "super_memory_graph_cleanup_orphans":
+        from . import graph as _graph
+        return _graph.cleanup_orphans(config_path=args.get("config_path"))
+    if name == "super_memory_dedup_neurons":
+        from . import stabilize as _stabilize
+        from .storage import SuperMemoryStore as _Store
+        from .config import load_config as _load_config
+        _store = _Store(_load_config(args.get("config_path")))
+        return _stabilize.dedup_neurons(_store, dry_run=args.get("dry_run", True))
     if name == "super_memory_hypothesis_create":
         return bridge.hypothesis_create(args["content"], confidence=args.get("confidence", 0.5), tags=args.get("tags") or [], config_path=args.get("config_path"))
     if name == "super_memory_hypothesis_get":
@@ -1367,6 +1382,8 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.autocomplete_rebuild(config_path=args.get("config_path"))
     if name == "super_memory_autocomplete_status":
         return bridge.autocomplete_status(config_path=args.get("config_path"))
+    if name == "super_memory_recommendations":
+        return bridge.recommendations(limit=args.get("limit", 10), config_path=args.get("config_path"))
     # ── Auto Deep Pipeline ───────────────────────────────────
     if name == "super_memory_deep_audit":
         return bridge.deep_audit(config_path=args.get("config_path"))
