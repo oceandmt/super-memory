@@ -707,6 +707,22 @@ class TestCrossAgentCompareSoftDeleteRegression:
         # all three SELECTs must be guarded
         assert src.count("soft_deleted") >= 4, "cross_agent_compare SELECTs not all guarded (E26)"
 
+class TestAgentStoreSoftDeleteRegression:
+    """E27 (2026-07-13, defensive): AgentStore.recall and
+    AgentStore.list_memories ran 'SELECT * FROM memories WHERE 1=1{scope}...'
+    with no soft-delete guard. They are currently dead (no external callers,
+    not MCP-exposed) but are documented agent-scoped-store API surface -- if
+    wired up later they would leak forgotten memories, same class as E25/E26.
+    Guarded defensively. affect.recall_by_affect was already guarded."""
+
+    def test_agent_store_recall_and_list_have_guards(self):
+        import inspect
+        from super_memory.agent_isolation import AgentStore
+        assert "soft_deleted" in inspect.getsource(AgentStore.recall), \
+            "AgentStore.recall missing soft-delete guard (E27)"
+        assert "soft_deleted" in inspect.getsource(AgentStore.list_memories), \
+            "AgentStore.list_memories missing soft-delete guard (E27)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

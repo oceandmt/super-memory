@@ -126,6 +126,7 @@ class AgentStore:
         where_clause, params = self._scope_filter(scopes)
         sql = f"""SELECT * FROM memories WHERE 1=1{where_clause}
                   AND content LIKE ?
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                   ORDER BY created_at DESC LIMIT ?"""
         params.append(f"%{query}%")
         params.append(limit)
@@ -142,6 +143,7 @@ class AgentStore:
         """List recent memories visible to this agent."""
         where_clause, params = self._scope_filter(scopes)
         sql = f"""SELECT * FROM memories WHERE 1=1{where_clause}
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                   ORDER BY created_at DESC LIMIT ?"""
         params.append(limit)
 

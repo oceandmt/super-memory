@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.3.27 - 2026-07-13
+
+### Hardened (E27 — defensive soft-delete guards on dormant agent-scoped store)
+- **`AgentStore.recall` and `AgentStore.list_memories` ran `SELECT * FROM memories WHERE 1=1{scope} ...` with no soft-delete guard.** These are currently dead (no external callers, not MCP-exposed) but are documented agent-scoped-store API surface — if wired up later they would leak forgotten memories, same class as E25/E26. Guarded both defensively.
+- **Audit correction:** `affect.recall_by_affect` was flagged as unguarded in v2.3.26 notes but is in fact **already guarded** (soft-delete condition appended to its `conditions` list before the SQL); no change needed. `AgentStore.validate_isolation` / `agent_isolation_status` use only COUNT queries, so they never leaked.
+
+### Tests
+- Regression suite now 62: added `TestAgentStoreSoftDeleteRegression`.
+
+### Safety
+- No database files, memory contents, or private runtime config included.
+
+
 ## 2.3.26 - 2026-07-13
 
 ### Maintenance (bloat vector cleanup)
