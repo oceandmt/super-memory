@@ -92,7 +92,7 @@ def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -
                         if len(kw) < 3:
                             continue
                         rows = conn.execute(
-                            "SELECT id, content, created_at FROM memories WHERE content LIKE ? AND created_at > ? ORDER BY created_at DESC LIMIT 3",
+                            "SELECT id, content, created_at FROM memories WHERE content LIKE ? AND created_at > ? AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 ORDER BY created_at DESC LIMIT 3",
                             (f"%{kw}%", hyp.get("updated_at", "")),
                         ).fetchall()
                         for row in rows:

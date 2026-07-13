@@ -559,6 +559,34 @@ class TestReportsSoftDeleteRegression:
         src2 = inspect.getsource(Reports.session_health)
         assert "soft_deleted" in src2, "session_health duplicate report includes soft-deleted memories (E20)"
 
+class TestReachableModulesSoftDeleteRegression:
+    """E21 (2026-07-13): four live-reachable modules read `memories` without a
+    soft-delete guard, resurfacing forgotten content:
+      - eternal_context.EternalContext._get_{quick,detailed,full}_context
+        (session context injection) — 343 forgotten pinned/shared rows leaked
+        into every injected prompt (most severe).
+      - narrative.generate_narrative — 16 forgotten insight/fact/decision rows.
+      - conversation_miner._dedupe_candidate — forgotten memories wrongly
+        blocked re-remembering identical content.
+      - maintenance._run_cognitive_cycle evidence pool — forgotten memories
+        auto-attached as hypothesis evidence.
+    All reachable transitively from mcp_server via bridge/service/pipeline."""
+
+    def test_reachable_modules_have_soft_delete_guard(self):
+        import inspect
+        from super_memory import eternal_context, narrative, conversation_miner, maintenance
+        checks = [
+            (eternal_context.EternalContext._get_quick_context, "eternal_context quick"),
+            (eternal_context.EternalContext._get_detailed_context, "eternal_context detailed"),
+            (eternal_context.EternalContext._get_full_context, "eternal_context full"),
+            (narrative.generate_narrative, "narrative"),
+            (conversation_miner._dedupe_candidate, "conversation_miner dedupe"),
+            (maintenance._run_cognitive_cycle, "maintenance evidence"),
+        ]
+        for fn, label in checks:
+            src = inspect.getsource(fn)
+            assert "soft_deleted" in src, f"{label} reads memories without soft-delete guard (E21)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

@@ -62,6 +62,7 @@ def generate_narrative(
                 f"""SELECT {select_cols}
                    FROM memories m
                    WHERE m.layer = ? AND m.type IN ('insight', 'fact', 'decision')
+                     AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1
                    ORDER BY m.id DESC
                    LIMIT ?""",
                 (MemoryLayer.NEURAL_MEMORY.value, max_insights * 3),

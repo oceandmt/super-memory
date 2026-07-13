@@ -160,7 +160,7 @@ def _dedupe_candidate(
     import hashlib
     content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
     existing = conn.execute(
-        "SELECT content, content_hash FROM memories WHERE agent_id = ? AND LENGTH(content) > 20 ORDER BY created_at DESC LIMIT 30",
+        "SELECT content, content_hash FROM memories WHERE agent_id = ? AND LENGTH(content) > 20 AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 ORDER BY created_at DESC LIMIT 30",
         (agent_id,),
     ).fetchall()
     seen_exact = set()

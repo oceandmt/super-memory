@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.3.21 - 2026-07-13
+
+### Fixed (E21 — forgotten memories leak into 4 more live-reachable surfaces)
+- **`eternal_context.EternalContext._get_{quick,detailed,full}_context` (session-context injection) read pinned/shared memories with no soft-delete guard.** 343 soft-deleted rows leaked into the injected session context on the live DB — the most severe of this batch, since it poisons every prompt that receives the injection. Added the canonical guard to all 3 tiers.
+- **`narrative.generate_narrative` (live via `bridge.narrative`) selected insight/fact/decision rows with no guard** — 16 forgotten rows on the live DB could appear in generated narratives. Added the guard.
+- **`conversation_miner._dedupe_candidate` (live via `maintenance` → `bridge`) compared new content against soft-deleted memories** — forgotten content wrongly blocked re-remembering identical facts. Added the guard.
+- **`maintenance._run_cognitive_cycle` evidence pool (live via `bridge.maintenance`) auto-attached soft-deleted memories as hypothesis evidence.** Added the guard.
+
+### Correction
+- Prior session note claimed these 4 modules were "not reachable from `mcp_server.py`". That was wrong — it only checked direct references. All 4 are reachable transitively via `bridge.py` / `service.py` / `pipeline_integration.py`. Re-audited and fixed.
+
+### Tests
+- Regression suite now 56: added `TestReachableModulesSoftDeleteRegression` (source-level guard on all 6 functions).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows what these surfaces read/return.
+
+
 ## 2.3.20 - 2026-07-13
 
 ### Fixed (E20 — report tools inflated by forgotten memories)

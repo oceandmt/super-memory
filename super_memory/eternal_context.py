@@ -42,6 +42,7 @@ class EternalContext:
             pinned = conn.execute(
                 "SELECT content, type, created_at FROM memories "
                 "WHERE (json_extract(metadata_json, '$.pinned') = 1 OR scope = 'shared') "
+                "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 "
                 "AND type IN ('decision', 'doctrine', 'instruction') "
                 "ORDER BY rowid DESC LIMIT 5"
             ).fetchall()
@@ -57,6 +58,7 @@ class EternalContext:
             pinned = conn.execute(
                 "SELECT content, type, created_at FROM memories "
                 "WHERE (json_extract(metadata_json, '$.pinned') = 1 OR scope = 'shared') "
+                "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 "
                 "AND type IN ('decision', 'doctrine', 'instruction', 'workflow', 'lesson') "
                 "ORDER BY rowid DESC LIMIT 12"
             ).fetchall()
@@ -72,6 +74,7 @@ class EternalContext:
             pinned = conn.execute(
                 "SELECT content, type, created_at FROM memories "
                 "WHERE (json_extract(metadata_json, '$.pinned') = 1 OR scope = 'shared') "
+                "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 "
                 "ORDER BY rowid DESC LIMIT 30"
             ).fetchall()
         for r in pinned:
