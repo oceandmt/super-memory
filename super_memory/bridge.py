@@ -1168,11 +1168,41 @@ def issue_memory_update(title: str, status: str = "open", cause: str = "", fix: 
     from .workflows import issue_memory
     return issue_memory(title=title, status=status, cause=cause, fix=fix, verification=verification, config_path=config_path)
 
-def cross_layer_health(config_path: str | None = None) -> dict[str, Any]:
-    """Compatibility health wrapper for cross-layer benchmark/doctor."""
+def cross_layer_health(config_path: str | None = None, parity_threshold: int = 10) -> dict[str, Any]:
+    """Compatibility health wrapper for cross-layer benchmark/doctor.
+
+    E3: also reports layer-parity. A single layer lagging the others (e.g. a
+    transaction that rolls back one projection while the rest commit — the
+    palace_drawers ON CONFLICT bug fixed in 2.3.7) shows up as a count spread
+    that exceeds `parity_threshold`, which `missing_layers` alone cannot catch.
+    """
     st = status(config_path=config_path)
-    missing = [k for k in ["workspace_markdown", "mempalace", "honcho", "neural_memory"] if st.get("layers", {}).get(k, 0) == 0]
-    return {"ok": not missing, "verdict": "pass" if not missing else "warn", "missing_layers": missing, "sqlite_only_ids": 0, "content_drift_count": 0, "orphan_projections_total": 0, "full_4layer_coverage": not missing, "status": st}
+    layers = st.get("layers", {}) or {}
+    tracked = ["workspace_markdown", "mempalace", "honcho", "neural_memory"]
+    counts = {k: int(layers.get(k, 0)) for k in tracked}
+    missing = [k for k in tracked if counts[k] == 0]
+    present = [v for v in counts.values() if v > 0]
+    spread = (max(present) - min(present)) if present else 0
+    # the layer(s) below the max by more than the threshold are lagging
+    ceil = max(present) if present else 0
+    lagging = {k: v for k, v in counts.items() if v > 0 and (ceil - v) > parity_threshold}
+    parity_ok = spread <= parity_threshold and not missing
+    verdict = "pass" if (not missing and parity_ok) else "warn"
+    return {
+        "ok": not missing and parity_ok,
+        "verdict": verdict,
+        "missing_layers": missing,
+        "layer_counts": counts,
+        "layer_spread": spread,
+        "parity_threshold": parity_threshold,
+        "parity_ok": parity_ok,
+        "lagging_layers": lagging,
+        "sqlite_only_ids": 0,
+        "content_drift_count": 0,
+        "orphan_projections_total": 0,
+        "full_4layer_coverage": not missing,
+        "status": st,
+    }
 
 def durable_pack(pack_name: str = "openclaw-super-memory-durable-pack-v1", project: str = "super-memory", agents: list[str] | None = None, qualify: bool = False, debug: bool = False, dedupe: bool = True, config_path: str | None = None) -> dict[str, Any]:
     from .durable_pack import build_openclaw_pack, qualification_queries

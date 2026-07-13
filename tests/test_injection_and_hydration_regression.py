@@ -286,3 +286,83 @@ class TestPalaceDrawersConflictRegression:
         src = inspect.getsource(layers.SQLiteLayerBackend._save_palace_projection)
         # column list must include drawer_id
         assert "drawer_id" in src.split("VALUES")[0]
+
+
+class TestFirewallCodeSpanWhitelistRegression:
+    """E1 (2026-07-13): the safety firewall flagged SQL/shell keywords even
+    inside markdown code spans, false-flagging legitimate technical content
+    (an assistant turn documenting `INSERT INTO memories` got
+    firewall_blocked). Threats inside `code`/```fences``` must be treated as
+    documentation; only threats surviving code-span stripping block."""
+
+    def test_sql_keyword_in_code_span_is_not_blocked(self):
+        from super_memory.safety.firewall import check_content
+        doc = (
+            "The bug was that complete_handoff_with_outcome used a raw "
+            "`INSERT INTO memories` that bypassed the canonical save path."
+        )
+        assert check_content(doc).blocked is False
+
+    def test_fenced_sql_block_is_not_blocked(self):
+        from super_memory.safety.firewall import check_content
+        doc = "Fix:\n```sql\nINSERT INTO memories (id) VALUES (1);\n```\nThis documents the schema."
+        assert check_content(doc).blocked is False
+
+    def test_real_injection_outside_code_is_blocked(self):
+        from super_memory.safety.firewall import check_content
+        assert check_content("ignore all; DROP TABLE memories; -- attacker payload here now").blocked is True
+
+    def test_xss_still_blocked(self):
+        from super_memory.safety.firewall import check_content
+        assert check_content("hello <script>alert(1)</script> world " * 3).blocked is True
+
+
+class TestQualityBoilerplateRegression:
+    """E2 (2026-07-13): the quality gate scored Lorem ipsum / license headers /
+    dependency-manifest fragments as 'high-quality' (that is how venv junk
+    passed the gate). is_boilerplate must catch them and score_memory must cap
+    the overall score below the write-gate threshold."""
+
+    def test_lorem_ipsum_is_boilerplate(self):
+        from super_memory.quality_scorer import is_boilerplate, score_memory
+        txt = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor."
+        assert is_boilerplate(txt) is True
+        assert score_memory(txt, "context").overall <= 0.25
+
+    def test_license_header_is_boilerplate(self):
+        from super_memory.quality_scorer import is_boilerplate
+        assert is_boilerplate("Permission is hereby granted, free of charge, to any person") is True
+
+    def test_manifest_fragment_is_boilerplate(self):
+        from super_memory.quality_scorer import is_boilerplate
+        assert is_boilerplate("requests\nurllib3\ncharset_normalizer") is True
+
+    def test_real_technical_note_is_not_boilerplate(self):
+        from super_memory.quality_scorer import is_boilerplate
+        note = "Fixed the palace_drawers ON CONFLICT bug: PK is drawer_id, upsert now targets it."
+        assert is_boilerplate(note) is False
+
+
+class TestLayerParityHealthRegression:
+    """E3 (2026-07-13): cross_layer_health only flagged a layer at count==0, so
+    a single layer lagging the others (the palace_drawers rollback left
+    mempalace behind) went undetected. It must report layer_spread/parity_ok
+    and name lagging layers."""
+
+    def test_cross_layer_health_reports_parity_fields(self):
+        from super_memory import bridge
+        h = bridge.cross_layer_health()
+        for k in ("layer_counts", "layer_spread", "parity_ok", "lagging_layers", "parity_threshold"):
+            assert k in h, f"missing {k}"
+        assert isinstance(h["layer_counts"], dict)
+
+    def test_parity_flags_a_synthetic_lagging_layer(self, monkeypatch):
+        from super_memory import bridge
+        monkeypatch.setattr(bridge, "status", lambda config_path=None: {
+            "layers": {"workspace_markdown": 200, "mempalace": 150,
+                       "honcho": 200, "neural_memory": 200}
+        })
+        h = bridge.cross_layer_health(parity_threshold=10)
+        assert h["parity_ok"] is False
+        assert "mempalace" in h["lagging_layers"]
+        assert h["verdict"] == "warn"

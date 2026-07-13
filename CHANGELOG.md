@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.3.8 - 2026-07-13
+
+### Added (enhancements)
+- **E1 — firewall code-span whitelist** (`safety/firewall.py`): the threat-pattern check false-flagged SQL/shell keywords (`INSERT INTO`, `SELECT ... FROM`, `DROP TABLE`) even when they appeared only inside markdown code spans, so legitimate technical notes (e.g. an assistant turn documenting a query) got `firewall_blocked`. Threats are now re-checked with fenced/inline code spans stripped; only a threat surviving outside code blocks. Real injections outside code and XSS remain blocked.
+- **E2 — quality-gate boilerplate detector** (`quality_scorer.py`): Lorem ipsum, license headers, and dependency-manifest fragments (top_level.txt / bare package-name lists) scored as "high-quality" on the raw entity/specificity heuristics (this is how virtualenv junk passed the gate). New `is_boilerplate()` detects them and `score_memory()` caps their overall score at ≤0.25, below the default write-gate threshold.
+- **E3 — layer-parity health check** (`bridge.cross_layer_health`): previously only flagged a layer at count==0, so a single layer lagging the others (the palace_drawers rollback left mempalace 189 vs 204) went undetected. Now reports `layer_counts`, `layer_spread`, `parity_ok`, `parity_threshold`, and names `lagging_layers`; the maintenance `cross_layer_health` step and daily-hygiene cron surface it.
+
+### Data
+- Healed the residual mempalace parity gap: reprojected 14 alive rows that lost their mempalace sibling to the pre-2.3.7 ON CONFLICT rollback bug, through the fixed save path. All four layers now within spread=1 (`parity_ok=true`).
+
+### Tests
+- Regression suite now 34 tests: added E1 (code-span whitelist, real-injection/XSS still blocked), E2 (lorem/license/manifest boilerplate + real-note negative), and E3 (parity fields + synthetic lagging-layer detection).
+
+### Safety
+- No database files, local memory contents, private runtime config, or generated personal data are included in this release. The E1 change narrows a false-positive only; it does not weaken blocking of real injection payloads (verified by regression tests).
+
+
 ## 2.3.7 - 2026-07-13
 
 ### Fixed

@@ -51,6 +51,20 @@ _THREAT_PATTERNS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# E1: code-span strippers. SQL/shell keywords inside markdown fenced blocks or
+# inline-code spans are documentation (e.g. an assistant turn describing a
+# query), not an injection payload destined for execution. We strip these
+# before the threat check so legitimate technical content is not false-flagged.
+_FENCED_CODE_RE = re.compile(r"```.*?```|~~~.*?~~~", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+
+
+def _strip_code_spans(text: str) -> str:
+    """Remove fenced code blocks and inline-code spans for threat re-checking."""
+    t = _FENCED_CODE_RE.sub(" ", text)
+    t = _INLINE_CODE_RE.sub(" ", t)
+    return t
+
 
 @dataclass(frozen=True)
 class FirewallResult:
@@ -73,7 +87,11 @@ def check_content(text: str) -> FirewallResult:
             return FirewallResult(blocked=True, reason=f"{len(control_matches)} control sequences")
         threat_matches = _THREAT_PATTERNS_RE.findall(text)
         if threat_matches:
-            return FirewallResult(blocked=True, reason=f"threat pattern: {threat_matches[0][:40]}")
+            # E1: only block if a threat survives with markdown code spans
+            # stripped. Keywords that live only inside `code`/```fences``` are
+            # documentation, not executable injection payloads.
+            if _THREAT_PATTERNS_RE.search(_strip_code_spans(text)):
+                return FirewallResult(blocked=True, reason=f"threat pattern: {threat_matches[0][:40]}")
         metadata_matches = _METADATA_INJECTION_RE.findall(text)
         if len(metadata_matches) >= 2:
             return FirewallResult(blocked=True, reason="chat metadata patterns")

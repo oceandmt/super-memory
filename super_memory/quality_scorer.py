@@ -124,6 +124,32 @@ def fidelity_score(content: str) -> float:
 
 # ── Sufficiency (Self-containedness) ─────────────────────────────────────────
 
+def is_boilerplate(content: str) -> bool:
+    """True if content is vendor boilerplate (license/lorem/manifest) with no
+    real recall value."""
+    if not content:
+        return False
+    low = content.lower()
+    _sigs = (
+        "lorem ipsum", "dolor sit amet", "consectetur adipiscing",
+        "permission is hereby granted, free of charge",
+        "redistribution and use in source and binary forms",
+        "licensed under the apache license", "all rights reserved.",
+        "gnu general public license", "mit license", "copyright (c)",
+    )
+    if any(sig in low for sig in _sigs):
+        return True
+    # dependency-manifest fragments: a few short bare tokens, one per line,
+    # no sentence punctuation (top_level.txt / RECORD / entry_points).
+    lines = [ln.strip() for ln in content.splitlines() if ln.strip()]
+    if lines and len(lines) <= 8 and len(content) < 200 and all(
+        len(ln) <= 40 and " " not in ln and not ln.endswith((".", "!", "?", ":"))
+        for ln in lines
+    ):
+        return True
+    return False
+
+
 def sufficiency_score(content: str) -> float:
     """Assess if the memory is self-contained and actionable.
 
@@ -276,6 +302,17 @@ def score_memory(content: str, memory_type: str = "context", config: QualityConf
         qs = QualityScore(overall=overall, fidelity=round(f, 4), sufficiency=round(s, 4), importance=round(i, 4))
         if warnings:
             qs.warnings = warnings
+
+        # E2: boilerplate / vendor-text cap. Lorem ipsum, license headers, and
+        # dependency-manifest fragments can score highly on raw heuristics but
+        # carry no recall value. Cap them below the default write-gate threshold.
+        if is_boilerplate(content):
+            capped = min(qs.overall, 0.25)
+            if capped < qs.overall:
+                qs.overall = capped
+                qs.warnings = (qs.warnings or []) + [
+                    "Boilerplate/vendor text (license/lorem/manifest): capped"
+                ]
 
         if config.verbose:
             logger.debug("QualityScore: overall=%.4f fidelity=%.4f sufficiency=%.4f importance=%.4f %s",
