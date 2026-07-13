@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.7 - 2026-07-13
+
+### Fixed
+- `layers.py::_save_palace_projection`: the MemPalace projection inserted into the legacy `id` column and used `ON CONFLICT(id)`, but `palace_drawers`' PRIMARY KEY is `drawer_id` and `id` carries no unique constraint. SQLite raised `ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint`, which rolled back the entire mempalace transaction on every direct save — silently dropping the mempalace layer (alive mempalace 189 vs neural 203). The upsert now targets `drawer_id` and populates it, and also stores `content_hash`. Backfilled 188 pre-existing rows whose `drawer_id` (PK) was NULL.
+- `ingest/__init__.py::FileAdapter`: file ingest had no build/vendor ignore set, so virtualenv internals (`.venv/site-packages/*.dist-info`, Lorem ipsum, AUTHORS, top_level.txt) were ingested as `context` memories and even passed the quality gate as "high-quality". Added a shared `is_ignored_source_path()` (mirroring the ignore set in `code_index.py`) enforced in both `FileAdapter.can_handle` and `FileAdapter.ingest`; `resolve_adapter` no longer falls back to `FileAdapter` for ignored paths. The 190 pre-existing venv rows were already soft-deleted.
+- `bridge.py::status()` (surfaced by `super_memory_stats`): reported raw `COUNT(*)`/`GROUP BY layer` that included soft-deleted rows (2028 total, mempalace 415) while the recall/list path filters them (true alive 799 / mempalace 189). `status()` now filters `soft_deleted` for `total_memories` and per-layer counts and adds a transparent `total_including_deleted` field.
+
+### Added
+- Regression coverage in `tests/test_injection_and_hydration_regression.py` (now 24 tests) for the palace_drawers PK conflict, the FileAdapter ignore-path filter, and the stats alive-count fix.
+
+### Safety
+- No database files, local memory contents, private runtime config, or generated personal data are included in this release.
+
+
 ## 2.3.6 - 2026-07-13
 
 ### Fixed

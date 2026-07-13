@@ -631,8 +631,10 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     SuperMemoryService(cfg)
     store = SuperMemoryStore(cfg)
     with store.connect() as conn:
-        count = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
-        layers = conn.execute("SELECT layer, COUNT(*) as c FROM memories GROUP BY layer").fetchall()
+        _ALIVE = "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+        total_all = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
+        count = conn.execute(f"SELECT COUNT(*) as c FROM memories WHERE {_ALIVE}").fetchone()["c"]
+        layers = conn.execute(f"SELECT layer, COUNT(*) as c FROM memories WHERE {_ALIVE} GROUP BY layer").fetchall()
         leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
         # Unified graph: cognitive_synapses primary + graph_edges legacy, graceful fallback
         try:
@@ -652,6 +654,7 @@ def status(config_path: str | None = None) -> dict[str, Any]:
         events = conn.execute("SELECT COUNT(*) as c FROM honcho_events").fetchone()["c"]
     return {
         "total_memories": count,
+        "total_including_deleted": total_all,
         "layers": {r["layer"]: r["c"] for r in layers},
         "graph_edges": edges,
         "cognitive_synapses": cog_syn,

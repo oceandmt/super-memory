@@ -181,3 +181,108 @@ class TestHandoffContentHashRegression:
             "OR json_extract(metadata_json,'$.soft_deleted')!=1)"
         ).fetchone()[0]
         assert n == 0, f"{n} alive rows have NULL/empty content_hash"
+
+
+class TestFileAdapterIgnorePathRegression:
+    """2026-07-13 incident: FileAdapter ingested virtualenv/build artifacts
+    (.venv/site-packages/dist-info) as 'context' memories — Lorem ipsum, AUTHORS,
+    top_level.txt all landed in the store and even passed the quality gate as
+    'high-quality'. FileAdapter must reject build/vendor paths at can_handle and
+    ingest, matching the ignore set code_index.py already uses."""
+
+    def test_venv_and_build_paths_are_ignored(self):
+        from super_memory.ingest import is_ignored_source_path
+        for p in (
+            ".venv-yt-dlp/lib/python3.14/site-packages/setuptools/_vendor/jaraco/text/Lorem ipsum.txt",
+            ".venv/lib/x/foo.py",
+            "node_modules/react/index.js",
+            "foo/bar-1.2.dist-info/AUTHORS",
+            "__pycache__/x.pyc",
+            "file:.venv/x.txt",
+        ):
+            assert is_ignored_source_path(p) is True, p
+
+    def test_real_source_paths_are_not_ignored(self):
+        from super_memory.ingest import is_ignored_source_path
+        for p in ("super_memory/service.py", "docs/roadmap.md", "memory/2026-07-13.md"):
+            assert is_ignored_source_path(p) is False, p
+
+    def test_file_adapter_refuses_ignored_paths(self):
+        from super_memory.ingest import FileAdapter, resolve_adapter
+        fa = FileAdapter()
+        assert fa.can_handle(".venv/lib/foo.txt") is False
+        assert fa.ingest(".venv/lib/foo.txt") == []
+        # auto-resolution must not fall back to FileAdapter for ignored paths
+        assert resolve_adapter(".venv/lib/foo.txt") is None
+
+    def test_no_alive_venv_junk_rows(self):
+        import sqlite3, json
+        from super_memory.ingest import is_ignored_source_path
+        conn = sqlite3.connect(
+            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+        )
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT source, metadata_json FROM memories "
+            "WHERE json_extract(metadata_json,'$.soft_deleted') IS NULL "
+            "OR json_extract(metadata_json,'$.soft_deleted')!=1"
+        ).fetchall()
+        junk = [r["source"] for r in rows if r["source"] and is_ignored_source_path(r["source"])]
+        assert junk == [], f"{len(junk)} alive rows point at build/vendor paths: {junk[:5]}"
+
+
+class TestStatsAliveCountRegression:
+    """2026-07-13 incident: bridge.status() (surfaced by super_memory_stats)
+    used raw COUNT(*)/GROUP BY layer with no soft-delete filter, so it reported
+    2028 total / mempalace=415 while the true alive counts were 799 / 189. The
+    recall/list path (service.py) filters soft_deleted; stats must agree."""
+
+    def test_status_reports_alive_counts_and_keeps_total(self):
+        from super_memory import bridge
+        import sqlite3
+        st = bridge.status()
+        assert "total_including_deleted" in st
+        assert st["total_memories"] <= st["total_including_deleted"]
+        conn = sqlite3.connect(
+            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+        )
+        alive = conn.execute(
+            "SELECT COUNT(*) FROM memories WHERE "
+            "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+        ).fetchone()[0]
+        assert st["total_memories"] == alive, (st["total_memories"], alive)
+
+
+class TestPalaceDrawersConflictRegression:
+    """2026-07-13 incident: layers._save_palace_projection inserted into the
+    `id` column and used ON CONFLICT(id), but palace_drawers' PRIMARY KEY is
+    `drawer_id` and `id` has no unique constraint. SQLite raised
+    'ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint',
+    which rolled back the whole mempalace transaction — silently dropping every
+    direct-save mempalace projection (alive mempalace 189 vs neural 203)."""
+
+    def test_palace_projection_conflicts_on_drawer_id(self):
+        import inspect
+        from super_memory import layers
+        src = inspect.getsource(layers.SQLiteLayerBackend._save_palace_projection)
+        assert "ON CONFLICT(drawer_id)" in src
+        assert "ON CONFLICT(id)" not in src
+
+    def test_palace_drawers_have_no_null_primary_key(self):
+        import sqlite3
+        conn = sqlite3.connect(
+            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+        )
+        n = conn.execute(
+            "SELECT COUNT(*) FROM palace_drawers WHERE drawer_id IS NULL"
+        ).fetchone()[0]
+        assert n == 0, f"{n} palace_drawers rows have NULL drawer_id (PK)"
+
+    def test_palace_insert_targets_drawer_id_pk(self):
+        """The INSERT must populate drawer_id (the PK), not only the legacy id
+        column, so the ON CONFLICT upsert has a matching constraint."""
+        import inspect
+        from super_memory import layers
+        src = inspect.getsource(layers.SQLiteLayerBackend._save_palace_projection)
+        # column list must include drawer_id
+        assert "drawer_id" in src.split("VALUES")[0]

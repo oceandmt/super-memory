@@ -29,6 +29,29 @@ class TransformationViolationError(RuntimeError):
     """Raised when a SourceAdapter violates its declared transformation."""
     pass
 
+# ── Ignored path segments (build/vendor artifacts, never real memory) ────────
+# Mirrors the ignore set in code_index.py so file ingest and code indexing agree.
+IGNORED_PATH_SEGMENTS: frozenset[str] = frozenset({
+    ".git", ".hg", ".svn",
+    ".venv", "venv", "env", ".env",
+    "site-packages", "node_modules", "__pycache__",
+    "dist", "build", ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    ".tox", ".eggs", "egg-info",
+})
+# Substrings that also disqualify a path (dist-info dirs carry a version suffix).
+IGNORED_PATH_SUBSTRINGS: tuple[str, ...] = (".dist-info", ".egg-info")
+
+
+def is_ignored_source_path(source_path: str) -> bool:
+    """True if the path points at a build/vendor artifact that must not be ingested."""
+    if source_path.startswith("file:"):
+        source_path = source_path[5:]
+    p = source_path.replace("\\", "/")
+    parts = set(p.split("/"))
+    if parts & IGNORED_PATH_SEGMENTS:
+        return True
+    return any(sub in p for sub in IGNORED_PATH_SUBSTRINGS)
+
 
 # ── Adapter Manifest ─────────────────────────────────────────────────────────
 
@@ -152,12 +175,16 @@ class FileAdapter(BaseSourceAdapter):
     def can_handle(self, source_path: str) -> bool:
         if source_path.startswith("file:"):
             source_path = source_path[5:]
+        if is_ignored_source_path(source_path):
+            return False
         ext = Path(source_path).suffix.lower()
         return ext in self.manifest().supported_extensions or not source_path.startswith(("chat:", "turn:", "http", "tool:"))
 
     def ingest(self, source_path: str, **kwargs: Any) -> list[dict[str, Any]]:
         if source_path.startswith("file:"):
             source_path = source_path[5:]
+        if is_ignored_source_path(source_path):
+            return []
         path = Path(source_path)
         if not path.exists():
             return []

@@ -169,18 +169,20 @@ class SQLiteLayerBackend(MemoryBackend):
         conn.execute(
             """
             INSERT INTO palace_drawers
-            (id, memory_id, wing, room, hall, content, checksum, source, metadata_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
+            (drawer_id, id, memory_id, wing, room, hall, content, checksum, source, metadata_json, created_at, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(drawer_id) DO UPDATE SET
                 wing=excluded.wing,
                 room=excluded.room,
                 hall=excluded.hall,
                 content=excluded.content,
                 checksum=excluded.checksum,
                 source=excluded.source,
-                metadata_json=excluded.metadata_json
+                metadata_json=excluded.metadata_json,
+                content_hash=excluded.content_hash
             """,
             (
+                f"drawer:{record.id}",
                 f"drawer:{record.id}",
                 record.id,
                 wing,
@@ -191,6 +193,7 @@ class SQLiteLayerBackend(MemoryBackend):
                 record.source,
                 json.dumps({**record.metadata, "tags": tags}, ensure_ascii=False),
                 record.created_at.isoformat(),
+                record.metadata.get("content_hash"),
             ),
         )
 
