@@ -454,6 +454,22 @@ class TestRemVectorSoftDeleteRegression:
                 f"{fn.__name__} leaks soft-deleted vectors into REM recall (E15)"
             )
 
+class TestCrossAgentRecallSoftDeleteRegression:
+    """E16 (2026-07-13): CrossAgentTools.cross_agent_recall (live MCP tool
+    super_memory_cross_agent_recall) queried memories via both an FTS join and
+    a LIKE fallback with no soft-delete guard — 287 soft-deleted workspace rows
+    could leak into cross-agent recall. Both query paths must exclude
+    soft-deleted rows."""
+
+    def test_cross_agent_recall_paths_have_guard(self):
+        import inspect
+        from super_memory.cross_agent import CrossAgentTools
+        for fn in (CrossAgentTools._fts_search, CrossAgentTools.cross_agent_recall):
+            src = inspect.getsource(fn)
+            assert "soft_deleted" in src, (
+                f"{fn.__name__} leaks soft-deleted memories into cross-agent recall (E16)"
+            )
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

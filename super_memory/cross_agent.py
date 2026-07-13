@@ -87,6 +87,7 @@ class CrossAgentTools:
                         JOIN memories_fts fts ON m.rowid = fts.rowid
                         WHERE m.agent_id = ? AND m.layer = 'workspace_markdown'
                           AND memories_fts MATCH ?
+                          AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1
                         ORDER BY rank ASC, m.created_at DESC
                         LIMIT ?
                     """, (agent_id, fts_words, limit))
@@ -118,6 +119,7 @@ class CrossAgentTools:
                            tags_json, source, trust_score, created_at, metadata_json
                     FROM memories
                     WHERE agent_id = ? AND content LIKE ? AND layer = 'workspace_markdown'
+                      AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                     ORDER BY created_at DESC LIMIT ?
                 """, (agent_id, like, candidate_limit))
         memories = [_decode(r) for r in rows]

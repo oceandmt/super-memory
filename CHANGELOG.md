@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.17 - 2026-07-13
+
+### Fixed (E16 — cross-agent recall leaks forgotten memories)
+- **`CrossAgentTools.cross_agent_recall` (live MCP tool `super_memory_cross_agent_recall`) queried `memories` via both an FTS join (`_fts_search`) and a LIKE fallback with no soft-delete guard.** 287 soft-deleted `workspace_markdown` rows could leak into cross-agent recall — same class as E4/E8/E15. Added `COALESCE(json_extract(...metadata_json,'$.soft_deleted'),0) != 1` to both query paths. Verified live: recall returns 50 hits, 0 soft-deleted leaked.
+
+### Tests
+- Regression suite now 51: added `TestCrossAgentRecallSoftDeleteRegression` (source-level guard on `_fts_search` + `cross_agent_recall`).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows cross-agent recall results.
+
+
 ## 2.3.16 - 2026-07-13
 
 ### Fixed (E15 — REM vector recall leaks forgotten memories)
