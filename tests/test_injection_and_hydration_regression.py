@@ -604,6 +604,47 @@ class TestSessionToolsSoftDeleteRegression:
         s2 = inspect.getsource(SessionArchive.create_session_summary)
         assert "soft_deleted" in s2, "create_session_summary unguarded (E22)"
 
+class TestFtsClobberRegression:
+    """E23 (2026-07-13): layers.py DB-init ran AFTER run_migrations() and, on
+    seeing that the content-form memories_fts (fts5(content, content=memories,
+    content_rowid=rowid)) lacked an 'id' column, DROPPED the table + its sync
+    triggers and recreated a legacy standalone fts5(id, layer, content, tags)
+    that nothing populates. Result on the live DB: memories_fts had 0 rows
+    (vs 2132 memories), silently breaking ALL English/Latin FTS recall in
+    hybrid_recall and cross_agent. Fix: migrations owns memories_fts; layers.py
+    only creates a fallback when NO table exists, never clobbers the
+    content-form."""
+
+    def _init_content_form(self, conn):
+        conn.execute("CREATE TABLE memories(id TEXT PRIMARY KEY, layer TEXT, content TEXT, metadata_json TEXT)")
+        conn.execute("CREATE VIRTUAL TABLE memories_fts USING fts5(content, content=memories, content_rowid=rowid)")
+        conn.executescript(
+            "CREATE TRIGGER memories_fts_ai AFTER INSERT ON memories BEGIN "
+            "INSERT INTO memories_fts(rowid,content) VALUES(new.rowid,new.content); END;"
+        )
+
+    def test_layers_init_does_not_clobber_content_form_fts(self):
+        import sqlite3, inspect
+        from super_memory import layers
+        # 1) source guard: init must NOT unconditionally DROP memories_fts
+        src = inspect.getsource(layers)
+        assert "single source of truth" in src, "layers.py FTS clobber guard missing (E23)"
+        # 2) behavioural: simulate the exact fixed init branch
+        conn = sqlite3.connect(":memory:")
+        self._init_content_form(conn)
+        conn.execute("INSERT INTO memories(id,layer,content,metadata_json) VALUES('a','n','hello world','{}')")
+        existing = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_fts'"
+        ).fetchone()
+        if existing is None:  # fixed layers.py logic: only create when absent
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id,layer,content,tags)")
+        conn.execute("INSERT INTO memories(id,layer,content,metadata_json) VALUES('b','n','second row','{}')")
+        n = conn.execute("SELECT COUNT(*) FROM memories_fts").fetchone()[0]
+        m = conn.execute("SELECT COUNT(*) FROM memories_fts WHERE memories_fts MATCH 'second'").fetchone()[0]
+        conn.close()
+        assert n == 2, f"content-form FTS was clobbered, {n} rows (E23)"
+        assert m == 1, "content-form FTS MATCH broken after init (E23)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

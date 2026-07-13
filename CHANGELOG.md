@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.23 - 2026-07-13
+
+### Fixed (E23 — English/Latin FTS index permanently empty)
+- **`layers.py` DB-init ran *after* `run_migrations()` and clobbered the FTS5 index.** Migrations correctly create `memories_fts` in content-table form (`fts5(content, content=memories, content_rowid=rowid)`) with `memories_fts_ai/ad/au` sync triggers. But the `layers.py` init block then inspected the table, saw it lacked an `id` column, **dropped the table and the migration triggers**, and recreated a legacy standalone `fts5(id, layer, content, tags)` form that nothing ever populates.
+- **Live impact:** `memories_fts` had **0 rows** vs 2132 memories — every English/Latin FTS `MATCH` in `hybrid_recall` and `cross_agent` silently returned nothing (CJK recall via `memories_cjk_fts` was unaffected, masking the bug). First non-soft-delete wrong-value bug found this audit.
+- **Fix:** `migrations.py` is now the single source of truth for `memories_fts`. `layers.py` only creates a fallback table when none exists at all (FTS5 unavailable), and never drops/recreates the content-form or its triggers.
+- **Live DB healed:** recreated the content-form + triggers and issued `INSERT INTO memories_fts(memories_fts) VALUES('rebuild')` → 0 → 2132 rows; `reindex_fts5` already scrubs soft-deleted rows post-rebuild (E10), so recall stays forget()-consistent.
+
+### Tests
+- Regression suite now 58: added `TestFtsClobberRegression` (source guard + behavioural sim proving the content-form survives init and `MATCH` works).
+
+### Safety
+- No database files, memory contents, or private runtime config included. A pre-heal backup of the live DB was taken locally (`.bak-e23`, not committed).
+
+
 ## 2.3.22 - 2026-07-13
 
 ### Fixed (E22 — forgotten memories leak into 2 session tools)

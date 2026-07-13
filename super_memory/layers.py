@@ -97,18 +97,25 @@ class SQLiteLayerBackend(MemoryBackend):
             from .migrations import run_migrations
             run_migrations(self.config)
             with self._connect() as conn:
-                # FTS5 is not in schema.sql (virtual table, tool-specific)
-                conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
-                # Drop stale FTS triggers from previous schema versions to avoid
-                # UPDATE/INSERT failures. App manages FTS explicitly via code.
-                for _t_name in conn.execute('SELECT name FROM sqlite_master WHERE type="trigger" AND tbl_name="memories" AND name LIKE "memories_fts_%"').fetchall():
-                    conn.execute(f'DROP TRIGGER IF EXISTS {_t_name["name"]}')
-                # FTS table may have stale schema (only content column). Detect and recreate.
+                # FTS5 memories_fts is created and kept in sync by
+                # run_migrations() in content-table form:
+                #   fts5(content, content=memories, content_rowid=rowid)
+                # with memories_fts_ai/ad/au triggers. migrations.py is the
+                # single source of truth. This block historically dropped those
+                # triggers and recreated a legacy standalone
+                #   fts5(id, layer, content, tags)
+                # table that nothing ever populated -- leaving memories_fts
+                # PERMANENTLY EMPTY (0 rows, no sync) and silently breaking all
+                # English/Latin FTS recall (E23). Only create a fallback table
+                # if migrations produced none at all (e.g. FTS5 unavailable).
                 try:
-                    _fts_cols = {c[1] for c in conn.execute('PRAGMA table_info(memories_fts)').fetchall()}
-                    if 'id' not in _fts_cols:
-                        conn.execute('DROP TABLE memories_fts')
-                        conn.execute('CREATE VIRTUAL TABLE memories_fts USING fts5(id, layer, content, tags)')
+                    _existing = conn.execute(
+                        "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_fts'"
+                    ).fetchone()
+                    if _existing is None:
+                        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(id, layer, content, tags)")
+                    # else: content-form owned by migrations -- leave the table
+                    # and its sync triggers intact.
                 except Exception:
                     pass
                 try:
