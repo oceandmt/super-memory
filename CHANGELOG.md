@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.11 - 2026-07-13
+
+### Fixed (E6 — the .venv junk root cause flagged in 2.3.10)
+- **`safe_flows.train()` / `import_local()` ingested build/vendor files as memories.** `_iter_files()` walked the target directory with no ignore guard, so a `train_local` run over a workspace containing `.venv-yt-dlp` slurped **1142 vendored dependency files** (`.dist-info/top_level.txt`, license files, etc.) into all four layers as `flow=train` "memories". This was the exact source of the 872+ alive junk rows that failed `test_no_alive_venv_junk_rows`. `_iter_files()` now skips `is_ignored_source_path()` artifacts (`.venv`, `site-packages`, `node_modules`, `.dist-info`, `.egg-info`, build/dist/cache dirs), so every flow sharing it (`train`, `import_local`) is protected at the source.
+
+### Data
+- Purged 268 canonical junk memory ids (1062 layer rows + 537 palace_drawers + 268 honcho_events + 795 cognitive_neurons + 268 ingest_manifest entries). 0 vendor-path memories remain.
+
+### Tests
+- Regression suite now 38: added `test_safe_flows_iter_files_skips_vendor_paths` (real file yielded; `.venv`/`node_modules` artifacts skipped). The pre-existing live-DB guard `test_no_alive_venv_junk_rows` now passes.
+
+### Safety
+- No database files, memory contents, or private runtime config included. The change only narrows what the local train/import flows will ingest; it cannot cause new ingestion.
+
+
 ## 2.3.10 - 2026-07-13
 
 ### Removed (E5 — dead + broken code, per user decision "Option A")

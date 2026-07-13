@@ -230,6 +230,26 @@ class TestFileAdapterIgnorePathRegression:
         junk = [r["source"] for r in rows if r["source"] and is_ignored_source_path(r["source"])]
         assert junk == [], f"{len(junk)} alive rows point at build/vendor paths: {junk[:5]}"
 
+    def test_safe_flows_iter_files_skips_vendor_paths(self, tmp_path):
+        """E6 (2026-07-13): safe_flows.train()/import_local() walked files via
+        _iter_files with no ignore guard, so a train run over a workspace
+        containing .venv-yt-dlp ingested 1142 vendor files as 'memories'.
+        _iter_files must skip is_ignored_source_path artifacts."""
+        from super_memory.safe_flows import _iter_files
+        # real file that must be yielded
+        (tmp_path / "note.md").write_text("real content")
+        # vendor junk that must be skipped
+        vendor = tmp_path / ".venv" / "lib" / "site-packages" / "pkg-1.0.dist-info"
+        vendor.mkdir(parents=True)
+        (vendor / "top_level.txt").write_text("pkg")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "index.md").write_text("junk")
+
+        found = {p.name for p in _iter_files(tmp_path, {".md", ".txt"}, recursive=True, limit=100)}
+        assert "note.md" in found
+        assert "top_level.txt" not in found
+        assert "index.md" not in found
+
 
 class TestStatsAliveCountRegression:
     """2026-07-13 incident: bridge.status() (surfaced by super_memory_stats)

@@ -9,6 +9,7 @@ from typing import Any, Iterable
 from . import bridge
 from .config import load_config
 from .extractors import available_extractors, extract_text
+from .ingest import is_ignored_source_path
 from .models import MemoryScope, MemoryType
 from .sanitize import sanitize_prompt
 from .storage import SuperMemoryStore
@@ -64,6 +65,11 @@ def _iter_files(path: Path, extensions: set[str], recursive: bool = True, limit:
     for file_path in sorted(path.glob(pattern)):
         if count >= limit:
             break
+        # Skip build/vendor artifacts (.venv, site-packages, node_modules,
+        # .dist-info, etc). Without this, train/import walked vendored deps and
+        # ingested them as "memories" (root cause of the .venv-yt-dlp junk rows).
+        if is_ignored_source_path(str(file_path)):
+            continue
         if file_path.is_file() and file_path.suffix.lower() in extensions:
             count += 1
             yield file_path
