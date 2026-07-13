@@ -278,10 +278,8 @@ class SuperMemoryService:
         content_hash = record.metadata.get("content_hash")
         if not content_hash:
             content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
-        FILTER_ACTIVE = (
-            "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
-        )
+        from .models import ALIVE_SQL
+        FILTER_ACTIVE = ALIVE_SQL  # canonical soft-delete guard (see models.ALIVE_SQL)
         try:
             with self.store.connect() as conn:
                 wc_dup = _wc_find_duplicate(conn, record.content, record.metadata, source=record.source)

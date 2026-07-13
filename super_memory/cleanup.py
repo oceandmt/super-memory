@@ -72,10 +72,8 @@ def _prune_candidate_ids(conn: sqlite3.Connection, dry_run: bool = True, source_
 
     Returns a report of what was found and what was pruned.
     """
-    FILTER_ACTIVE = (
-        "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
-        "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
-    )
+    from .models import ALIVE_SQL
+    FILTER_ACTIVE = ALIVE_SQL  # canonical soft-delete guard (see models.ALIVE_SQL)
 
     conditions: list[str] = []
     params: list[object] = []

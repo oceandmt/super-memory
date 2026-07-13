@@ -250,6 +250,24 @@ class HybridRecall(DBMixin):
             except _sqlite3.OperationalError:
                 rows = None  # FTS5 unavailable or table mismatch — use LIKE fallback
 
+        # E13: before the unindexed full-scan LIKE, try the trigram CJK FTS index
+        # (memories_cjk_fts). memories_fts MATCH can fail/return nothing for CJK
+        # or substring-style queries; the trigram index handles those and, unlike
+        # `content LIKE '%q%'`, uses an index instead of scanning the whole table.
+        if rows is None and fts_query:
+            try:
+                cjk_sql = (
+                    "SELECT m.id, m.content, m.agent_id, m.session_id, m.created_at, m.type "
+                    "FROM memories_cjk_fts f "
+                    "JOIN memories m ON m.rowid = f.rowid "
+                    "WHERE memories_cjk_fts MATCH ? " + filter_sql + " LIMIT ?"
+                )
+                rows = conn.execute(cjk_sql, (fts_query, *args, limit)).fetchall()
+                if not rows:
+                    rows = None  # nothing matched — fall through to LIKE
+            except _sqlite3.OperationalError:
+                rows = None  # CJK FTS unavailable — use LIKE fallback
+
         if rows is None:
             like_where = ["content LIKE ?"] + [w.replace("m.", "", 1) for w in where]
             like_sql = (

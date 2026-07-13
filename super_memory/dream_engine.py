@@ -199,6 +199,7 @@ def run_dream_cycle(
     min_cluster_size: int = 2,
     similarity_threshold: float = 0.4,
     max_insights: int = 5,
+    require_review: bool = False,
     config_path: str | None = None,
 ) -> dict[str, Any]:
     """Run the full dream consolidation cycle.
@@ -255,7 +256,7 @@ def run_dream_cycle(
         "would_save": len(insights) if dry_run else 0,
     }
 
-    # Live mode: save insights
+    # Live mode: save insights (or, when require_review, enqueue for approval)
     if not dry_run and insights:
         from .config import load_config as _lc
         from .service import SuperMemoryService
@@ -310,16 +311,164 @@ def run_dream_cycle(
                 },
             )
             try:
-                svc.save(record)
-                _seen_hashes.add(_h)
-                insights_saved += 1
+                if require_review:
+                    # E11: don't persist as a live memory; enqueue for human/agent
+                    # approval. dream_approve_insight() later saves it verbatim.
+                    _enqueue_pending_insight(store, ins, quality_overall=_qs.overall)
+                    _seen_hashes.add(_h)
+                    _gate_stats.setdefault("queued_for_review", 0)
+                    _gate_stats["queued_for_review"] += 1
+                else:
+                    svc.save(record)
+                    _seen_hashes.add(_h)
+                    insights_saved += 1
             except Exception:
                 pass
         report["phases"]["insights"]["saved"] = insights_saved
         report["phases"]["insights"]["quality_gate"] = _gate_stats
+        if require_review:
+            report["phases"]["insights"]["require_review"] = True
+            report["phases"]["insights"]["queued"] = _gate_stats.get("queued_for_review", 0)
 
     report["insights_saved"] = insights_saved
     return report
+
+# ── E11: dream insight review-before-save queue ─────────────────────────────
+
+def _init_pending_insights(store: SuperMemoryStore) -> None:
+    with store.connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dream_pending_insights (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                cluster_size INTEGER NOT NULL DEFAULT 0,
+                cross_session INTEGER NOT NULL DEFAULT 0,
+                source_memory_ids TEXT,
+                quality_overall REAL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                resolved_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_dream_pending_status ON dream_pending_insights(status)"
+        )
+
+
+def _enqueue_pending_insight(store: SuperMemoryStore, ins: dict[str, Any], *, quality_overall: float | None = None) -> str:
+    """Persist a candidate insight for later approval (idempotent by content hash)."""
+    import hashlib as _hl
+    _init_pending_insights(store)
+    content = ins["content"]
+    chash = _hl.sha256(content.encode()).hexdigest()
+    pid = str(uuid4())
+    with store.connect() as conn:
+        # dedup: skip if an unresolved copy already queued
+        existing = conn.execute(
+            "SELECT id FROM dream_pending_insights WHERE content_hash=? AND status='pending'",
+            (chash,),
+        ).fetchone()
+        if existing:
+            return existing[0] if not hasattr(existing, "keys") else existing["id"]
+        conn.execute(
+            "INSERT INTO dream_pending_insights "
+            "(id, content, content_hash, cluster_size, cross_session, source_memory_ids, quality_overall, status, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+            (
+                pid, content, chash,
+                int(ins.get("cluster_size", 0)),
+                1 if ins.get("cross_session") else 0,
+                json.dumps(ins.get("source_memory_ids", [])),
+                quality_overall,
+                _now(),
+            ),
+        )
+    return pid
+
+
+def dream_list_pending_insights(store: SuperMemoryStore | None = None, *, limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
+    """List insights awaiting review (E11)."""
+    cfg = load_config(config_path)
+    store = store or SuperMemoryStore(cfg)
+    _init_pending_insights(store)
+    with store.connect() as conn:
+        rows = conn.execute(
+            "SELECT id, content, cluster_size, cross_session, source_memory_ids, quality_overall, created_at "
+            "FROM dream_pending_insights WHERE status='pending' ORDER BY created_at DESC LIMIT ?",
+            (max(1, min(limit, 500)),),
+        ).fetchall()
+    items = []
+    for r in rows:
+        d = dict(r) if hasattr(r, "keys") else {}
+        try:
+            d["source_memory_ids"] = json.loads(d.get("source_memory_ids") or "[]")
+        except Exception:
+            d["source_memory_ids"] = []
+        d["cross_session"] = bool(d.get("cross_session"))
+        items.append(d)
+    return {"ok": True, "pending": items, "count": len(items)}
+
+
+def dream_approve_insight(insight_id: str, store: SuperMemoryStore | None = None, *, config_path: str | None = None) -> dict[str, Any]:
+    """Approve a pending insight and persist it as a canonical memory (E11)."""
+    from .service import SuperMemoryService
+    cfg = load_config(config_path)
+    store = store or SuperMemoryStore(cfg)
+    _init_pending_insights(store)
+    with store.connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM dream_pending_insights WHERE id=? AND status='pending'",
+            (insight_id,),
+        ).fetchone()
+    if not row:
+        return {"ok": False, "error": "not_found_or_already_resolved", "id": insight_id}
+    d = dict(row)
+    try:
+        src_ids = json.loads(d.get("source_memory_ids") or "[]")
+    except Exception:
+        src_ids = []
+    record = MemoryRecord(
+        content=d["content"],
+        type=MemoryType.INSIGHT,
+        scope=MemoryScope.PROJECT,
+        agent_id="dream-engine",
+        tags=["dream-consolidation", "p0", "insight", "reviewed"],
+        metadata={
+            "dream_cluster_size": d.get("cluster_size"),
+            "dream_cross_session": bool(d.get("cross_session")),
+            "dream_source_ids": src_ids,
+            "dream_generated_at": _now(),
+            "quality_overall": d.get("quality_overall"),
+            "review_status": "approved",
+        },
+    )
+    svc = SuperMemoryService(cfg)
+    saved = svc.save(record)
+    with store.connect() as conn:
+        conn.execute(
+            "UPDATE dream_pending_insights SET status='approved', resolved_at=? WHERE id=?",
+            (_now(), insight_id),
+        )
+    return {"ok": True, "id": insight_id, "saved": True, "result": getattr(saved, "__dict__", str(saved))}
+
+
+def dream_reject_insight(insight_id: str, store: SuperMemoryStore | None = None, *, config_path: str | None = None) -> dict[str, Any]:
+    """Reject a pending insight so it is never persisted (E11)."""
+    cfg = load_config(config_path)
+    store = store or SuperMemoryStore(cfg)
+    _init_pending_insights(store)
+    with store.connect() as conn:
+        cur = conn.execute(
+            "UPDATE dream_pending_insights SET status='rejected', resolved_at=? WHERE id=? AND status='pending'",
+            (_now(), insight_id),
+        )
+        changed = cur.rowcount
+    if not changed:
+        return {"ok": False, "error": "not_found_or_already_resolved", "id": insight_id}
+    return {"ok": True, "id": insight_id, "rejected": True}
 
 
 # ── Wiring helper for maintenance_run() ─────────────────────────────────────

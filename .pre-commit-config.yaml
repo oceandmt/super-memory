@@ -10,8 +10,18 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-commit]
-      - id: pytest-p0-p3
-        name: P0-P3 Tests
+      - id: pytest-injection-hydration-regression
+        name: Injection/Hydration Regression Suite
+        description: >-
+          Fast regression guards for the 2026-07 incident chain (E1-E11):
+          soft-delete leaks in recall/stats/dream, FTS reindex resurrection,
+          vendor-junk ingestion, ALIVE_SQL centralization, dream review queue.
+          ~1s; blocks the next E7/E8-class regression before it lands.
+        entry: python3 -m pytest tests/test_injection_and_hydration_regression.py -q --timeout=60
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
         description: Run P0-P3 test suite
         entry: python3 -m pytest tests/test_safety_firewall.py tests/test_safety_freshness.py tests/test_safety_encryption.py tests/test_spreading_activation.py tests/test_dedup_pipeline.py tests/test_dedup_config.py tests/test_dedup_t3_llm.py tests/test_extraction.py tests/test_extraction_relations.py tests/test_extraction_structure.py tests/test_extraction_structure_detector.py tests/test_trigger_engine.py tests/test_brain_mode.py tests/test_cache.py tests/test_cache_manager.py tests/test_cache_selector.py tests/test_pipeline_integration.py tests/test_eternal_context.py tests/test_embeddings.py tests/test_embeddings_provider.py tests/test_sync_protocol.py -q --timeout=30
         language: system

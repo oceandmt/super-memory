@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.3.14 - 2026-07-13
+
+### Enhancements (E9–E13 — hardening + self-improvement follow-ups to the E1–E8 audit)
+
+**E9 — Centralized soft-delete guard (`models.ALIVE_SQL` / `alive_sql()`).**
+The soft-delete predicate had been hand-written in bridge/cleanup/conflict/version/service and *omitted* in dream_engine (E7) and hybrid_recall (E8), each omission a real recall/stat leak. Added one canonical source of truth in `models.py` (leaf module, no circular imports) and pointed the 4 ad-hoc sites at it. Added `TestSoftDeleteGuardCentralizationRegression`: a source-level guard that fails if any known recall/stat surface (dream `rank_by_surprisal`/`detect_patterns`/`dream_engine_status`, hybrid `_search_memories`/`_search_semantic_memories`) drops the `soft_deleted` filter — catching the next E7/E8-class regression at test time.
+
+**E10 — Hardened `reindex_fts5` against soft-delete resurrection (defense-in-depth for E8).**
+`memories_fts`/`memories_cjk_fts` are external-content FTS5; `'rebuild'` repopulates them from **all** rows incl. soft-deleted. `reindex_fts5` now scrubs soft-deleted rows back out (external-content `'delete'`) after every rebuild, so a reindex can never re-expose forgotten memories to MATCH even if a query-time guard is missed. Verified on the live DB: scrubbed 1038 soft-deleted rows from CJK FTS; 0 remain MATCH-able.
+
+**E11 — Dream insight review-before-save queue.**
+`run_dream_cycle(dry_run=False)` previously saved insights straight into the canonical store. New `require_review=True` routes gate-passing insights into a `dream_pending_insights` table for explicit `dream_approve_insight` / `dream_reject_insight` (idempotent enqueue by content hash; approval persists verbatim with a `reviewed` tag, rejection never persists). Default stays `False` (backward compatible).
+
+**E12 — Pre-commit regression hook.**
+Added `pytest-injection-hydration-regression` to `.pre-commit-config.yaml` — runs the 48-test suite (~1s) before every commit, blocking the next E7/E8-class regression before it lands instead of relying on manual audit.
+
+**E13 — Recall trigram tier before full-scan LIKE.**
+`_search_memories` fell straight from FTS5 MATCH to an unindexed `content LIKE '%q%'` full table scan. It now tries the trigram `memories_cjk_fts` index first (handles CJK/substring queries the main FTS misses, and uses an index instead of scanning). The shared `filter_sql` keeps the E8 soft-delete guard on the CJK tier too.
+
+### Tests
+- Regression suite now 48 (was 42): +E9 (2), +E10 (1), +E11 (2), +E13 (1).
+
+### Safety
+- No database files, memory contents, or private runtime config included. All changes either narrow what is read/returned or add an opt-in approval gate; none can expose or auto-ingest data.
+
+
 ## 2.3.13 - 2026-07-13
 
 ### Fixed (E8 — recall resurrects forgotten memories after any FTS reindex)

@@ -287,6 +287,141 @@ class TestDreamEngineSoftDeleteRegression:
         if raw != alive:
             assert st["total_memories"] != raw
 
+class TestSoftDeleteGuardCentralizationRegression:
+    """E9 (2026-07-13): the soft-delete predicate was hand-written in
+    bridge/cleanup/conflict/version/service and omitted in dream_engine (E7)
+    and hybrid_recall (E8) — each omission a real leak. models.ALIVE_SQL is now
+    the single source of truth. This guard fails if a known recall/stat surface
+    stops filtering soft-deleted rows, catching the next E7/E8-class regression
+    at test time instead of in production."""
+
+    def test_alive_sql_shape(self):
+        from super_memory.models import ALIVE_SQL, alive_sql
+        assert "soft_deleted" in ALIVE_SQL and "!=1" in ALIVE_SQL
+        assert alive_sql("m").startswith("COALESCE(json_extract(m.metadata_json")
+        assert alive_sql() == ALIVE_SQL
+
+    def test_known_recall_surfaces_keep_soft_delete_guard(self):
+        import inspect
+        # (module path, attribute chain, callable) -> source must mention soft_deleted
+        from super_memory.dream_engine import (
+            rank_by_surprisal, detect_patterns, dream_engine_status,
+        )
+        from super_memory.hybrid_recall import HybridRecall
+        from super_memory import service, cleanup, version, conflict
+        surfaces = {
+            "dream_engine.rank_by_surprisal": inspect.getsource(rank_by_surprisal),
+            "dream_engine.detect_patterns": inspect.getsource(detect_patterns),
+            "dream_engine.dream_engine_status": inspect.getsource(dream_engine_status),
+            "hybrid_recall._search_memories": inspect.getsource(HybridRecall._search_memories),
+            "hybrid_recall._search_semantic_memories": inspect.getsource(HybridRecall._search_semantic_memories),
+        }
+        missing = [name for name, src in surfaces.items() if "soft_deleted" not in src]
+        assert not missing, f"recall surfaces dropped soft-delete guard: {missing}"
+        # centralized sites must reference ALIVE_SQL (not re-typed variants)
+        for mod, name in ((service, "service"), (cleanup, "cleanup"),
+                          (version, "version"), (conflict, "conflict")):
+            src = inspect.getsource(mod)
+            assert "ALIVE_SQL" in src, f"{name} no longer uses canonical ALIVE_SQL"
+
+class TestReindexScrubsSoftDeletedRegression:
+    """E10 (2026-07-13): defense-in-depth for E8. memories_fts/memories_cjk_fts
+    are external-content FTS5; 'rebuild' repopulates them from ALL rows incl.
+    soft-deleted. reindex_fts5 must scrub soft-deleted rows back out after every
+    rebuild so a reindex cannot re-expose forgotten memories to MATCH."""
+
+    def test_reindex_scrubs_soft_deleted_from_external_fts(self, tmp_path):
+        import sqlite3
+        from super_memory.reindex import _scrub_soft_deleted_from_fts
+        db = tmp_path / "m.sqlite3"
+        c = sqlite3.connect(str(db))
+        c.row_factory = sqlite3.Row
+        c.executescript(
+            "CREATE TABLE memories(id TEXT, content TEXT, metadata_json TEXT);"
+            "CREATE VIRTUAL TABLE memories_fts USING fts5(content, content=memories, content_rowid=rowid);"
+            "INSERT INTO memories(rowid,id,content,metadata_json) VALUES"
+            " (1,'alive','distinctivetoken alpha','{}'),"
+            " (2,'deleted','distinctivetoken beta','{\"soft_deleted\":1}');"
+            "INSERT INTO memories_fts(memories_fts) VALUES('rebuild');"
+        )
+        c.commit()
+        pre = [r[0] for r in c.execute(
+            "SELECT m.id FROM memories_fts f JOIN memories m ON m.rowid=f.rowid "
+            "WHERE memories_fts MATCH 'distinctivetoken'").fetchall()]
+        assert "deleted" in pre, "precondition: rebuild exposed soft-deleted row"
+        scrubbed = _scrub_soft_deleted_from_fts(c, "memories_fts")
+        assert scrubbed == 1
+        post = [r[0] for r in c.execute(
+            "SELECT m.id FROM memories_fts f JOIN memories m ON m.rowid=f.rowid "
+            "WHERE memories_fts MATCH 'distinctivetoken'").fetchall()]
+        assert post == ["alive"], f"soft-deleted still MATCH-able after scrub: {post}"
+        c.close()
+
+class TestDreamReviewQueueRegression:
+    """E11 (2026-07-13): run_dream_cycle(dry_run=False) saved insights straight
+    into the canonical store with no human/agent approval. require_review=True
+    now routes gate-passing insights into dream_pending_insights for explicit
+    approve/reject instead of persisting them as permanent memories."""
+
+    def test_pending_queue_round_trip(self, tmp_path, monkeypatch):
+        import sqlite3
+        from super_memory import dream_engine as de
+
+        # minimal fake store backed by a throwaway sqlite file
+        db = tmp_path / "q.sqlite3"
+        class _FakeStore:
+            def connect(self):
+                conn = sqlite3.connect(str(db))
+                conn.row_factory = sqlite3.Row
+                return conn
+        store = _FakeStore()
+
+        ins = {"content": "[E11] canary insight qqzz", "cluster_size": 3,
+               "cross_session": True, "source_memory_ids": ["a", "b"]}
+        pid = de._enqueue_pending_insight(store, ins, quality_overall=0.7)
+        assert pid
+        # idempotent: same content while pending returns same id, no duplicate
+        pid2 = de._enqueue_pending_insight(store, ins, quality_overall=0.7)
+        assert pid2 == pid
+
+        lst = de.dream_list_pending_insights(store)
+        assert lst["count"] == 1
+        assert lst["pending"][0]["id"] == pid
+        assert lst["pending"][0]["cross_session"] is True
+        assert lst["pending"][0]["source_memory_ids"] == ["a", "b"]
+
+        rej = de.dream_reject_insight(pid, store)
+        assert rej["ok"] and rej["rejected"]
+        assert de.dream_list_pending_insights(store)["count"] == 0
+        # rejecting an already-resolved id fails cleanly
+        assert de.dream_reject_insight(pid, store)["ok"] is False
+
+    def test_run_dream_cycle_accepts_require_review_param(self):
+        import inspect
+        from super_memory.dream_engine import run_dream_cycle
+        sig = inspect.signature(run_dream_cycle)
+        assert "require_review" in sig.parameters
+        assert sig.parameters["require_review"].default is False
+
+class TestRecallCjkTierBeforeFullScanRegression:
+    """E13 (2026-07-13): _search_memories fell straight from FTS5 MATCH to an
+    unindexed `content LIKE '%q%'` full table scan. It should try the trigram
+    memories_cjk_fts index first (handles CJK/substring queries the main FTS
+    misses, and uses an index instead of scanning). The CJK tier must keep the
+    E8 soft-delete guard too."""
+
+    def test_search_memories_tries_cjk_fts_before_like(self):
+        import inspect
+        from super_memory.hybrid_recall import HybridRecall
+        src = inspect.getsource(HybridRecall._search_memories)
+        i_cjk = src.find("memories_cjk_fts")
+        i_like = src.find("content LIKE ?")
+        assert i_cjk != -1, "CJK trigram tier missing from _search_memories (E13)"
+        assert i_like != -1
+        assert i_cjk < i_like, "CJK FTS tier must be attempted before the LIKE full-scan"
+        # E8 guard must still apply to the CJK tier (filter_sql is shared)
+        assert "filter_sql" in src
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

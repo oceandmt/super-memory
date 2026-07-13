@@ -18,6 +18,27 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+# ── Canonical soft-delete SQL guard ─────────────────────────────────────────
+# Single source of truth for "alive" (not soft-deleted) memory rows. Historically
+# this predicate was hand-written in bridge/cleanup/conflict/version/service and
+# omitted entirely in dream_engine (E7) and hybrid_recall (E8), each omission a
+# real recall/stat leak. Import this instead of re-typing the JSON path.
+#
+#   ALIVE_SQL          -> bare predicate, no table alias  ("...soft_deleted...!=1")
+#   alive_sql("m")     -> same predicate with a table alias prefix
+ALIVE_SQL = "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)!=1"
+
+
+def alive_sql(alias: str | None = None) -> str:
+    """Return the soft-delete guard, optionally prefixed with a table alias.
+
+    alive_sql()      -> "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)!=1"
+    alive_sql("m")   -> "COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0)!=1"
+    """
+    if not alias:
+        return ALIVE_SQL
+    return f"COALESCE(json_extract({alias}.metadata_json,'$.soft_deleted'),0)!=1"
+
 
 class MemoryType(str, Enum):
     FACT = "fact"

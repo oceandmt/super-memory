@@ -191,10 +191,8 @@ def detect_conflicts_for_content(
     """
     # Get recent active records
     with store.connect() as conn:
-        active_filter = (
-            "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
-        )
+        from .models import ALIVE_SQL
+        active_filter = ALIVE_SQL  # canonical soft-delete guard (see models.ALIVE_SQL)
         rows = conn.execute(
             f"SELECT * FROM memories WHERE {active_filter} ORDER BY created_at DESC LIMIT ?",
             (limit,),

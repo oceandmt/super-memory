@@ -60,10 +60,8 @@ def create_snapshot(
 
     with store.connect() as conn:
         total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-        active_filter = (
-            "(json_extract(metadata_json, '$.soft_deleted') IS NULL "
-            "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
-        )
+        from .models import ALIVE_SQL
+        active_filter = ALIVE_SQL  # canonical soft-delete guard (see models.ALIVE_SQL)
         active = conn.execute(
             f"SELECT COUNT(*) FROM memories WHERE {active_filter}"
         ).fetchone()[0]

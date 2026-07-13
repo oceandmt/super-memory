@@ -261,6 +261,37 @@ def reset_batch_state() -> dict[str, Any]:
 # ── Existing reindex functions (enhanced) ──────────────────────────────────
 
 
+def _scrub_soft_deleted_from_fts(conn, fts_table: str) -> int:
+    """E10: remove soft-deleted rows from an external-content FTS5 index.
+
+    memories_fts / memories_cjk_fts are external-content (content=memories).
+    The 'rebuild' command repopulates them from ALL rows in `memories`,
+    including soft-deleted ones — re-exposing forgotten memories to MATCH
+    (the E8 leak surface). After every rebuild we issue the external-content
+    'delete' command for each soft-deleted rowid so recall stays consistent
+    with forget() even if a query-time guard is ever missed. Defense in depth.
+    """
+    rows = conn.execute(
+        "SELECT rowid, content FROM memories "
+        "WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=1"
+    ).fetchall()
+    scrubbed = 0
+    for r in rows:
+        rowid = r["rowid"] if hasattr(r, "keys") else r[0]
+        content = (r["content"] if hasattr(r, "keys") else r[1]) or ""
+        try:
+            conn.execute(
+                f"INSERT INTO {fts_table}({fts_table}, rowid, content) VALUES('delete', ?, ?)",
+                (rowid, content),
+            )
+            scrubbed += 1
+        except Exception:
+            # best-effort: a mismatched rowid/content pair is skipped; the
+            # query-time ALIVE_SQL guard (E8) remains the primary safeguard.
+            pass
+    return scrubbed
+
+
 def reindex_fts5(config_path: str | None = None) -> dict[str, Any]:
     """Rebuild FTS5 indices atomically.
 
@@ -275,6 +306,8 @@ def reindex_fts5(config_path: str | None = None) -> dict[str, Any]:
         # Rebuild main FTS5
         try:
             conn.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+            # E10: rebuild re-adds soft-deleted rows; scrub them back out.
+            results["fts5"]["main_scrubbed_soft_deleted"] = _scrub_soft_deleted_from_fts(conn, "memories_fts")
             count = conn.execute("SELECT COUNT(*) FROM memories_fts").fetchone()
             results["fts5"]["main"] = count[0] if count else 0
         except Exception as exc:
@@ -283,6 +316,7 @@ def reindex_fts5(config_path: str | None = None) -> dict[str, Any]:
         # Rebuild CJK trigram FTS5
         try:
             conn.execute("INSERT INTO memories_cjk_fts(memories_cjk_fts) VALUES('rebuild')")
+            results["fts5"]["cjk_scrubbed_soft_deleted"] = _scrub_soft_deleted_from_fts(conn, "memories_cjk_fts")
             count = conn.execute("SELECT COUNT(*) FROM memories_cjk_fts").fetchone()
             results["fts5"]["cjk"] = count[0] if count else 0
         except Exception as exc:
