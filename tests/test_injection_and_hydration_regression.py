@@ -287,6 +287,52 @@ class TestDreamEngineSoftDeleteRegression:
         if raw != alive:
             assert st["total_memories"] != raw
 
+class TestHybridRecallReindexResurrectionRegression:
+    """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
+    super_memory_cross_scope_recall) built its FTS/LIKE query with no
+    soft-delete guard. memories_fts is external-content (content=memories):
+    forget() scrubs FTS terms, so recall LOOKED safe, but reindex_fts5('rebuild')
+    repopulates FTS from ALL rows incl. soft-deleted, silently resurrecting
+    forgotten memories into recall. Guard must live at query time, not depend
+    on FTS index hygiene."""
+
+    def test_search_memories_has_soft_delete_guard(self):
+        import inspect
+        from super_memory.hybrid_recall import HybridRecall
+        src = inspect.getsource(HybridRecall._search_memories)
+        assert "soft_deleted" in src, (
+            "_search_memories has no soft-delete guard (E8: a reindex rebuild "
+            "resurrects forgotten memories into recall)"
+        )
+
+    def test_recall_excludes_soft_deleted_after_fts_rebuild(self, tmp_path):
+        import sqlite3
+        db = tmp_path / "m.sqlite3"
+        c = sqlite3.connect(str(db))
+        c.executescript(
+            "CREATE TABLE memories(id TEXT, content TEXT, metadata_json TEXT, "
+            "agent_id TEXT, session_id TEXT, created_at TEXT, layer TEXT, type TEXT);"
+            "CREATE VIRTUAL TABLE memories_fts USING fts5(content, content=memories, content_rowid=rowid);"
+            "INSERT INTO memories(rowid,id,content,metadata_json,layer) VALUES"
+            " (1,'alive','distinctivetoken alpha','{}','workspace_markdown'),"
+            " (2,'deleted','distinctivetoken beta','{\"soft_deleted\":1}','workspace_markdown');"
+            "INSERT INTO memories_fts(memories_fts) VALUES('rebuild');"
+        )
+        c.commit()
+        # sanity: the rebuild made the soft-deleted row MATCH-able (the leak surface)
+        raw = [r[0] for r in c.execute(
+            "SELECT m.id FROM memories_fts f JOIN memories m ON m.rowid=f.rowid "
+            "WHERE memories_fts MATCH 'distinctivetoken'").fetchall()]
+        assert "deleted" in raw, "precondition: rebuild should expose soft-deleted in FTS"
+        # guarded query (mirrors _search_memories FTS path) must drop it
+        c.row_factory = sqlite3.Row
+        guarded = [r["id"] for r in c.execute(
+            "SELECT m.id FROM memories_fts f JOIN memories m ON m.rowid=f.rowid "
+            "WHERE memories_fts MATCH 'distinctivetoken' "
+            "AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0)!=1").fetchall()]
+        assert guarded == ["alive"]
+        c.close()
+
 
 class TestStatsAliveCountRegression:
     """2026-07-13 incident: bridge.status() (surfaced by super_memory_stats)

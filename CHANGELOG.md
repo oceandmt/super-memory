@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.13 - 2026-07-13
+
+### Fixed (E8 — recall resurrects forgotten memories after any FTS reindex)
+- **`HybridRecall._search_memories` (live MCP tool `super_memory_cross_scope_recall`) queried `memories`/`memories_fts` with no soft-delete guard.** `memories_fts` is external-content FTS5 (`content=memories`). Today `forget()` scrubs FTS terms so recall *looked* safe — but `reindex_fts5('rebuild')` repopulates FTS from **all** rows including soft-deleted ones. Reproduced on a throwaway DB: after a rebuild, all 1038 soft-deleted memories become `MATCH`-able again, and unguarded recall would return them — silently undoing `forget()` on the next routine reindex. This is the same leak class as the E4 semantic fix, but latent (only triggers post-reindex), which is why the first probe didn't reproduce it.
+- Added the canonical `COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0)!=1` guard to the shared `where` list, so it flows into **both** the FTS join and the LIKE fallback (via the existing `m.`-strip). Recall now filters at query time instead of depending on FTS index hygiene.
+- The semantic path (`_search_semantic_memories`) already had this guard from E4; verified unchanged.
+
+### Tests
+- Regression suite now 42: added `TestHybridRecallReindexResurrectionRegression` — a source-level guard on `_search_memories` and a reproduction test that rebuilds FTS with a soft-deleted row and asserts the guarded query drops it.
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows recall results; it cannot expose or ingest data.
+
+
 ## 2.3.12 - 2026-07-13
 
 ### Fixed (E7 — dream engine consolidated forgotten memories)

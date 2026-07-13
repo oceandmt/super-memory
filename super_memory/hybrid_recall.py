@@ -199,7 +199,12 @@ class HybridRecall(DBMixin):
         session_kind, sid = validate_session_scope(session_scope)
 
         # Build filter clauses for base-table join
-        where: list[str] = []
+        # E8: recall MUST exclude soft-deleted rows at query time. memories_fts is
+        # external-content (content=memories); forget() scrubs FTS terms, but any
+        # reindex_fts5('rebuild') repopulates FTS from ALL rows incl. soft-deleted,
+        # silently resurrecting forgotten memories into recall. Guard here (flows
+        # into both the FTS join and the LIKE fallback via the m.-strip below).
+        where: list[str] = ["COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0)!=1"]
         args: list = []
         if agent_kind == "agent":
             where.append("m.agent_id=?")
