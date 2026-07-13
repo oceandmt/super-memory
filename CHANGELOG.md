@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.20 - 2026-07-13
+
+### Fixed (E20 — report tools inflated by forgotten memories)
+- **`Reports.cross_agent_report` and `Reports.session_health`'s duplicate-content query (both live MCP tools: `super_memory_cross_agent_report`, `super_memory_session_health`) counted/grouped soft-deleted memories with no guard.** 1038 soft-deleted rows inflated per-agent activity counts in `cross_agent_report`; 1019 soft-deleted rows could surface in the duplicate-content report in `session_health`. Same wrong-value class as E3/E7. Added the canonical soft-delete guard to both queries.
+
+### Tests
+- Regression suite now 55: added `TestReportsSoftDeleteRegression` (source-level guard on both functions).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows what these reports count/return.
+
+
 ## 2.3.19 - 2026-07-13
 
 ### Fixed (E19 — handoff outcome tool always crashed)

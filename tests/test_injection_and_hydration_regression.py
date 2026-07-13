@@ -544,6 +544,21 @@ class TestHandoffOutcomeRegression:
         assert out["bundle_id"] == created["bundle_id"]
         assert out["memory_id"]
 
+class TestReportsSoftDeleteRegression:
+    """E20 (2026-07-13): Reports.cross_agent_report and Reports.session_health's
+    duplicate-content query (both live MCP tools) counted/grouped soft-deleted
+    memories with no guard — 1038 and 1019 soft-deleted rows respectively on
+    the live DB, inflating agent activity counts and duplicate-content
+    findings with forgotten content."""
+
+    def test_cross_agent_report_and_duplicates_exclude_soft_deleted(self):
+        import inspect
+        from super_memory.reports import Reports
+        src = inspect.getsource(Reports.cross_agent_report)
+        assert "soft_deleted" in src, "cross_agent_report counts soft-deleted memories (E20)"
+        src2 = inspect.getsource(Reports.session_health)
+        assert "soft_deleted" in src2, "session_health duplicate report includes soft-deleted memories (E20)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

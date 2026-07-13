@@ -19,6 +19,7 @@ class Reports(DBMixin):
                 rows = conn.execute("""
                     SELECT agent_id, COUNT(*) AS memory_count, MAX(created_at) AS recent_activity
                     FROM memories WHERE agent_id IS NOT NULL AND created_at >= ?
+                      AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                     GROUP BY agent_id
                 """, (cutoff,)).fetchall()
                 for r in rows:
@@ -105,6 +106,7 @@ class Reports(DBMixin):
                 rows = conn.execute("""
                     SELECT content, COUNT(*) AS dup_count, GROUP_CONCAT(id) AS ids
                     FROM memories WHERE LENGTH(content) > 20
+                      AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                     GROUP BY content HAVING dup_count > 1 LIMIT 20
                 """).fetchall()
                 duplicates = [{"content": r["content"][:100], "count": r["dup_count"], "ids": r["ids"].split(",")} for r in rows]
