@@ -202,9 +202,25 @@ class SuperMemoryStore:
         with self.connect() as conn:
             return conn.execute(sql, (memory_id,)).fetchall()
 
-    def list_memory_rows(self, limit: int = 100) -> list[sqlite3.Row]:
+    def list_memory_rows(self, limit: int = 100, include_deleted: bool = False) -> list[sqlite3.Row]:
+        # E25: this primitive feeds consolidate_real (dedup/contradictions/
+        # promotions), context(), graph projection and cognitive. Without a
+        # soft-delete guard, forgotten memories re-entered all of those --
+        # e.g. consolidation reported contradictions whose 'side A' was an
+        # already-forgotten record. Exclude soft-deleted by default; callers
+        # that truly need every row (raw maintenance/repair) pass
+        # include_deleted=True.
         with self.connect() as conn:
-            return conn.execute("SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
+            if include_deleted:
+                return conn.execute(
+                    "SELECT * FROM memories ORDER BY created_at DESC LIMIT ?", (limit,)
+                ).fetchall()
+            return conn.execute(
+                "SELECT * FROM memories "
+                "WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 "
+                "ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
 
     def get_pending_sync(self, layer: str) -> list[MemoryRecord]:
         """Return memories that have pending_canonical_sync for a given layer."""

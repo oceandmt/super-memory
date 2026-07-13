@@ -673,6 +673,24 @@ class TestMaintenanceSerializationRegression:
         assert is_dataclass(rr)
         json.dumps(asdict(rr))  # must not raise
 
+class TestListMemoryRowsSoftDeleteRegression:
+    """E25 (2026-07-13): storage.SuperMemoryStore.list_memory_rows did
+    'SELECT * FROM memories ORDER BY created_at DESC LIMIT ?' with no
+    soft-delete guard. It is the shared primitive feeding consolidate_real
+    (dedup + contradiction detection + promotions), bridge.context(), graph
+    projection and cognitive. Forgotten memories re-entered all of them --
+    on the live DB every one of the 10 'contradictions' had an already
+    soft-deleted record ('# Alex Preferences Register') on side A. After the
+    guard, contradictions dropped 10 -> 0 (all were false positives).
+    Default excludes soft-deleted; include_deleted=True is the escape hatch."""
+
+    def test_list_memory_rows_excludes_soft_deleted_by_default(self):
+        import sqlite3, inspect
+        from super_memory.storage import SuperMemoryStore
+        src = inspect.getsource(SuperMemoryStore.list_memory_rows)
+        assert "soft_deleted" in src, "list_memory_rows has no soft-delete guard (E25)"
+        assert "include_deleted" in src, "list_memory_rows missing include_deleted escape hatch (E25)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

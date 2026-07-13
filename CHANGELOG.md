@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.3.25 - 2026-07-13
+
+### Fixed (E25 — forgotten memories poisoned the whole consolidation pipeline)
+- **`storage.SuperMemoryStore.list_memory_rows` ran `SELECT * FROM memories ORDER BY created_at DESC LIMIT ?` with no soft-delete guard.** It is the shared primitive feeding `consolidate_real` (duplicate detection + contradiction detection + promotion candidates), `bridge.context()`, graph projection (`graph.py`), and cognitive (`cognitive.py`). Forgotten memories re-entered all of them.
+- **Live evidence:** every one of the 10 "contradictions" reported by consolidation had an already soft-deleted record (`# Alex Preferences Register`, `b919330a`, forgotten during the earlier consolidation) on side A. After adding the guard, contradictions dropped **10 → 0** — all 10 were false positives caused by this leak.
+- **Fix:** exclude soft-deleted by default; added an `include_deleted=True` escape hatch for the rare raw-maintenance caller that genuinely needs every row.
+
+### Tests
+- Regression suite now 60: added `TestListMemoryRowsSoftDeleteRegression`.
+
+### Safety
+- No database files, memory contents, or private runtime config included.
+
+
 ## 2.3.24 - 2026-07-13
 
 ### Fixed (E24 — maintenance_run crashed at transport layer when replay ran)
