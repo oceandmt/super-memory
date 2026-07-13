@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.18 - 2026-07-13
+
+### Fixed (E17, E18 — SynthesisTools: leak + always-crashing tool)
+
+**E17 — `shared_recall` (live MCP tool `super_memory_shared_recall`) queried memories with no soft-delete guard.** Forgotten shared-scope memories could leak back into recall — same class as E4/E8/E15/E16. Added the canonical `COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1` guard.
+
+**E18 — `promote_to_shared` (live MCP tool `super_memory_promote_to_shared`) referenced an undefined local `cur` in its return statement.** `conn.executescript(...)` doesn't return a cursor with `.rowcount`, so **every single call raised `NameError`** — a live MCP tool that always crashed on invocation, with no test coverage catching it. It also built the UPDATE via manual quote-escaping + `executescript` instead of a parameterized query (fragile, and generically risky for future edits). Rewrote as a parameterized `UPDATE ... WHERE id=?`, reading `rowcount` from the actual cursor `execute()` returns.
+
+### Tests
+- Regression suite now 53: added `TestSynthesisRegression` — a source-level guard for E17, and a functional round-trip for E18 (promote on a real id must not raise, must flip scope to 'shared'; promote on a missing id must return `ok=False` cleanly).
+
+### Safety
+- No database files, memory contents, or private runtime config included. E17 narrows recall results; E18 fixes a crash and removes manual SQL string-escaping in favor of parameterization.
+
+
 ## 2.3.17 - 2026-07-13
 
 ### Fixed (E16 — cross-agent recall leaks forgotten memories)

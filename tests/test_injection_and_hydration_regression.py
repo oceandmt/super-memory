@@ -470,6 +470,46 @@ class TestCrossAgentRecallSoftDeleteRegression:
                 f"{fn.__name__} leaks soft-deleted memories into cross-agent recall (E16)"
             )
 
+class TestSynthesisRegression:
+    """E17/E18 (2026-07-13), both in SynthesisTools (live MCP tools
+    super_memory_shared_recall / super_memory_promote_to_shared).
+
+    E17: shared_recall queried memories with no soft-delete guard — forgotten
+    shared-scope memories could leak into recall.
+
+    E18: promote_to_shared referenced an undefined local `cur` in its return
+    statement (`conn.executescript(...)` doesn't return a cursor with
+    rowcount) — every call raised NameError, a live MCP tool that always
+    crashed. It also built SQL via manual quote-escaping + executescript
+    instead of a parameterized statement. Fixed to a parameterized UPDATE.
+    """
+
+    def test_shared_recall_has_soft_delete_guard(self):
+        import inspect
+        from super_memory.synthesis import SynthesisTools
+        src = inspect.getsource(SynthesisTools.shared_recall)
+        assert "soft_deleted" in src
+
+    def test_promote_to_shared_does_not_crash(self, tmp_path):
+        import sqlite3
+        from super_memory.synthesis import SynthesisTools
+        db = tmp_path / "syn.sqlite3"
+        c = sqlite3.connect(str(db))
+        c.execute("CREATE TABLE memories(id TEXT PRIMARY KEY, scope TEXT)")
+        c.execute("INSERT INTO memories(id, scope) VALUES ('m1', 'agent_local')")
+        c.commit(); c.close()
+        t = SynthesisTools()
+        t.db_path = str(db)
+        r = t.promote_to_shared("m1")  # must not raise NameError (E18)
+        assert r["ok"] is True
+        assert r["scope"] == "shared"
+        c = sqlite3.connect(str(db))
+        assert c.execute("SELECT scope FROM memories WHERE id='m1'").fetchone()[0] == "shared"
+        c.close()
+        # nonexistent id: ok=False, no crash
+        r2 = t.promote_to_shared("does-not-exist")
+        assert r2["ok"] is False
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

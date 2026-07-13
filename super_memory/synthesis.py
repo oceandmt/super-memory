@@ -95,6 +95,7 @@ class SynthesisTools:
                 SELECT id, content, type, scope, agent_id, session_id, project, tags_json, created_at
                 FROM memories
                 WHERE scope = 'shared' AND content LIKE ?
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                 ORDER BY created_at DESC LIMIT ?
             """, (f"%{query}%", max(1, min(limit, 100))))
         for row in rows:
@@ -107,11 +108,16 @@ class SynthesisTools:
     def promote_to_shared(self, memory_id: str) -> dict[str, Any]:
         """Promote a memory to shared scope."""
         with sqlite3.connect(self.db_path, timeout=30) as conn:
-            esc_mid = memory_id.replace("'", "''")
-            conn.executescript(f"UPDATE memories SET scope = 'shared' WHERE id = '{esc_mid}';")
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
-        return {"ok": cur.rowcount > 0, "memory_id": memory_id, "scope": "shared"}
+            # E18: was `conn.executescript(f"...'{esc_mid}'")` + `return cur.rowcount`
+            # where `cur` was never assigned — every call raised NameError. Use a
+            # parameterized UPDATE and read rowcount from the returned cursor.
+            cur = conn.execute(
+                "UPDATE memories SET scope = 'shared' WHERE id = ?", (memory_id,)
+            )
+            changed = cur.rowcount
+        return {"ok": changed > 0, "memory_id": memory_id, "scope": "shared"}
 
     def cross_agent_conflicts(self, action: str = "list", topic: str | None = None, limit: int = 20, conflict_id: str | None = None, resolution: str | None = None) -> dict[str, Any]:
         """List/check/resolve simple cross-agent conflict candidates."""
