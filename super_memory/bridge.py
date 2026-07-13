@@ -991,6 +991,16 @@ def maintenance_run(dry_run: bool = True, limit: int = 500, config_path: str | N
     SuperMemoryService(load_config(config_path))
     return maintenance_ops.maintenance_run(dry_run=dry_run, limit=limit, config_path=config_path)
 
+
+def hard_delete_soft_deleted(dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Bridge wrapper: permanently remove soft-deleted memories + child rows.
+
+    Uses the FTS5-safe delete sequence (drop sync triggers -> cascade delete ->
+    rebuild FTS shadow tables -> recreate triggers -> verify). Destructive;
+    dry_run=True (default) only reports what would be removed.
+    """
+    return maintenance_ops.hard_delete_soft_deleted(dry_run=dry_run, config_path=config_path)
+
 def leitner_queue(limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
     """Return memories due for Leitner review."""
     return leitner.queue(config_path=config_path, limit=limit)

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.28 - 2026-07-13
+
+### Added (`hard_delete_soft_deleted` maintenance function)
+- Encapsulates the FTS5-safe purge sequence discovered during the 2026-07-13 manual hard delete. A plain `DELETE FROM memories WHERE soft_deleted=1` fails with `database disk image is malformed (11)` when the FTS5 external-content sync triggers (`memories_fts_ad` / `memories_cjk_fts_ad`) are stale/broken.
+- **Safe sequence:** drop the 2 FTS after-delete triggers → cascade-delete child rows across 17 referencing tables + the soft-deleted `memories` rows → rebuild both FTS5 shadow tables (`INSERT ... VALUES('rebuild')`) → recreate triggers from original SQL → `integrity_check`.
+- Only ids whose **every** layer-projection is soft-deleted are removed (never partially deletes a memory alive in any layer). Destructive; **`dry_run=True` is the default** — reports counts only unless explicitly disabled.
+- Exposed via `bridge.hard_delete_soft_deleted`.
+
+### Tests
+- Regression suite now 65: added `TestHardDeleteSoftDeletedRegression` (FTS-safe sequence present, dry-run default, bridge wrapper).
+
+### Safety
+- No database files, memory contents, or private runtime config included.
+
+
 ## 2.3.27 - 2026-07-13
 
 ### Hardened (E27 — defensive soft-delete guards on dormant agent-scoped store)

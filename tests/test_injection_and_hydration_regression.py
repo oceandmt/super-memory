@@ -723,6 +723,34 @@ class TestAgentStoreSoftDeleteRegression:
         assert "soft_deleted" in inspect.getsource(AgentStore.list_memories), \
             "AgentStore.list_memories missing soft-delete guard (E27)"
 
+class TestHardDeleteSoftDeletedRegression:
+    """2026-07-13: hard_delete_soft_deleted encapsulates the FTS5-safe purge
+    sequence. A plain DELETE FROM memories fails with 'database disk image is
+    malformed (11)' when the FTS5 external-content sync triggers
+    (memories_fts_ad / memories_cjk_fts_ad) are stale; the safe sequence drops
+    those triggers, cascade-deletes, rebuilds the FTS shadow tables, recreates
+    the triggers, and verifies integrity. Only ids with zero alive projections
+    are removed. dry_run=True is the default (destructive otherwise)."""
+
+    def test_source_has_fts_safe_sequence(self):
+        import inspect
+        from super_memory import maintenance
+        src = inspect.getsource(maintenance.hard_delete_soft_deleted)
+        assert "DROP TRIGGER IF EXISTS memories_fts_ad" in src
+        assert "DROP TRIGGER IF EXISTS memories_cjk_fts_ad" in src
+        assert "VALUES('rebuild')" in src, "must rebuild FTS shadow tables"
+        assert "integrity_check" in src, "must verify integrity"
+
+    def test_default_is_dry_run(self):
+        import inspect
+        from super_memory import maintenance
+        sig = inspect.signature(maintenance.hard_delete_soft_deleted)
+        assert sig.parameters["dry_run"].default is True, "hard delete must default to dry_run"
+
+    def test_bridge_wrapper_exists(self):
+        from super_memory import bridge
+        assert hasattr(bridge, "hard_delete_soft_deleted")
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

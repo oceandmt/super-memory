@@ -332,3 +332,112 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
 
     _record_run(config_path, "maintenance_run")
     return report
+
+
+# Child tables that reference a memory id and must be cascade-cleaned when a
+# memory row is hard-deleted. (column_name, table) pairs.
+_MEMORY_CHILD_REFS = [
+    ("memory_id", "honcho_events"),
+    ("memory_id", "memory_fingerprints"),
+    ("memory_id", "memory_jobs"),
+    ("source_memory_id", "cognitive_neurons"),
+    ("memory_id", "palace_drawers"),
+    ("memory_id", "palace_closets"),
+    ("memory_id", "autocomplete_index"),
+    ("saved_memory_id", "ingest_manifest"),
+    ("memory_id", "memory_vectors"),
+    ("memory_id", "semantic_drawers"),
+    ("memory_id", "semantic_closets"),
+    ("memory_id", "perspective_memories"),
+    ("memory_id", "projection_manifest"),
+    ("memory_id", "projection_meta"),
+    ("memory_id", "cross_agent_claims"),
+    ("source_memory_id", "graph_edges"),
+    ("target_memory_id", "graph_edges"),
+]
+
+
+def hard_delete_soft_deleted(*, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Permanently remove soft-deleted memories and their child rows.
+
+    Encapsulates the verified-safe sequence discovered on 2026-07-13: a plain
+    ``DELETE FROM memories`` fails with ``database disk image is malformed (11)``
+    when the FTS5 external-content sync triggers (``memories_fts_ad`` /
+    ``memories_cjk_fts_ad``) are stale/broken. The safe sequence is:
+
+      1. drop the two FTS after-delete triggers,
+      2. cascade-delete child rows, then the soft-deleted ``memories`` rows,
+      3. rebuild both FTS5 shadow tables (``INSERT ... VALUES('rebuild')``),
+      4. recreate the two triggers from their original SQL,
+      5. verify integrity.
+
+    Only ids whose every layer-projection is soft-deleted are removed, so a
+    memory that is alive in any layer is never partially deleted. Destructive:
+    ``dry_run=True`` (default) only reports what would be removed.
+    """
+    import json
+    from .config import load_config
+    from .storage import SuperMemoryStore
+
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    alive = "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1"
+    dead = "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) = 1"
+    report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "child_deleted": {}}
+
+    with store.connect() as conn:
+        dead_rows = conn.execute(f"SELECT COUNT(*) c FROM memories WHERE {dead}").fetchone()["c"]
+        # ids that have NO alive projection in any layer (safe to fully remove)
+        dead_ids = [r["id"] for r in conn.execute(
+            f"SELECT DISTINCT id FROM memories WHERE id NOT IN (SELECT id FROM memories WHERE {alive})"
+        ).fetchall()]
+        report["soft_deleted_rows"] = dead_rows
+        report["fully_dead_ids"] = len(dead_ids)
+
+        if dry_run or not dead_ids:
+            for col, tbl in _MEMORY_CHILD_REFS:
+                try:
+                    ph = ",".join("?" * len(dead_ids)) or "NULL"
+                    n = conn.execute(
+                        f"SELECT COUNT(*) c FROM {tbl} WHERE {col} IN ({ph})", dead_ids
+                    ).fetchone()["c"]
+                    if n:
+                        report["child_deleted"][f"{tbl}.{col}"] = n
+                except Exception:
+                    pass
+            return report
+
+        # capture original trigger SQL so we can restore verbatim
+        trig_sql = [r["sql"] for r in conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name IN ('memories_fts_ad','memories_cjk_fts_ad')"
+        ).fetchall() if r["sql"]]
+
+        conn.execute("DROP TRIGGER IF EXISTS memories_fts_ad")
+        conn.execute("DROP TRIGGER IF EXISTS memories_cjk_fts_ad")
+
+        conn.execute("BEGIN")
+        ph = ",".join("?" * len(dead_ids))
+        for col, tbl in _MEMORY_CHILD_REFS:
+            try:
+                cur = conn.execute(f"DELETE FROM {tbl} WHERE {col} IN ({ph})", dead_ids)
+                if cur.rowcount:
+                    report["child_deleted"][f"{tbl}.{col}"] = cur.rowcount
+            except Exception as exc:
+                report["child_deleted"][f"{tbl}.{col}"] = f"error: {exc}"
+        removed = conn.execute(f"DELETE FROM memories WHERE {dead}").rowcount
+        conn.execute("COMMIT")
+        report["memories_deleted"] = removed
+
+        # rebuild FTS5 shadow tables (stale after trigger-less delete), restore triggers
+        conn.execute("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+        conn.execute("INSERT INTO memories_cjk_fts(memories_cjk_fts) VALUES('rebuild')")
+        for sql in trig_sql:
+            conn.execute(sql)
+
+        report["integrity"] = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        report["remaining_soft_deleted"] = conn.execute(
+            f"SELECT COUNT(*) c FROM memories WHERE {dead}"
+        ).fetchone()["c"]
+        report["ok"] = report["integrity"] == "ok" and report["remaining_soft_deleted"] == 0
+
+    return report
