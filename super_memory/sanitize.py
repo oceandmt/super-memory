@@ -57,6 +57,63 @@ _SECRET_PATTERNS = [
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _WS = re.compile(r"[ \t]+")
 
+# Known prompt-injection / boilerplate signatures that must never be persisted
+# as auto-capture memories. These are runtime-appended blocks and system noise,
+# not durable user content. Matched case-insensitively against the raw text.
+_INJECTION_PATTERNS = [
+    re.compile(r"(?i)chunked\s+write\s+protocol"),
+    re.compile(r"(?i)mandatory[^\n]{0,40}file\s+operations?"),
+    re.compile(r"(?i)MAXIMUM\s+\d+\s+LINES\s+per\s+single"),
+    re.compile(r"(?i)ignore\s+(all\s+)?previous\s+instructions"),
+    re.compile(r"(?i)you\s+are\s+now\s+a\s+different\s+(agent|assistant|ai)"),
+]
+# High-confidence signatures that effectively never appear in legitimate
+# durable knowledge. A single match is enough to classify the payload as junk,
+# because the only real-world source of these phrases is the injection itself
+# (or an agent turn discussing that injection — neither is worth persisting).
+_INJECTION_HIGH_CONFIDENCE = [
+    re.compile(r"(?i)chunked\s+write\s+protocol"),
+    re.compile(r"(?i)MAXIMUM\s+\d+\s+LINES\s+per\s+single"),
+    re.compile(r"(?i)ignore\s+(all\s+)?previous\s+instructions"),
+    re.compile(r"(?i)you\s+are\s+now\s+a\s+different\s+(agent|assistant|ai)"),
+]
+# Minimum fraction of lines that must be injection-signature to classify the
+# whole payload as junk. Prevents dropping a legit memory that merely quotes
+# an injection once for diagnostic purposes.
+_INJECTION_LINE_RATIO = 0.15
+
+
+def is_injection_content(text: Any) -> bool:
+    """Return True if text is dominated by known prompt-injection signatures.
+
+    Deterministic and local. A payload is junk when it matches multiple distinct
+    injection signatures, or a single signature plus a high density of the
+    tell-tale boilerplate lines (ABSOLUTE LIMITS / WRONG:/ CORRECT: / TIMEOUT).
+    """
+
+    if not text:
+        return False
+    raw = str(text)
+    # A single high-confidence signature is sufficient. This closes the
+    # self-contamination leak where an agent turn merely quotes the injection
+    # phrase once (hits==1, low tell-tale density) and was previously kept.
+    if any(pat.search(raw) for pat in _INJECTION_HIGH_CONFIDENCE):
+        return True
+    hits = sum(1 for pat in _INJECTION_PATTERNS if pat.search(raw))
+    if hits == 0:
+        return False
+    if hits >= 2:
+        return True
+    lines = [ln for ln in raw.split("\n") if ln.strip()]
+    if not lines:
+        return False
+    tell = sum(
+        1
+        for ln in lines
+        if re.search(r"(?i)\b(TIMEOUT|ABSOLUTE LIMITS|CORRECT:|WRONG:|NO EXCEPTIONS|per (single |)operation)\b", ln)
+    )
+    return (tell / len(lines)) >= _INJECTION_LINE_RATIO
+
 def sanitize_prompt(text: Any, *, max_chars: int = _MAX_PROMPT_CHARS) -> str:
     """Sanitize recall/prompt text without changing user-visible meaning.
 

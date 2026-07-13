@@ -168,9 +168,17 @@ class SQLiteLayerBackend(MemoryBackend):
         checksum = hashlib.sha256(f"{wing}\0{room}\0{hall}\0{record.content}".encode("utf-8")).hexdigest()
         conn.execute(
             """
-            INSERT OR IGNORE INTO palace_drawers
+            INSERT INTO palace_drawers
             (id, memory_id, wing, room, hall, content, checksum, source, metadata_json, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                wing=excluded.wing,
+                room=excluded.room,
+                hall=excluded.hall,
+                content=excluded.content,
+                checksum=excluded.checksum,
+                source=excluded.source,
+                metadata_json=excluded.metadata_json
             """,
             (
                 f"drawer:{record.id}",

@@ -174,6 +174,54 @@ def _create_semantic_memories(store: SuperMemoryStore, config_path: str | None, 
     """Create semantic/summary memories from frequent patterns."""
     created: list[dict[str, Any]] = []
 
+    # B3: never promote injection/boilerplate tokens or generic filler into
+    # first-class semantic memories. These are noise, not durable knowledge.
+    _NOISE_TOPICS = {
+        "chunked", "write", "protocol", "injection", "injected", "mandatory", "timeout",
+        "operation", "operations", "exceptions", "limits", "append", "lines",
+        "assistant", "memory", "openclaw", "content", "message", "session",
+        "license", "copyright", "permission", "software", "warranty",
+        "ignoring", "untrusted", "block", "disregard",
+        "delivered", "delivery", "automatically", "final", "daily", "super",
+        "conversation", "context", "restart", "verify", "update", "heartbeat",
+        "runtime", "paths", "nothing", "flush", "compact", "compaction",
+        # generic filler + self-referential template tokens (semantic memory text
+        # is 'X appears frequently across N memories' — don't re-promote its words)
+        "appears", "frequently", "chronological", "selected", "semantic",
+        "across", "memories", "request", "result", "status", "config",
+        # Vietnamese stopwords / filler that leak from VI turns
+        "tri\u1ec3n", "trong", "nguy\u00ean", "kh\u00f4ng", "\u0111\u01b0\u1ee3c", "nh\u01b0ng", "c\u0169ng", "n\u00e0y", "\u0111\u00e3",
+    }
+
+    import re as _re
+    # Reject tokens that are not meaningful words: hex/uuid fragments
+    # (e.g. 'be83011b', 'c8106ee50118') and anything containing a digit.
+    def _is_junk_token(tok: str) -> bool:
+        if _re.fullmatch(r"[0-9a-f]{6,}", tok):
+            return True
+        if any(ch.isdigit() for ch in tok):
+            return True
+        if not any(ch in "aeiou" for ch in tok.lower()):
+            return True
+        return False
+
+    # Existing semantic topics (active only) so we don't create duplicates.
+    existing_topics: set[str] = set()
+    try:
+        with store.connect() as conn:
+            rows = conn.execute(
+                "SELECT tags_json FROM memories "
+                "WHERE source = 'consolidation.semantic_promotion' "
+                "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
+                "OR json_extract(metadata_json, '$.soft_deleted') != 1)"
+            ).fetchall()
+            for row in rows:
+                for tag in json.loads(row["tags_json"] or "[]"):
+                    if isinstance(tag, str) and tag.startswith("topic:"):
+                        existing_topics.add(tag.split(":", 1)[1])
+    except Exception:
+        existing_topics = set()
+
     for candidate in candidates:
         if candidate.get("reason") != "frequent_topic":
             continue
@@ -181,6 +229,11 @@ def _create_semantic_memories(store: SuperMemoryStore, config_path: str | None, 
             continue
 
         topic = candidate["topic"]
+        # B3 guards: skip noise tokens, short tokens, junk (hex/numeric) tokens,
+        # and already-known topics.
+        if topic in _NOISE_TOPICS or len(topic) < 5 or _is_junk_token(topic) or topic in existing_topics:
+            created.append({"topic": topic, "action": "skipped_noise_or_dup"})
+            continue
         semantic_content = f"Semantic memory: '{topic}' appears frequently across {candidate['frequency']} memories."
 
         if dry_run:
@@ -203,6 +256,7 @@ def _create_semantic_memories(store: SuperMemoryStore, config_path: str | None, 
         )
         results = svc.save(semantic_rec)
         if results:
+            existing_topics.add(topic)
             created.append({"topic": topic, "action": "created", "memory_id": semantic_rec.id})
 
     return created

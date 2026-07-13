@@ -315,7 +315,7 @@ class SearchMixin:
                     """SELECT m.id, m.layer, m.content, m.type, m.tags_json, m.priority, m.created_at,
                               rank
                        FROM memories_fts f
-                       JOIN memories m ON m.id = f.rowid
+                       JOIN memories m ON m.rowid = f.rowid
                        WHERE memories_fts MATCH ?
                        ORDER BY rank
                        LIMIT ?""",

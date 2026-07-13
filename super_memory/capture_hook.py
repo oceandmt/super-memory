@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import load_config
+from .sanitize import is_injection_content, sanitize_auto_capture
 
 
 class CaptureHook:
@@ -49,6 +50,16 @@ class CaptureHook:
         """Insert one Honcho event and optionally run turn analysis."""
         self.ensure_tables()
         metadata = metadata or {}
+        # B1: never persist runtime-appended prompt-injection / boilerplate noise.
+        if is_injection_content(content):
+            return {
+                "ok": True,
+                "event_id": None,
+                "session_id": session_id,
+                "captured": False,
+                "skipped": "injection_content",
+            }
+        content = sanitize_auto_capture(content)
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             event_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
             # Standalone Honcho captures are not layer projections. Keep memory_id

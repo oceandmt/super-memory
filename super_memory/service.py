@@ -111,6 +111,25 @@ class SuperMemoryService:
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
 
+        # E5: unified trust pathway — assign a source-aware default when the
+        # caller did not set one, instead of leaving trust_score NULL. Uses the
+        # single content-quality heuristic (_compute_trust) then adjusts by source.
+        if record.trust_score is None:
+            try:
+                from .data_improvement import _compute_trust
+                base = _compute_trust(record.content, record.type.value)
+            except Exception:
+                base = 0.5
+            src = (record.source or "").lower()
+            if src in ("direct", "boss", "user") or src.startswith("user"):
+                base += 0.15  # explicit human-authored knowledge
+            elif src == "openclaw.turn":
+                base -= 0.15  # raw auto-logged turns are least trusted
+            elif src.startswith("super-memory.dream") or src.startswith("super-memory.auto"):
+                base -= 0.05  # machine-derived
+            record.trust_score = round(min(1.0, max(0.1, base)), 3)
+            record.metadata["trust_source"] = "service.save.default"
+
         # Project inference/backfill for consistent project graph and recall scoping.
         inferred_project = infer_project_for_record(record, workspace_root=str(self.config.workspace_root))
         if inferred_project and not record.project:
@@ -149,7 +168,7 @@ class SuperMemoryService:
                 record.metadata["firewall_reason"] = fw["reason"]
             # P1 Relations/Structure/Trigger enrichment (non-blocking)
             meta = record.metadata
-            enrich_with_relations(meta, record.content)
+            enrich_with_relations(meta, record.content, source=record.source)
         except Exception as exc:
             logger.debug("save.pipeline_enrich_failed", error=f"{type(exc).__name__}: {exc}")
 
@@ -493,6 +512,13 @@ class SuperMemoryService:
         content = "\n".join(parts).strip()
         if not content:
             logger.debug("sync_turn skipped — empty content (no user or assistant message)")
+            return []
+        # B1: never persist runtime-appended prompt-injection / boilerplate noise
+        # into the canonical store. This is the real openclaw.turn capture path
+        # (source='openclaw.turn'); the capture_hook/honcho_events path is separate.
+        from .sanitize import is_injection_content
+        if is_injection_content(content):
+            logger.debug("sync_turn skipped — injection content dropped at canonical save")
             return []
         record = MemoryRecord(
             content=content,

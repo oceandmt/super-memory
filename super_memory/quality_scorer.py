@@ -285,3 +285,31 @@ def score_memory(content: str, memory_type: str = "context", config: QualityConf
     except Exception as e:
         logger.warning("quality_score failed: %s", e)
         return QualityScore(overall=0.5, fidelity=0.5, sufficiency=0.5, importance=0.5)
+
+# ── Unified persistence gate (E3) ────────────────────────────────────────────
+
+# Default minimum overall quality for generative subsystems (dream, consolidation,
+# self-improvement) to persist a NEW derived memory. Raw user/turn capture is NOT
+# gated here (that path uses the B1 injection filter instead).
+PERSIST_MIN_OVERALL: float = 0.5
+
+def should_persist(
+    content: str,
+    memory_type: str = "insight",
+    *,
+    min_overall: float | None = None,
+    config: QualityConfig | None = None,
+) -> tuple[bool, QualityScore]:
+    """Single decision point for whether a generated memory is worth persisting.
+
+    Returns (ok, QualityScore). `ok` is False when the overall score is below
+    `min_overall` (defaults to PERSIST_MIN_OVERALL). Callers should also apply
+    their own dedup; this only gates on intrinsic quality.
+
+    Intended for dream engines, consolidation semantic-memory creation, and the
+    self-improvement loop so they share one threshold instead of each hardcoding
+    trust values with no quality check.
+    """
+    threshold = PERSIST_MIN_OVERALL if min_overall is None else min_overall
+    qs = score_memory(content, memory_type=memory_type, config=config)
+    return (qs.overall >= threshold, qs)

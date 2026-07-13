@@ -81,3 +81,19 @@ Every saved memory should include:
 - Python API: `SuperMemoryService.save(MemoryRecord(...))`.
 - Future OpenClaw plugin: call this service after Boss-facing durable turns or agent run completion.
 - Future MCP server: expose `remember`, `recall`, `save_order`, and `promote` tools.
+
+## Write Contract (`write_contract/`)
+
+Every canonical save registers an outbox entry via `write_contract.register_memory()` (called from `service.py` for both the initial `workspace_markdown` save and each derived-layer save):
+
+- `memory_fingerprints`: `(memory_id, layer)` → normalized hash + simhash, used for duplicate detection.
+- `memory_write_intents`: idempotency ledger keyed on a `source_event_key` built from adapter metadata (`message_id`/`event_id` + chat/session context). Only populated when that metadata is present — most direct/CLI saves will not have a `message_id`, so a low row count here is expected, not a failure.
+- `memory_jobs`: async job queue (currently `embed` jobs) drained by the write-contract worker; `write_contract_reconcile()` / `write_contract_process_jobs()` are exposed as bridge/MCP maintenance tools.
+
+Any code path that inserts directly into `memories` outside `service.save()` (e.g. `handoff.py::complete_handoff_with_outcome`) must still compute and store `content_hash` itself — downstream dedup, drift-repair, and cross-layer projection joins all key on it, and a NULL hash silently drops the row out of `NOT IN (SELECT content_hash ...)`-style checks.
+
+## Dream Engine (`dream.py`, `dream_engine.py`)
+
+Idle-time consolidation with three phases: surprisal ranking, cross-session pattern/bridge detection, and insight generation. Candidates pass through a quality gate (`quality_scorer.score_memory`, min 0.5) and a dedup check against existing dream insights before being saved as `type=insight, agent_id="dream-engine"` memories.
+
+A shared `_is_dream_noise()` guard (in `dream.py`, imported by `dream_engine.py`) rejects two failure modes before save: candidates whose only shared signal is an ambient/generic token (license, copyright, software, python, ...), and candidates that echo known prompt-injection text. Raw token-frequency statistics ("'X' appears in N memories") are computed for the pattern-summary phase's report output but are never persisted as memories — they are metrics, not insights.

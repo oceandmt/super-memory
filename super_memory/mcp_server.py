@@ -299,6 +299,52 @@ ADVANCED_TOOLS = {
 }
 ADMIN_TOOLS = ADMIN_TOOLS | ADVANCED_TOOLS
 
+# B5: curated profile. Biggest context savings vs. `admin` (236 tools) while
+# preserving the day-to-day workflow: core read/write, recall, the deep_*
+# maintenance suite, consolidation/diagnostics, and the internal capture tools
+# OpenClaw invokes for auto-capture (capture_event/capture_turn) — omitting
+# those would silently break memory capture under the curated profile.
+CURATED_TOOLS = {
+    # core read/write
+    "super_memory_remember",
+    "super_memory_remember_batch",
+    "super_memory_recall",
+    "super_memory_prefetch",
+    "super_memory_show",
+    "super_memory_edit",
+    "super_memory_forget",
+    "super_memory_context",
+    "super_memory_todo",
+    "super_memory_pin",
+    "super_memory_promote",
+    # status / quality
+    "super_memory_status",
+    "super_memory_stats",
+    "super_memory_health",
+    "super_memory_situation",
+    "super_memory_recommendations",
+    "super_memory_memory_pollution_report",
+    # search / compatibility
+    "super_memory_memory_search",
+    "super_memory_memory_get",
+    "super_memory_search_sessions",
+    # capture (invoked internally by OpenClaw)
+    "super_memory_sync_turn",
+    "super_memory_capture_event",
+    "super_memory_capture_turn",
+    # maintenance / deep suite
+    "super_memory_consolidate",
+    "super_memory_diagnostics",
+    "super_memory_graph_stats",
+    "super_memory_maintenance_process_jobs",
+    "super_memory_maintenance_job_status",
+    "super_memory_deep_audit",
+    "super_memory_deep_qualify",
+    "super_memory_deep_debug",
+    "super_memory_deep_improve",
+    "super_memory_auto_deep_pipeline",
+}
+
 
 def _text(content: Any) -> list[JSON]:
     if not isinstance(content, str):
@@ -910,6 +956,10 @@ def _allowed_tools(profile: str | None = None) -> set[str]:
     effective = (profile or MCP_PROFILE or "normal").lower()
     if effective == "admin":
         return ADMIN_TOOLS
+    if effective == "curated":
+        # Curated names are a subset of ADMIN; intersect with TOOLS so any
+        # name drift never exposes a missing tool descriptor.
+        return CURATED_TOOLS & set(TOOLS)
     if effective == "all":
         return set(TOOLS)
     return NORMAL_TOOLS

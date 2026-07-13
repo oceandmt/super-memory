@@ -260,6 +260,41 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     except Exception as exc:
         report["steps"]["dream_engine"] = {"ok": False, "error": str(exc)}
 
+    # E7: write-contract reconcile — heal cross-layer drift from best-effort
+    # saves (a downstream layer failing after markdown succeeded leaves a gap).
+    # Reconcile backfills missing layer projections. Throttled to hourly.
+    try:
+        if not _was_run_recently(config_path, "write_contract_reconcile", within_hours=1):
+            from . import bridge as _wc_bridge
+            report["steps"]["write_contract_reconcile"] = _wc_bridge.write_contract_reconcile(
+                limit=200, config_path=config_path
+            )
+            _record_run(config_path, "write_contract_reconcile")
+        else:
+            report["steps"]["write_contract_reconcile"] = {"ok": True, "skipped": True, "reason": "run within last hour"}
+    except Exception as exc:
+        report["steps"]["write_contract_reconcile"] = {"ok": False, "error": str(exc)}
+
+    # E2: stale-event pruning — downgrade the immortal low-trust event backlog.
+    # Reversible soft-delete; throttled to weekly. Runs live even in a dry_run
+    # maintenance pass is NOT desired, so it honors the pass-level dry_run flag.
+    try:
+        if not _was_run_recently(config_path, "stale_event_prune", within_hours=168):
+            from .cleanup import prune_stale_events
+            report["steps"]["stale_event_prune"] = prune_stale_events(
+                config_path=config_path,
+                max_days=30,
+                max_trust=0.5,
+                limit=2000,
+                dry_run=dry_run,
+            )
+            if not dry_run:
+                _record_run(config_path, "stale_event_prune")
+        else:
+            report["steps"]["stale_event_prune"] = {"ok": True, "skipped": True, "reason": "run within last 7 days"}
+    except Exception as exc:
+        report["steps"]["stale_event_prune"] = {"ok": False, "error": str(exc)}
+
     # Synaptic pruning with weight decay (P2 #8) — maintain cognitive graph health
     try:
         from .cleanup import prune_synapses_with_decay

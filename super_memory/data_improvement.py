@@ -20,8 +20,13 @@ from .models import MemoryType, MemoryScope
 logger = logging.getLogger("super-memory.data_improvement")
 
 
-def _compute_trust(content: str, mem_type: str | None = None) -> float:
-    """Compute trust score from content quality signals."""
+def _compute_trust(content: str, mem_type: str | None = None, source: str | None = None) -> float:
+    """Compute trust score from content quality + provenance signals.
+
+    Source-aware: curated/canonical provenance earns higher trust than raw
+    conversation turn-dumps (source='openclaw.turn'), which are noisy and
+    should not dominate recall arbitration.
+    """
     score = 0.5  # baseline
     c = content.strip()
     if len(c) >= 50:
@@ -34,7 +39,19 @@ def _compute_trust(content: str, mem_type: str | None = None) -> float:
         score += 0.10
     if mem_type in ("fact", "decision", "instruction", "reference", "workflow"):
         score += 0.10
-    return min(1.0, max(0.1, score))
+    if mem_type in ("doctrine", "preference", "blocker", "lesson"):
+        score += 0.15
+
+    # Provenance adjustment: curated saves are trusted; raw turn captures are not.
+    src = (source or "").lower()
+    if src.startswith("openclaw.turn") or mem_type == "event":
+        # Raw conversation capture — cap low regardless of length heuristics so it
+        # cannot outrank curated canonical memory in arbitration.
+        score = min(score, 0.4)
+    elif src.startswith(("conversation-implementation", "telegram-request", "direct", "super-memory")):
+        score += 0.10
+
+    return min(1.0, max(0.1, round(score, 3)))
 
 
 def _is_durable(mem_type: str) -> bool:

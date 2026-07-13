@@ -54,8 +54,34 @@ def _init_tables(store: SuperMemoryStore) -> None:
 
 
 def _remember_internal(content: str, mem_type: str, tags: list[str], config_path: str | None = None) -> dict[str, Any]:
-    """Save a dream-derived memory through the canonical save pipeline."""
+    """Save a dream-derived memory through the canonical save pipeline.
+
+    E1 quality gate: dream insights must pass a quality threshold and not
+    duplicate an existing dream insight before being persisted. Returns a
+    skip marker (no 'record') when gated out so callers treat it as no-save.
+    """
     from . import bridge
+    from .quality_scorer import score_memory
+    import hashlib as _hl
+
+    _MIN_OVERALL = 0.5
+    _qs = score_memory(content, memory_type="insight")
+    if _qs.overall < _MIN_OVERALL:
+        return {"ok": False, "skipped": "low_quality", "quality_overall": _qs.overall}
+    # Dedup against existing dream insights by content hash
+    _h = _hl.sha256(content.encode()).hexdigest()
+    try:
+        store = _store(config_path)
+        with store.connect() as _c:
+            _dup = _c.execute(
+                "SELECT 1 FROM memories WHERE type = 'insight' AND agent_id = 'dream-engine' "
+                "AND json_extract(metadata_json,'$.dream_content_hash') = ? LIMIT 1",
+                (_h,),
+            ).fetchone()
+        if _dup:
+            return {"ok": False, "skipped": "duplicate"}
+    except Exception:
+        pass
     return bridge.remember({
         "content": content,
         "type": mem_type,
@@ -64,8 +90,13 @@ def _remember_internal(content: str, mem_type: str, tags: list[str], config_path
         "project": "super-memory",
         "tags": tags,
         "source": "super-memory.dream",
-        "trust_score": 0.55,
-        "metadata": {"generated_by": "dream_engine", "dream_cycle": _now()},
+        "trust_score": round(0.45 + 0.2 * _qs.overall, 3),
+        "metadata": {
+            "generated_by": "dream_engine",
+            "dream_cycle": _now(),
+            "dream_content_hash": _h,
+            "quality_overall": _qs.overall,
+        },
     }, config_path=config_path)
 
 
@@ -88,6 +119,38 @@ def _jaccard_similarity(a: str, b: str) -> float:
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
+
+# E2: dream noise + injection guard ─────────────────────────────────────────
+# Generic/ambient tokens that produced the 20 rubbish "X appears in N memories"
+# insights (license/copyright/software/...) and injection markers. Bridges or
+# patterns keyed only on these are noise and must not become insight memories.
+_DREAM_NOISE_TOKENS = {
+    "license", "licence", "copyright", "software", "memory", "python", "code",
+    "file", "files", "content", "data", "system", "protocol", "chunked",
+    "write", "operation", "operations", "line", "lines", "maximum", "mandatory",
+    "note", "notes", "text", "value", "result", "error", "config", "table",
+    "user", "assistant", "message", "task",
+}
+_DREAM_INJECTION_MARKERS = (
+    "chunked write protocol", "maximum 350 lines", "no exceptions",
+    "server timeout", "mandatory", "absolute limits", "per single write",
+)
+
+def _is_dream_noise(text: str, keywords: list[str] | set[str] | None = None) -> bool:
+    """True when a candidate insight is ambient-token noise or injection echo.
+
+    Blocks two failure modes seen in production:
+    1. Insights keyed only on generic tokens (all shared keywords in blocklist).
+    2. Insights whose text echoes the prompt-injection block.
+    """
+    low = (text or "").lower()
+    if any(m in low for m in _DREAM_INJECTION_MARKERS):
+        return True
+    kws = {k.lower() for k in (keywords or []) if k}
+    if kws and kws <= _DREAM_NOISE_TOKENS:
+        # every shared keyword is a generic/ambient token → no real signal
+        return True
+    return False
 
 
 def dream_insight_generation(limit=200, dry_run=True, config_path=None):
@@ -123,7 +186,11 @@ def dream_insight_generation(limit=200, dry_run=True, config_path=None):
                 sim = _jaccard_similarity(item_a["content"], item_b["content"])
                 if 0.15 < sim < 0.75:
                     shared_kw = set(item_a["keywords"]) & set(item_b["keywords"])
-                    if shared_kw:
+                    # E2: skip bridges whose only shared signal is ambient
+                    # noise tokens or that echo injection content.
+                    if shared_kw and not _is_dream_noise(
+                        item_a["content"] + " " + item_b["content"], shared_kw
+                    ):
                         candidates.append({
                             "source_a": {"id": item_a["id"], "content": item_a["content"][:160], "type": item_a["type"]},
                             "source_b": {"id": item_b["id"], "content": item_b["content"][:160], "type": item_b["type"]},
@@ -234,6 +301,10 @@ def dream_pattern_summary(limit=200, dry_run=True, config_path=None):
 
     patterns = []
     for kw, count in kw_counter.most_common(50):
+        # E2: drop ambient/injection tokens — these produced the 20 rubbish
+        # "'license' appears in N memories" insights that were soft-deleted.
+        if kw.lower() in _DREAM_NOISE_TOKENS:
+            continue
         if count >= 4 and len(set(mem_by_kw[kw])) >= 3:
             patterns.append({
                 "keyword": kw, "frequency": count,
@@ -241,19 +312,11 @@ def dream_pattern_summary(limit=200, dry_run=True, config_path=None):
                 "sources": sorted(set(mem_by_kw[kw]))[:5],
             })
 
-    created_ids = []
-    if not dry_run and patterns:
-        for pattern in patterns[:5]:
-            content = f"Dream pattern: '{pattern['keyword']}' appears in {pattern['frequency']} memories across {pattern['unique_memories']} unique entries (pattern strength: {pattern['frequency'] / limit:.2f})"
-            result = _remember_internal(
-                content=content,
-                mem_type=MemoryType.INSIGHT.value,
-                tags=["dream", "pattern", f"keyword:{pattern['keyword']}"],
-                config_path=config_path,
-            )
-            mem_id = result.get("record", {}).get("id")
-            if mem_id:
-                created_ids.append(mem_id)
+    # E1: token-frequency counts are statistics, not insights. We no longer
+    # persist them as INSIGHT memories (they dominated recall with zero value
+    # and amplified injection tokens). The phase now only *reports* frequency
+    # patterns for observability; nothing is written to the canonical store.
+    created_ids: list[str] = []
 
     return {
         "ok": True, "dry_run": dry_run,
@@ -261,6 +324,7 @@ def dream_pattern_summary(limit=200, dry_run=True, config_path=None):
         "patterns_detected": len(patterns),
         "patterns": patterns[:15],
         "memories_created": len(created_ids),
+        "note": "token-frequency patterns are reported only, not persisted (E1)",
     }
 
 

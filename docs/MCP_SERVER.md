@@ -1,4 +1,4 @@
-# Super Memory MCP Server (v2.2.0)
+# Super Memory MCP Server (v2.3.6)
 
 Super Memory includes a local stdio MCP server so MCP-compatible agents can use it directly. **254 tools** across all categories — the largest MCP tool set in the neural-memory ecosystem.
 
@@ -62,7 +62,7 @@ Profiles:
 - `admin`: normal tools plus promotion, cross-agent, cross-session, cognitive (hypothesis/evidence/predict/verify), lifecycle (tier/compression/review/leitner), quality (envelope/ingest/adapter), and consolidation tools
 - `all`: every implemented tool — **254 tools** including P0+P2 modules (MemoryEnvelope, SourceAdapter, Closets, Recall Arbitration v3, Feedback, Drift Repair, Watcher, Line Citations, Dialectic, Curriculum)
 
-### P0+P2 Module Tools (v2.2.0)
+### P0+P2 Module Tools (v2.2.0, hardened v2.3.6)
 
 | Module | Tools | Profile |
 |--------|-------|---------|

@@ -360,6 +360,18 @@ def _build_recall_channels(query: str, limit: int, config_path: str | None = Non
         closet_hits = search_closets(query, limit=limit, config_path=config_path)
         rows = closet_hits.get("results") or closet_hits.get("items") or []
         if rows:
+            # search_closets exposes drawer_id/closet_id at top level, but the
+            # arbitration layer only carries `metadata` into selected evidence.
+            # Fold the pointers into metadata so hydration can resolve them.
+            for r in rows:
+                meta = dict(r.get("metadata") or {})
+                if r.get("drawer_id") and not meta.get("drawer_id"):
+                    meta["drawer_id"] = r["drawer_id"]
+                if r.get("closet_id") and not meta.get("closet_id"):
+                    meta["closet_id"] = r["closet_id"]
+                if r.get("summary") and not r.get("content"):
+                    r["content"] = r["summary"]
+                r["metadata"] = meta
             channels["semantic_closet"] = rows
     except Exception:
         pass
@@ -387,10 +399,10 @@ def _hydrate_recall_selection(result: dict[str, Any], config_path: str | None = 
             drawer_ids.append(str(meta["drawer_id"]))
         if meta.get("closet_id"):
             closet_ids.append(str(meta["closet_id"]))
-        # Some closet search rows expose ids directly.
-        if ev.get("channel") == "semantic_closet":
-            if ev.get("memory_id"):
-                drawer_ids.append(str(ev["memory_id"]))
+        # NOTE: for semantic_closet evidence the drawer_id/closet_id now arrive
+        # via metadata (folded in _build_recall_channels). Do NOT fall back to
+        # ev["memory_id"] here — that is the canonical memory UUID, not a
+        # drawer_id, and querying palace_drawers with it returns empty content.
     if not drawer_ids and not closet_ids:
         return {"ok": True, "results": [], "reason": "no drawer/closet refs"}
     return hydrate_closets(drawer_ids=drawer_ids[:10], closet_ids=closet_ids[:10], config_path=config_path)
@@ -409,6 +421,24 @@ def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[
         result["hydrated_evidence"] = _hydrate_recall_selection(result, config_path=config_path)
     except Exception as exc:
         result["hydrated_evidence"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    # E3: log every recall to recall_events so the feedback loop has data to
+    # learn from (the table + record_recall_event() already existed but had
+    # zero callers, so recall_feedback/recall_events stayed empty forever).
+    try:
+        from .recall.feedback import record_recall_event
+        selected = result.get("selected") or []
+        ids = [
+            (ev.get("memory_id") or ev.get("id"))
+            for ev in selected
+            if isinstance(ev, dict) and (ev.get("memory_id") or ev.get("id"))
+        ]
+        fb = record_recall_event(
+            query=query, selected_memory_ids=ids, source="bridge.recall",
+            config_path=config_path,
+        )
+        result["recall_event_id"] = fb.get("event_id")
+    except Exception:
+        pass
     return result
 
 

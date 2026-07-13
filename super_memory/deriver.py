@@ -48,6 +48,7 @@ class EnrichmentResult:
     arousal: float = 0.0
     valence: str = "neutral"
     indexed: bool = False
+    embedded: bool = False
     error: str = ""
 
 
@@ -217,6 +218,20 @@ def run_deriver_pipeline(
                 result.indexed = True
     except Exception as exc:
         result.error += f"update_meta:{exc}; "
+
+    try:
+        # Stage 6 (E8): semantic embedding — write vector for the ACTIVE
+        # workspace_markdown row so semantic recall has data. Runs here in the
+        # background deriver worker so save() never blocks on the embed call.
+        cfg = load_config(config_path)
+        if getattr(cfg, "vector_enabled", False):
+            from .vector import VectorStore, embed_text
+            vec = embed_text(content, config=cfg)
+            if vec:
+                VectorStore(cfg).add_embedding(memory_id, vec)
+                result.embedded = True
+    except Exception as exc:
+        result.error += f"embed:{exc}; "
 
     return result
 

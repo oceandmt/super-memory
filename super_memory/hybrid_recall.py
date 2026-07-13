@@ -92,7 +92,7 @@ def _rrf_fuse(lists: list[list[dict[str, Any]]], k: float = RRF_K) -> list[dict[
 
 class HybridRecall(DBMixin):
 
-    def cross_scope_recall(self, query: str, agent_scope: str = "current", session_scope: str = "recent", source_layers: list[str] | None = None, max_tokens: int = 2000, limit: int = 10) -> dict[str, Any]:
+    def cross_scope_recall(self, query: str, agent_scope: str = "current", session_scope: str = "recent", source_layers: list[str] | None = None, max_tokens: int = 1200, limit: int = 6) -> dict[str, Any]:
         validate_agent_scope(agent_scope)
         validate_session_scope(session_scope)
 
@@ -276,12 +276,18 @@ class HybridRecall(DBMixin):
         return {"id": str(row.get("id")), "content": row.get("content") or "", "agent_id": row.get("agent_id"), "session_id": row.get("session_id"), "created_at": row.get("created_at"), "type": row.get("type"), "provenance": {"layer": layer, "id": str(row.get("id"))}}
 
     def _dedup(self, rows):
+        # E4: unified dedup key — content_hash first (canonical, matches
+        # service.prefetch), then 12-word content prefix as fallback. This keeps
+        # both recall paths deduping identically instead of diverging.
         out = []
-        prefixes = set()
+        seen = set()
         for r in rows:
-            key = " ".join((r["content"] or "").lower().split()[:12])
-            if key and key not in prefixes:
-                prefixes.add(key)
+            meta = r.get("metadata") if isinstance(r.get("metadata"), dict) else {}
+            key = r.get("content_hash") or meta.get("content_hash")
+            if not key:
+                key = " ".join((r.get("content") or "").lower().split()[:12])
+            if key and key not in seen:
+                seen.add(key)
                 out.append(r)
         return out
 

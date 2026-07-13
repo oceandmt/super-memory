@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 233,
+  "total_tools": 235,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -3869,6 +3869,44 @@
           "limit": {
             "type": "integer",
             "default": 500
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_graph_cleanup_orphans",
+      "category": "graph",
+      "description": "Delete orphan graph neurons/synapses/fibers pointing to soft-deleted/missing memories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_dedup_neurons",
+      "category": "other",
+      "description": "Merge duplicate cognitive neurons (same content_hash), rewiring synapses to the kept neuron.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "default": true
           },
           "config_path": {
             "type": "string"

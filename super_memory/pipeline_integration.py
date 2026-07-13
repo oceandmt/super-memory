@@ -78,13 +78,20 @@ def check_triggers(content: str) -> list[dict]:
         return []
 
 
-def enrich_with_relations(metadata: dict, content: str) -> dict:
-    """Enrich metadata with relation and structure info."""
+def enrich_with_relations(metadata: dict, content: str, *, source: str | None = None) -> dict:
+    """Enrich metadata with relation and structure info.
+
+    For raw conversational turn logs (source='openclaw.turn') the CSV/K=V
+    structure detector produces garbage "columns" from prose (comma-separated
+    sentence fragments mislabeled as fields). Skip structure detection for those
+    to keep metadata clean; relations/triggers are still useful and kept.
+    """
     rels = extract_relations(content)
     if rels:
         metadata.setdefault("extracted_relations", rels[:10])
 
-    struct = detect_structure(content)
+    _skip_structure = (source or "").lower() == "openclaw.turn"
+    struct = None if _skip_structure else detect_structure(content)
     if struct:
         metadata.setdefault("structured_format", struct["format"])
         if struct["fields"]:

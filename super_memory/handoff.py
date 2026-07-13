@@ -176,12 +176,17 @@ class HandoffTools:
             mem_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
             now = conn.execute("SELECT datetime('now')").fetchone()[0]
             tags = json.dumps(["agent:" + str(bundle["to_agent"]), "scope:project", "type:handoff_outcome"])
-            meta = json.dumps({"bundle_id": bundle_id, "artifacts": artifacts, "proof_status": proof_status})
+            # content_hash: this raw INSERT bypasses the canonical save
+            # (service.py) that normally computes it; compute it here so
+            # handoff_outcome rows are not left with NULL hashes (which break
+            # hash-based dedup and cross-layer joins).
+            content_hash = hashlib.sha256((outcome_summary or "").encode("utf-8", errors="replace")).hexdigest()
+            meta = json.dumps({"bundle_id": bundle_id, "artifacts": artifacts, "proof_status": proof_status, "content_hash": content_hash})
             conn.execute("""
                 INSERT OR IGNORE INTO memories
-                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json)
-                VALUES (?, 'workspace_markdown', ?, 'handoff_outcome', 'project', ?, ?, NULL, ?, 'handoff_outcome', 0.8, ?, ?)
-            """, (mem_id, outcome_summary, bundle["to_agent"], bundle["session_id"], tags, now, meta))
+                (id, layer, content, type, scope, agent_id, session_id, project, tags_json, source, trust_score, created_at, metadata_json, content_hash)
+                VALUES (?, 'workspace_markdown', ?, 'handoff_outcome', 'project', ?, ?, NULL, ?, 'handoff_outcome', 0.8, ?, ?, ?)
+            """, (mem_id, outcome_summary, bundle["to_agent"], bundle["session_id"], tags, now, meta, content_hash))
             ev_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
             conn.execute("""
                 INSERT INTO honcho_events

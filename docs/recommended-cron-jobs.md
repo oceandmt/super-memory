@@ -134,4 +134,4 @@ super-memory doctor --json-out
 
 ---
 
-*Part of Super Memory v2.2.0 — see [roadmap](./roadmap.md) for the full picture.*
+*Part of Super Memory v2.3.6 — see [roadmap](./roadmap.md) for the full picture.*

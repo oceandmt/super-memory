@@ -256,11 +256,44 @@ def run_dream_cycle(
     if not dry_run and insights:
         from .config import load_config as _lc
         from .service import SuperMemoryService
+        from .quality_scorer import score_memory
+        import hashlib as _hl
         cfg = _lc(config_path)
         svc = SuperMemoryService(cfg)
+        # E1 quality gate: threshold + dedup against existing dream insights
+        _MIN_OVERALL = 0.5
+        _seen_hashes: set[str] = set()
+        _gate_stats = {"skipped_low_quality": 0, "skipped_dup": 0}
+        try:
+            with store.connect() as _c:  # type: ignore
+                for _r in _c.execute(
+                    "SELECT content FROM memories WHERE type = 'insight' AND agent_id = 'dream-engine'"
+                ).fetchall():
+                    _txt = _r[0] if not hasattr(_r, "keys") else _r["content"]
+                    _seen_hashes.add(_hl.sha256((_txt or "").encode()).hexdigest())
+        except Exception:
+            pass
         for ins in insights:
+            _content = ins["content"]
+            # E2: reject ambient-token noise and injection echoes before save.
+            try:
+                from .dream import _is_dream_noise as _dn
+                if _dn(_content):
+                    _gate_stats.setdefault("skipped_noise", 0)
+                    _gate_stats["skipped_noise"] += 1
+                    continue
+            except Exception:
+                pass
+            _h = _hl.sha256(_content.encode()).hexdigest()
+            if _h in _seen_hashes:
+                _gate_stats["skipped_dup"] += 1
+                continue
+            _qs = score_memory(_content, memory_type="insight")
+            if _qs.overall < _MIN_OVERALL:
+                _gate_stats["skipped_low_quality"] += 1
+                continue
             record = MemoryRecord(
-                content=ins["content"],
+                content=_content,
                 type=MemoryType.INSIGHT,
                 scope=MemoryScope.PROJECT,
                 agent_id="dream-engine",
@@ -270,14 +303,17 @@ def run_dream_cycle(
                     "dream_cross_session": ins["cross_session"],
                     "dream_source_ids": ins["source_memory_ids"],
                     "dream_generated_at": _now(),
+                    "quality_overall": _qs.overall,
                 },
             )
             try:
                 svc.save(record)
+                _seen_hashes.add(_h)
                 insights_saved += 1
             except Exception:
                 pass
         report["phases"]["insights"]["saved"] = insights_saved
+        report["phases"]["insights"]["quality_gate"] = _gate_stats
 
     report["insights_saved"] = insights_saved
     return report

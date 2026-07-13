@@ -581,6 +581,88 @@ def expire_by_age(
         return report
 
 
+def prune_stale_events(
+    *,
+    config_path: str | None = None,
+    max_days: int = 30,
+    max_trust: float = 0.5,
+    limit: int = 2000,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """E2: reversibly soft-delete the stale low-trust raw-event backlog.
+
+    Targets the immortal openclaw.turn event pile that no maintenance path
+    currently downgrades or prunes. Criteria (all must hold):
+      - type = 'event'
+      - source = 'openclaw.turn' (raw turn logs, not curated events)
+      - created_at older than max_days
+      - trust_score IS NULL or < max_trust
+      - NOT pinned, NOT promoted, NOT already soft-deleted
+
+    Soft-delete (metadata.soft_deleted=1) is reversible; never hard-deletes.
+    Safe by default (dry_run=True).
+    """
+    cfg = load_config(config_path)
+    store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, type, source, created_at, trust_score
+            FROM memories
+            WHERE type = 'event'
+              AND source = 'openclaw.turn'
+              AND datetime(created_at, '+' || CAST(? AS TEXT) || ' days') < datetime('now')
+              AND (trust_score IS NULL OR trust_score < ?)
+              AND COALESCE(json_extract(metadata_json, '$.soft_deleted'), 0) != 1
+              AND COALESCE(json_extract(metadata_json, '$.pinned'), 0) != 1
+              AND COALESCE(json_extract(metadata_json, '$.promoted'), 0) != 1
+            ORDER BY created_at ASC
+            LIMIT ?
+            """,
+            (max_days, max_trust, limit),
+        ).fetchall()
+
+        candidate_ids = [r["id"] for r in rows]
+        report: dict[str, Any] = {
+            "ok": True,
+            "strategy": "prune_stale_events",
+            "candidate_ids": len(candidate_ids),
+            "dry_run": dry_run,
+            "max_days": max_days,
+            "max_trust": max_trust,
+            "samples": [
+                {"id": r["id"], "created_at": r["created_at"], "trust_score": r["trust_score"]}
+                for r in rows[:5]
+            ],
+            "soft_deleted": None,
+        }
+
+        if not candidate_ids:
+            report["reason"] = "no stale low-trust events found"
+            return report
+        if dry_run:
+            report["reason"] = f"{len(candidate_ids)} stale events would be soft-deleted (reversible)"
+            return report
+
+        now = datetime.datetime.now(timezone.utc).isoformat()
+        for mid in candidate_ids:
+            conn.execute(
+                """
+                UPDATE memories
+                SET metadata_json = json_set(
+                    COALESCE(metadata_json, '{}'),
+                    '$.soft_deleted', 1,
+                    '$.soft_deleted_reason', 'stale_event_prune',
+                    '$.soft_deleted_at', ?
+                )
+                WHERE id = ?
+                """,
+                (now, mid),
+            )
+        conn.commit()
+        report["soft_deleted"] = {"ids": len(candidate_ids), "at": now}
+        return report
+
 def expire_by_valid_until(
     *,
     config_path: str | None = None,

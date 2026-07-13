@@ -112,8 +112,11 @@ class VectorStore:
     ) -> list[tuple[str, float]]:
         """Search for memories with embeddings most similar to the query vector.
 
-        Returns list of (memory_id, cosine_similarity) pairs, sorted by
-        similarity descending.
+        Returns list of (memory_id, score) pairs, sorted by score descending.
+        NOTE: sqlite-vec vec0 uses L2 (Euclidean) distance by default, not
+        cosine. The returned score is 1/(1+distance), a monotonic transform of
+        L2 distance into a [0,1) similarity-like value (higher = closer). It is
+        NOT cosine similarity.
         """
         if not self._available:
             logger.debug("Vector store unavailable — returning empty results")

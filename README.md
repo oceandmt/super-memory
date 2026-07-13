@@ -7,7 +7,7 @@
 
 **Local multi-layer memory system for OpenClaw multi-agents.**
 
-> **v2.2.0** — Grade A (90/100) • 254 MCP tools • 108 tests passing • CI/CD green
+> **v2.3.6** — Grade A (90/100) • 254 MCP tools • 480 tests passing • CI/CD green
 
 Super Memory is a Hermes-style layered agent memory system with Workspace Markdown as canonical truth, plus 3 derived layers (MemPalace, Honcho, Neural Memory) for structured, conversational, and associative recall. It ships as a Python package with CLI, FastAPI server, and MCP server — usable as an OpenClaw plugin or standalone memory service.
 
@@ -49,7 +49,7 @@ super-memory-api
 | **Cognitive** | `hypothesize`, `evidence`, `predict`, `verify`, `conflicts`, `explain`, `provenance`, `source`, `version` | Hypothesis workflow, Bayesian confidence, causal chains |
 | **Cross-Agent** | `cross_agent_recall`, `cross_agent_compare`, `cross_agent_conflicts`, `honcho_ask`, `honcho_profile`, `isolation_summary` | Multi-agent memory, Honcho perspective, agent isolation |
 | **Self-Improve** | `self_heal_embeddings`, `recall_record_correction`, `generate_curriculum`, `run_benchmark_tests`, `full_drift_repair` | Auto-fix, training cases, curriculum generation |
-| **Consolidation** | `consolidate`, `dedup`, `dream_full_cycle`, `flush_session_memories` | Dedup, compress, mature, enrich, prune, insight generation |
+| **Consolidation** | `consolidate`, `dedup`, `dream_full_cycle`, `flush_session_memories` | Dedup, compress, mature, enrich, prune, insight generation (token-frequency noise filtered, injection-echo guarded) |
 | **Citations** | `enrich_recall_with_citations`, `dialectic_answer` | Line-level source citations, deterministic/LLM synthesis |
 
 ### Explainable Recall (Recall Arbitration v3)
@@ -295,7 +295,7 @@ super-memory doctor --no-benchmark --json-out
 
 ## CI/CD Status
 
-- **CI**: 108/108 tests passing (Python 3.11 + 3.12)
+- **CI**: 480/480 tests passing (Python 3.11 + 3.12)
 - **Auto Deep**: Grade A (90/100)
 - **Canonical Compliance**: 99.9%
 - **MCP Tools**: 254 (122 categories)
@@ -318,7 +318,7 @@ super-memory/
 │   ├── dedup/                 # 3-tier dedup pipeline
 │   └── ...                    # 60+ modules
 ├── SKILLS/                    # OpenClaw agent skills (8 proposals)
-├── tests/                     # 108 tests
+├── tests/                     # 480 tests (80 files)
 ├── docs/                      # Full documentation
 ├── scripts/                   # Plugin install, workspace templates
 ├── openclaw-plugin/           # Native OpenClaw plugin

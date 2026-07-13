@@ -21,6 +21,11 @@ venv/
 *.sqlite3-shm
 data/
 
+# Private local memory / project runtime data (NEVER publish)
+memory/
+projects/
+narrative-*.md
+
 # OpenClaw workspace artifacts
 .openclaw/
 

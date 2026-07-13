@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.3.6 - 2026-07-13
+
+### Fixed
+- `sanitize.py`: injection detector (`is_injection_content`) now drops content on a single high-confidence signature match instead of requiring >=2 signatures, closing a self-contamination leak where an appended prompt-injection block polluted the canonical store on single-mention turns.
+- `bridge.py::_hydrate_recall_selection`: fold `drawer_id`/`closet_id` from `search_closets` rows into `metadata` at `_build_recall_channels` source instead of falling back to the memory's canonical UUID as a drawer id; the fallback returned zero hydrated content for every semantic-closet recall hit.
+- `handoff.py::complete_handoff_with_outcome`: the raw `INSERT INTO memories` used to record handoff outcomes bypassed the canonical save path and never computed `content_hash`, leaving `handoff_outcome` rows with a NULL hash that silently breaks hash-based dedup/cross-layer joins. The insert now computes and stores `content_hash`.
+- `dream.py` / `dream_engine.py`: Dream Engine's pattern-summary phase persisted raw token-frequency counts (e.g. `"'license' appears in 40 memories"`) as `insight` memories with no analytical value, and could echo prompt-injection tokens back into the store. Token-frequency patterns are now reported for observability only and never persisted; a shared `_is_dream_noise()` guard rejects ambient-token-only or injection-echoing candidates in both the bridge-insight and pattern-summary code paths before any live save.
+
+### Added
+- `data_improvement.py::_compute_trust`: trust scoring is now source- and type-aware. Raw conversational turn captures (`source` starting `openclaw.turn`, or `mem_type == "event"`) are capped at 0.4 so they cannot outrank curated memory in recall arbitration; durable types (`doctrine`, `preference`, `blocker`, `lesson`) get a +0.15 bonus; curated sources (`conversation-implementation`, `telegram-request`, `direct`, `super-memory`) get +0.10.
+- `recall/feedback.py` is now wired into the live recall path: `bridge.recall()` calls `record_recall_event()` after every arbitration pass, populating `recall_events` (previously implemented but had zero callers).
+- `consolidation.py`: topic-guard rejects hex/UUID-like tokens, pure-digit tokens, and vowelless tokens from becoming semantic-cluster topics; expanded the noise/stopword list (Vietnamese stopwords + template filler) used during consolidation.
+- Regression suite `tests/test_injection_and_hydration_regression.py` (16 tests) covering the injection-filter fix, closet hydration fix, dream insight quality/noise guard, and the `memory_write_intents` write-contract wiring.
+- `super-memory-daily-hygiene` cron job extended with a reversible dead-embed-job canceller and a layer-count drift check (flags when the alive-row spread across the four layers exceeds 5).
+
+### Data
+- One-time DB rescore of all active memories (749 rows) with the new source/type-aware trust function.
+- 44 oversized (>2000 char) raw turn-dump `event` memories tiered to `lifecycle_tier="cold"` with a `compression_candidate` flag (reversible metadata change, no content loss).
+- Cancelled 274 dead-target embed jobs (pointed at soft-deleted or orphaned memories); active embed backlog on live memories confirmed at 0.
+- Backfilled `content_hash` on the one live row left NULL by the handoff bug; normalized all remaining NULL/empty `content_hash` rows (test-fixture junk, already soft-deleted) so every alive row now carries a full 64-character sha256 hash.
+- 20 previously-created Dream Engine token-frequency "insights" (soft-deleted in a prior pass) confirmed as noise and left deleted; no longer reproducible under the new guard.
+
+### Safety
+- No database files, local memory contents, private runtime config, or generated personal data are included in this release.
+
 
 ## 2.3.5 - 2026-07-12
 

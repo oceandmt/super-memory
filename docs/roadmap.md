@@ -1,7 +1,7 @@
 # Super Memory: Development Roadmap
 
-> **Current release**: v2.2.0 (P0+P2 + SKILLS)  
-> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-06-23
+> **Current release**: v2.3.6 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
+> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-07-13
 
 ---
 
@@ -82,11 +82,32 @@
 
 ### CI/CD
 
-- [x] CI matrix: Python 3.11 + 3.12, 108/108 tests
+- [x] CI matrix: Python 3.11 + 3.12, 480/480 tests
 - [x] Hard deps: numpy, cryptography
 - [x] Grade A (90/100) qualify, 99.9% canonical compliance
 - [x] 254 MCP tools, 17,090 autocomplete prefixes
 - [x] Deployment to `release` environment: success
+
+## ✅ Phase 3 — Trust, Dream Quality, Write-Contract Hardening (v2.3.6)
+
+### Recall Quality
+
+- [x] **Source/type-aware trust scoring** (`data_improvement.py::_compute_trust`): raw `openclaw.turn`/`event` captures capped at 0.4 so curated memory always outranks turn-dumps in arbitration; durable types (`doctrine`/`preference`/`blocker`/`lesson`) and curated sources get bonuses.
+- [x] **Recall Feedback Loop activated**: `bridge.recall()` now calls `record_recall_event()` on every arbitration pass — the table/API existed since Phase 2 but had zero callers.
+- [x] **Injection self-contamination fix** (`sanitize.py`): `is_injection_content` drops on a single high-confidence signature instead of requiring ≥2, closing a leak where a single-mention turn could pollute the canonical store.
+- [x] **Semantic-closet hydration fix** (`bridge.py`): fold `drawer_id`/`closet_id` into `metadata` at recall-channel build time instead of falling back to the memory UUID, which produced empty hydrated content for every closet hit.
+
+### Dream Engine Quality
+
+- [x] **Stop persisting token-frequency "insights"**: pattern-summary phase (`dream.py`) reported counts like `"'license' appears in 40 memories"` as `insight` memories with no signal; now reported for observability only, never saved.
+- [x] **Shared noise/injection guard** (`_is_dream_noise()`): rejects bridge-insight/pattern candidates whose only shared signal is an ambient token (license, copyright, software...) or that echo prompt-injection text, in both `dream.py` and `dream_engine.py`.
+
+### Write-Contract / Data Integrity
+
+- [x] **`content_hash` gap closed** (`handoff.py`): `complete_handoff_with_outcome` bypassed the canonical save and never computed `content_hash`, leaving NULL-hash rows that silently break hash-based dedup/joins (SQL `NOT IN` NULL trap). Fixed at the write path; all alive rows now carry a full 64-char sha256 hash.
+- [x] **Dead embed-job cleanup**: cancelled 274 jobs targeting soft-deleted/orphaned memories (reversible status flip); live embed backlog confirmed at 0.
+- [x] **Cron hygiene**: `super-memory-daily-hygiene` extended with dead-embed-job auto-cancel + layer-drift check.
+- [x] Regression suite `tests/test_injection_and_hydration_regression.py` (16 tests) locking in all of the above.
 
 ---
 

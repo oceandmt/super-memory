@@ -43,7 +43,11 @@ def _get_cached_connection(db_path: Path) -> sqlite3.Connection:
     Micro-gap 6: Read-only recovery — auto-reconnect with backoff.
     """
     from typing import Any as _Any
-    key = str(db_path.resolve())
+    # E9: key the cache per (db_path, thread) so each thread gets its own
+    # connection. A single shared connection with check_same_thread=False
+    # risked interleaved transactions across threads. sqlite connections are
+    # cheap under WAL; per-thread isolation is the safe strategy.
+    key = f"{db_path.resolve()}::{threading.get_ident()}"
     with _connection_lock:
         conn = _connection_cache.get(key)
         if conn is not None:
@@ -156,15 +160,16 @@ def clear_connection_cache() -> None:
 
 
 def invalidate_connection(db_path: Path) -> None:
-    """Invalidate a specific cached connection (e.g. after VACUUM)."""
-    key = str(db_path.resolve())
+    """Invalidate cached connections for a path across all threads (e.g. after VACUUM)."""
+    prefix = f"{db_path.resolve()}::"
     with _connection_lock:
-        conn = _connection_cache.pop(key, None)
-        if conn is not None:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        for key in [k for k in _connection_cache if k.startswith(prefix)]:
+            conn = _connection_cache.pop(key, None)
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 
 class SuperMemoryStore:
