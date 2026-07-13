@@ -149,15 +149,27 @@ CREATE TABLE IF NOT EXISTS cross_agent_conflicts (
 -- ============================================================================
 
 -- Palace drawers (spatial organization)
+-- drawer_id is the canonical PRIMARY KEY (the layer save path upserts on it via
+-- ON CONFLICT(drawer_id)). The spatial columns (id/wing/room/hall) are retained
+-- for backward compatibility with older MemPalace readers. This must stay in
+-- sync with closet._ensure_tables(), which migrates pre-existing DBs to the
+-- same shape; otherwise fresh DBs and migrated DBs diverge.
 CREATE TABLE IF NOT EXISTS palace_drawers (
-    id TEXT PRIMARY KEY,
+    drawer_id TEXT PRIMARY KEY,
     memory_id TEXT NOT NULL,
-    wing TEXT NOT NULL,
-    room TEXT NOT NULL,
-    hall TEXT NOT NULL,
     content TEXT NOT NULL,
-    checksum TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    offset_start INTEGER NOT NULL DEFAULT 0,
+    offset_end INTEGER NOT NULL DEFAULT 0,
+    content_hash TEXT,
+    -- backward-compatible spatial columns
+    id TEXT,
+    wing TEXT NOT NULL DEFAULT 'semantic',
+    room TEXT NOT NULL DEFAULT 'closets',
+    hall TEXT NOT NULL DEFAULT 'drawers',
+    checksum TEXT,
     source TEXT,
+    source_file TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

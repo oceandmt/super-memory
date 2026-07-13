@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from super_memory import bridge
-from super_memory.config import load_config
+from super_memory.models import SuperMemoryConfig
 
 
-def test_remember_creates_workspace_markdown_sqlite_row():
+def _cfg(tmp_path: Path) -> SuperMemoryConfig:
+    return SuperMemoryConfig(workspace_root=tmp_path, sqlite_path="data/sm.sqlite3")
+
+
+def test_remember_creates_workspace_markdown_sqlite_row(tmp_path: Path, monkeypatch):
     import uuid
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(bridge, "load_config", lambda config_path=None: cfg)
     result = bridge.remember({
         "content": f"cross layer health unit test {uuid.uuid4().hex[:12]}",
         "type": "context",
@@ -16,7 +23,6 @@ def test_remember_creates_workspace_markdown_sqlite_row():
     })
     memory_id = result["record"]["id"]
 
-    cfg = load_config(None)
     db_path = cfg.workspace_root / cfg.sqlite_path
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -43,7 +49,9 @@ def test_remember_creates_workspace_markdown_sqlite_row():
         conn.close()
 
 
-def test_cross_layer_health_endpoint_shape():
+def test_cross_layer_health_endpoint_shape(tmp_path: Path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    monkeypatch.setattr(bridge, "load_config", lambda config_path=None: cfg)
     health = bridge.cross_layer_health()
     assert "ok" in health
     assert "verdict" in health

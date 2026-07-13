@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.3.10 - 2026-07-13
+
+### Removed (E5 — dead + broken code, per user decision "Option A")
+- Deleted `super_memory/handlers/` (8 files, 1718 lines: `core.py`, `quality.py`, `cognitive.py`, `lifecycle.py`, `graph.py`, `ops.py`, `base.py`, `__init__.py`) and `super_memory/pipeline_steps.py`. Audit confirmed: **nothing in any live entrypoint** (`mcp_server.py`, `api.py`, `bridge.py`) imports `get_all_handlers()` or this package, and it was broken anyway — **65 references to `bridge.*` functions that do not exist** (`bridge.quality_score`, `bridge.retrieval_pipeline`, `bridge.reflex_pin`, etc.), so it would crash on import if it were ever wired in. Looks like an abandoned modularization of the monolithic `mcp_server.py` (244 live tools).
+- `super_memory/retrieval_pipeline.py` was investigated for the same removal but **kept**: it is live via `auto_deep.py`'s P0 module audit (`importlib.import_module`) and has its own passing test (`tests/test_retrieval_pipeline.py`).
+
+### Fixed (found while verifying the removal was safe)
+- **Fresh-DB schema drift**: `schema.sql` (the source of truth for newly-created databases via `run_migrations`) still defined `palace_drawers` with the pre-2.3.7 spatial-only shape (`id` PK, no `drawer_id`). The 2.3.7 fix updated the *migration* path (`projections/closet.py`) but not the fresh-DB schema, so every brand-new database still hit "table palace_drawers has no column named drawer_id" on save — causing 59 test failures across `test_write_contract.py` and `test_tool_dispatch_smoke.py` that only reproduced on fresh tmp_path databases, not the live migrated one. `schema.sql` now matches the migrated shape (`drawer_id` PK + backward-compatible spatial columns).
+- **Test DB isolation leak**: `tests/test_cross_layer_health.py` called `bridge.remember()` / `load_config(None)` with no `tmp_path` fixture, writing real rows into the live production database on every test run. Rewrote to use the same `SuperMemoryConfig(workspace_root=tmp_path, ...)` + `monkeypatch` pattern used elsewhere in the suite. Purged 36 rows of accumulated test pollution across memories/palace_drawers/honcho_events/cognitive_neurons from the live DB.
+
+### Known pre-existing issue (not fixed this release, flagged for follow-up)
+- `tests/test_injection_and_hydration_regression.py::test_no_alive_venv_junk_rows` fails: 872 alive rows in the live DB point at `.venv-yt-dlp` vendor paths, dated back to 2026-07-12 (before this session). Confirmed to reproduce identically on pristine v2.3.9 — pre-existing, unrelated to this release. `is_ignored_source_path()` exists in `super_memory/ingest/__init__.py` and is correctly wired into `FileAdapter`, but the exact ingestion path that wrote these specific rows wasn't identified; needs its own investigation.
+
+### Tests
+- Full targeted suite green: `test_write_contract.py`, `test_retrieval_pipeline.py`, `test_cross_layer_health.py`, and `test_injection_and_hydration_regression.py` (36/37, excluding the pre-existing venv-junk issue above) all pass. Live imports (`api`, `mcp_server`, `bridge`, `auto_deep`, `retrieval_pipeline`) verified post-deletion.
+
+
 ## 2.3.9 - 2026-07-13
 
 ### Fixed (semantic/vector layer — E4)
