@@ -381,7 +381,8 @@ def rebuild_incremental(limit: int = 500, config_path: str | None = None) -> dic
             """
             SELECT m.* FROM memories m
             LEFT JOIN cognitive_fibers f ON f.id = 'f:' || m.id
-            WHERE f.id IS NULL OR f.updated_at < m.created_at
+            WHERE (f.id IS NULL OR f.updated_at < m.created_at)
+              AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1
             ORDER BY m.created_at DESC LIMIT ?
             """,
             (limit,),

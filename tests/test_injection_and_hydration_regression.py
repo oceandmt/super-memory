@@ -422,6 +422,22 @@ class TestRecallCjkTierBeforeFullScanRegression:
         # E8 guard must still apply to the CJK tier (filter_sql is shared)
         assert "filter_sql" in src
 
+class TestGraphRebuildSoftDeleteRegression:
+    """E14 (2026-07-13): graph.rebuild_incremental (live via
+    bridge.graph_rebuild_incremental) selected `m.*` with no soft-delete guard,
+    so it re-projected forgotten memories back into the neural/graph layer
+    (1018 rows on the live DB) — same resurrection class as E7. The projection
+    source query must exclude soft-deleted rows."""
+
+    def test_rebuild_incremental_excludes_soft_deleted(self):
+        import inspect
+        from super_memory import graph
+        src = inspect.getsource(graph.rebuild_incremental)
+        assert "soft_deleted" in src, (
+            "rebuild_incremental re-projects forgotten memories into the graph "
+            "(E14 regression)"
+        )
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

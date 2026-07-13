@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.15 - 2026-07-13
+
+### Fixed (E14 — graph rebuild resurrects forgotten memories)
+- **`graph.rebuild_incremental` (live via `bridge.graph_rebuild_incremental`) selected `m.*` with no soft-delete guard**, so it re-projected soft-deleted (forgotten) memories back into the neural/graph layer as neurons/synapses/fibers — **1018 rows on the live DB**. Same resurrection class as E7 (dream) and E8 (FTS reindex): a routine graph rebuild silently undid `forget()` for the graph recall layer. Added the canonical `COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1` guard to the projection source query. (`cleanup_orphans` already filtered soft-deleted; verified unchanged.)
+
+### Tests
+- Regression suite now 49: added `TestGraphRebuildSoftDeleteRegression` (source-level guard on `rebuild_incremental`).
+
+### Audit notes (checked, no change needed)
+- `surface.py` and `StatsMixin` report raw counts, but neither is reachable from a live MCP tool — the live `super_memory_stats` routes through `bridge.stats()` → `status()`, which carries the E3 alive fix. Left as-is rather than patching dead surfaces.
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows what the graph rebuild projects; it cannot expose or ingest data.
+
+
 ## 2.3.14 - 2026-07-13
 
 ### Enhancements (E9–E13 — hardening + self-improvement follow-ups to the E1–E8 audit)
