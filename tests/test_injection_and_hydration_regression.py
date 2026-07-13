@@ -438,6 +438,22 @@ class TestGraphRebuildSoftDeleteRegression:
             "(E14 regression)"
         )
 
+class TestRemVectorSoftDeleteRegression:
+    """E15 (2026-07-13): rem._rem_vec and rem._rem_bruteforce (live via
+    bridge.rem_search / super_memory tool) joined memories<->memory_vectors
+    with no soft-delete guard. 399 soft-deleted rows retained live vectors,
+    so vector recall leaked forgotten memories — same class as E4/E8. Both
+    REM query paths must exclude soft-deleted rows."""
+
+    def test_both_rem_paths_have_soft_delete_guard(self):
+        import inspect
+        from super_memory import rem
+        for fn in (rem._rem_sqlite_vec, rem._rem_bruteforce):
+            src = inspect.getsource(fn)
+            assert "soft_deleted" in src, (
+                f"{fn.__name__} leaks soft-deleted vectors into REM recall (E15)"
+            )
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

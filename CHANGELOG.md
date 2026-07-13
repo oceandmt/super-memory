@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.16 - 2026-07-13
+
+### Fixed (E15 — REM vector recall leaks forgotten memories)
+- **`rem._rem_sqlite_vec` and `rem._rem_bruteforce` (live via `bridge.rem_search`) joined `memories`↔`memory_vectors` with no soft-delete guard.** 399 soft-deleted rows retained live vectors, so REM vector recall returned forgotten memories — same leak class as E4 (semantic hydrate) and E8 (FTS). The vector delete path is best-effort, so the guard must live at query time. Added `COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1` to both REM query paths. Verified live: 0 soft-deleted vectors selectable, 1044 alive vectors still returnable.
+
+### Tests
+- Regression suite now 50: added `TestRemVectorSoftDeleteRegression` (source-level guard on both REM paths).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows REM recall results.
+
+
 ## 2.3.15 - 2026-07-13
 
 ### Fixed (E14 — graph rebuild resurrects forgotten memories)

@@ -64,6 +64,7 @@ def _rem_sqlite_vec(
                 FROM memories m
                 JOIN memory_vectors v ON v.memory_id = m.id AND v.layer = m.layer
                 WHERE v.vector IS NOT NULL
+                  AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1
                 ORDER BY v.distance ASC
                 LIMIT ?
                 """,
@@ -106,6 +107,7 @@ def _rem_bruteforce(
                 FROM memories m
                 JOIN memory_vectors v ON v.memory_id = m.id AND v.layer = m.layer
                 WHERE v.vector IS NOT NULL
+                  AND COALESCE(json_extract(m.metadata_json,'$.soft_deleted'),0) != 1
                 """
             ).fetchall()
             for row in rows:
