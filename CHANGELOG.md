@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.3.19 - 2026-07-13
+
+### Fixed (E19 — handoff outcome tool always crashed)
+- **`HandoffTools.complete_handoff_with_outcome` (live MCP tool `super_memory_complete_handoff_with_outcome`) called `hashlib.sha256(...)` but `handoff.py` never imported `hashlib`.** Every call raised `NameError` — a live MCP tool that always crashed on invocation, with no test coverage catching it. Added the missing `import hashlib`.
+
+### Tests
+- Regression suite now 54: added `TestHandoffOutcomeRegression` (functional round-trip: create a handoff, complete it with an outcome, assert no crash and a memory/event were recorded).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Fixes a crash only; no behavior change beyond making the tool actually work.
+
+
 ## 2.3.18 - 2026-07-13
 
 ### Fixed (E17, E18 — SynthesisTools: leak + always-crashing tool)

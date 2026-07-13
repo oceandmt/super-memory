@@ -510,6 +510,40 @@ class TestSynthesisRegression:
         r2 = t.promote_to_shared("does-not-exist")
         assert r2["ok"] is False
 
+class TestHandoffOutcomeRegression:
+    """E19 (2026-07-13): HandoffTools.complete_handoff_with_outcome (live MCP
+    tool super_memory_complete_handoff_with_outcome) called hashlib.sha256(...)
+    but the module never imported hashlib — every call raised NameError. A
+    live MCP tool that always crashed, with no test coverage catching it."""
+
+    def test_complete_handoff_with_outcome_does_not_crash(self, tmp_path, monkeypatch):
+        import sqlite3
+        from super_memory.handoff import HandoffTools
+        from super_memory.config import load_config
+        cfg = load_config()
+        t = HandoffTools(config=cfg)
+        t.db_path = tmp_path / "handoff.sqlite3"
+        conn = sqlite3.connect(str(t.db_path))
+        conn.execute(
+            "CREATE TABLE memories (id TEXT PRIMARY KEY, layer TEXT, content TEXT, "
+            "type TEXT, scope TEXT, agent_id TEXT, session_id TEXT, project TEXT, "
+            "tags_json TEXT, source TEXT, trust_score REAL, created_at TEXT, "
+            "metadata_json TEXT, content_hash TEXT)"
+        )
+        conn.execute("CREATE TABLE honcho_events (id TEXT PRIMARY KEY, memory_id TEXT, "
+                     "workspace TEXT, session_id TEXT, observer_peer_id TEXT, "
+                     "observed_peer_id TEXT, content TEXT, source TEXT, "
+                     "metadata_json TEXT, created_at TEXT)")
+        conn.commit(); conn.close()
+        created = t.create_handoff("agentA", "agentB", "E19 title", "E19 summary")
+        assert created["ok"]
+        out = t.complete_handoff_with_outcome(
+            created["bundle_id"], "E19 outcome text", proof_status="verified"
+        )
+        assert out["ok"] is True
+        assert out["bundle_id"] == created["bundle_id"]
+        assert out["memory_id"]
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no
