@@ -49,7 +49,7 @@ class SessionArchive(DBMixin):
         self.ensure_tables()
         with self._conn() as conn:
             events = [dict(r) for r in conn.execute("SELECT * FROM honcho_events WHERE session_id=? ORDER BY created_at DESC LIMIT ?", (session_id,max_events)).fetchall()]
-            mems = [dict(r) for r in conn.execute("SELECT * FROM memories WHERE session_id=? ORDER BY created_at DESC LIMIT ?", (session_id,max_events)).fetchall()] if self._has(conn,"memories") else []
+            mems = [dict(r) for r in conn.execute("SELECT * FROM memories WHERE session_id=? AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 ORDER BY created_at DESC LIMIT ?", (session_id,max_events)).fetchall()] if self._has(conn,"memories") else []
             rows = self._dedup_rows(list(reversed(events)) + list(reversed(mems)))
             agent = (rows[-1].get("agent_id") or rows[-1].get("observer_peer_id")) if rows else None
             decisions = self._pick_semantic(rows, "decision")

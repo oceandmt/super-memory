@@ -61,8 +61,8 @@ class HookManager(DBMixin):
         with self._conn() as conn:
             conn.execute("INSERT OR IGNORE INTO sessions(id,agent_id,peer_id,status) VALUES(?,?,?,?)", (session_id, agent_id, peer_id, "active"))
             conclusions = [dict(r) for r in conn.execute("SELECT * FROM honcho_conclusions WHERE about_peer_id=? ORDER BY created_at DESC LIMIT 5", (peer_id,)).fetchall()] if self._has(conn,"honcho_conclusions") else []
-            decisions = [dict(r) for r in conn.execute("SELECT id,content,created_at FROM memories WHERE agent_id=? AND (type='decision' OR content LIKE '%decision%') ORDER BY created_at DESC LIMIT 5", (agent_id,)).fetchall()] if self._has(conn,"memories") else []
-            blockers = [dict(r) for r in conn.execute("SELECT id,content,created_at FROM memories WHERE agent_id=? AND (type='blocker' OR content LIKE '%blocker%') ORDER BY created_at DESC LIMIT 10", (agent_id,)).fetchall()] if self._has(conn,"memories") else []
+            decisions = [dict(r) for r in conn.execute("SELECT id,content,created_at FROM memories WHERE agent_id=? AND (type='decision' OR content LIKE '%decision%') AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 ORDER BY created_at DESC LIMIT 5", (agent_id,)).fetchall()] if self._has(conn,"memories") else []
+            blockers = [dict(r) for r in conn.execute("SELECT id,content,created_at FROM memories WHERE agent_id=? AND (type='blocker' OR content LIKE '%blocker%') AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1 ORDER BY created_at DESC LIMIT 10", (agent_id,)).fetchall()] if self._has(conn,"memories") else []
             session = dict(conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone())
         text = json.dumps({"conclusions": conclusions, "decisions": decisions, "blockers": blockers, "session": session}, ensure_ascii=False)
         return {"ok": True, "context": text[:max_tokens], "session": session}

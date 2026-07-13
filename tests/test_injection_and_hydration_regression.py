@@ -587,6 +587,23 @@ class TestReachableModulesSoftDeleteRegression:
             src = inspect.getsource(fn)
             assert "soft_deleted" in src, f"{label} reads memories without soft-delete guard (E21)"
 
+class TestSessionToolsSoftDeleteRegression:
+    """E22 (2026-07-13): two live MCP tools resurfaced forgotten memories:
+      - HookManager.session_start_context (super_memory_session_start_context)
+        injected 77 forgotten decisions + 81 forgotten blockers into new
+        session context.
+      - SessionArchive.create_session_summary (super_memory_create_session_summary)
+        pulled 601 soft-deleted rows into per-session summaries."""
+
+    def test_session_context_and_summary_have_soft_delete_guard(self):
+        import inspect
+        from super_memory.hooks import HookManager
+        from super_memory.session_archive import SessionArchive
+        s1 = inspect.getsource(HookManager.session_start_context)
+        assert s1.count("soft_deleted") >= 2, "session_start_context decisions/blockers unguarded (E22)"
+        s2 = inspect.getsource(SessionArchive.create_session_summary)
+        assert "soft_deleted" in s2, "create_session_summary unguarded (E22)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

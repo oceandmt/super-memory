@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.22 - 2026-07-13
+
+### Fixed (E22 — forgotten memories leak into 2 session tools)
+- **`HookManager.session_start_context` (live MCP tool `super_memory_session_start_context`) selected decisions/blockers with no soft-delete guard.** 77 forgotten decisions + 81 forgotten blockers leaked into every new session's start context. Added the canonical guard to both queries.
+- **`SessionArchive.create_session_summary` (live MCP tool `super_memory_create_session_summary`) pulled per-session memories with no guard** — 601 soft-deleted rows could enter session summaries. Added the guard.
+
+### Audit note
+- Completed an exhaustive sweep of all 108 `FROM memories` reads across 37 modules. Remaining unguarded reads are confirmed false positives: PK lookups (`WHERE id=?`), `DELETE`s, raw counts/aggregates, already-guarded paths (`FILTER_ACTIVE`/`_ALIVE`/`active_filter`), and dead surfaces (`surface.py`, `StatsMixin`) not reachable from any live MCP tool.
+
+### Tests
+- Regression suite now 57: added `TestSessionToolsSoftDeleteRegression`.
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows what these tools read/return.
+
+
 ## 2.3.21 - 2026-07-13
 
 ### Fixed (E21 — forgotten memories leak into 4 more live-reachable surfaces)
