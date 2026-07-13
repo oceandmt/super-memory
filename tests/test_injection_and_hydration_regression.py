@@ -250,6 +250,43 @@ class TestFileAdapterIgnorePathRegression:
         assert "top_level.txt" not in found
         assert "index.md" not in found
 
+class TestDreamEngineSoftDeleteRegression:
+    """E7 (2026-07-13): dream_engine queried `SELECT ... FROM memories` with no
+    soft-delete filter in rank_by_surprisal(), detect_patterns() and
+    dream_engine_status(). Effect: (1) status reported raw 2123 vs 1085 alive,
+    and worse (2) the consolidation cycle clustered and re-consolidated
+    FORGOTTEN memories into brand-new insights — resurrecting deleted content.
+    All three queries must exclude soft_deleted rows."""
+
+    def test_dream_engine_source_excludes_soft_deleted(self):
+        import inspect
+        from super_memory import dream_engine
+        for fn in (dream_engine.rank_by_surprisal,
+                   dream_engine.detect_patterns,
+                   dream_engine.dream_engine_status):
+            src = inspect.getsource(fn)
+            assert "soft_deleted" in src, (
+                f"{fn.__name__} reads memories without a soft-delete guard "
+                "(E7 regression: forgotten memories leak into dream consolidation)"
+            )
+
+    def test_dream_status_reports_alive_not_raw(self):
+        import sqlite3
+        from super_memory.dream_engine import dream_engine_status
+        conn = sqlite3.connect(
+            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+        )
+        raw = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        alive = conn.execute(
+            "SELECT COUNT(*) FROM memories WHERE "
+            "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+        ).fetchone()[0]
+        st = dream_engine_status()
+        # must match alive, not raw (unless nothing is soft-deleted)
+        assert st["total_memories"] == alive
+        if raw != alive:
+            assert st["total_memories"] != raw
+
 
 class TestStatsAliveCountRegression:
     """2026-07-13 incident: bridge.status() (surfaced by super_memory_stats)

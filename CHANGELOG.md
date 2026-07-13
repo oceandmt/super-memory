@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.12 - 2026-07-13
+
+### Fixed (E7 — dream engine consolidated forgotten memories)
+- **`dream_engine` read `memories` with no soft-delete filter in all three query sites** (`rank_by_surprisal`, `detect_patterns`, `dream_engine_status`). Two real consequences:
+  1. **Correctness (data integrity):** the consolidation cycle clustered and re-consolidated **soft-deleted (forgotten) memories** into brand-new `type=insight` records — effectively resurrecting content the user had deleted. This is the memory-quality inverse of a leak: `forget()` was silently undone by the next dream cycle.
+  2. **Wrong values:** `dream_engine_status()` reported raw `COUNT(*)` = 2123 while true alive = 1085 (1038 soft-deleted rows counted as live), plus inflated session/agent/last-hour counts. Same bug class as the 2.3.x `bridge.status()` fix.
+- All three queries now apply the canonical `COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0` guard, matching the recall/list/stats paths.
+
+### Tests
+- Regression suite now 40: added `TestDreamEngineSoftDeleteRegression` — a source-level guard (all three fns must reference `soft_deleted`) and a live-DB guard (`dream_engine_status` must report alive, not raw).
+
+### Safety
+- No database files, memory contents, or private runtime config included. Change only narrows what the dream cycle reads; it cannot ingest new data.
+
+
 ## 2.3.11 - 2026-07-13
 
 ### Fixed (E6 — the .venv junk root cause flagged in 2.3.10)

@@ -91,6 +91,7 @@ def rank_by_surprisal(
         rows = conn.execute(
             """SELECT id, content, type, agent_id, session_id, created_at
                FROM memories
+               WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
                ORDER BY created_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -127,7 +128,9 @@ def detect_patterns(
     with store.connect() as conn:
         rows = conn.execute(
             """SELECT id, content, type, agent_id, session_id, created_at
-               FROM memories WHERE created_at > ? ORDER BY created_at DESC LIMIT 500""",
+               FROM memories WHERE created_at > ?
+               AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
+               ORDER BY created_at DESC LIMIT 500""",
             (cutoff,),
         ).fetchall()
 
@@ -327,15 +330,21 @@ def dream_engine_status(store: SuperMemoryStore | None = None) -> dict[str, Any]
     cfg = _lc()
     store = store or SuperMemoryStore(cfg)
     with store.connect() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+        total = conn.execute(
+            "SELECT COUNT(*) FROM memories "
+            "WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+        ).fetchone()[0]
         sessions = conn.execute(
-            "SELECT COUNT(DISTINCT session_id) FROM memories WHERE session_id IS NOT NULL"
+            "SELECT COUNT(DISTINCT session_id) FROM memories WHERE session_id IS NOT NULL "
+            "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
         ).fetchone()[0]
         agents = conn.execute(
-            "SELECT COUNT(DISTINCT agent_id) FROM memories WHERE agent_id IS NOT NULL"
+            "SELECT COUNT(DISTINCT agent_id) FROM memories WHERE agent_id IS NOT NULL "
+            "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
         ).fetchone()[0]
         last_hour = conn.execute(
-            "SELECT COUNT(*) FROM memories WHERE created_at > datetime('now', '-1 hour')"
+            "SELECT COUNT(*) FROM memories WHERE created_at > datetime('now', '-1 hour') "
+            "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
         ).fetchone()[0]
     return {
         "ok": True,
