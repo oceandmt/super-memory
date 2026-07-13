@@ -691,6 +691,22 @@ class TestListMemoryRowsSoftDeleteRegression:
         assert "soft_deleted" in src, "list_memory_rows has no soft-delete guard (E25)"
         assert "include_deleted" in src, "list_memory_rows missing include_deleted escape hatch (E25)"
 
+class TestCrossAgentCompareSoftDeleteRegression:
+    """E26 (2026-07-13): CrossAgentTools.cross_agent_compare (live MCP tool
+    super_memory_cross_agent_compare) ran three raw
+    'SELECT ... FROM memories WHERE agent_id=? AND layer=workspace_markdown'
+    queries with no soft-delete guard. On the live DB 374/597 workspace_markdown
+    rows were soft-deleted, so forgotten memories leaked into agent-comparison
+    output (recent lists and the content-overlap join). Added the
+    soft_deleted guard to all three SELECTs."""
+
+    def test_cross_agent_compare_has_soft_delete_guard(self):
+        import inspect
+        from super_memory.cross_agent import CrossAgentTools
+        src = inspect.getsource(CrossAgentTools.cross_agent_compare)
+        # all three SELECTs must be guarded
+        assert src.count("soft_deleted") >= 4, "cross_agent_compare SELECTs not all guarded (E26)"
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

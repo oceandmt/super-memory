@@ -181,11 +181,13 @@ class CrossAgentTools:
             only_a = _rows(conn, """
                 SELECT id, content, type, created_at FROM memories
                 WHERE agent_id = ? AND layer = 'workspace_markdown'
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                 ORDER BY created_at DESC LIMIT ?
             """, (agent_a, limit))
             only_b = _rows(conn, """
                 SELECT id, content, type, created_at FROM memories
                 WHERE agent_id = ? AND layer = 'workspace_markdown'
+                  AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                 ORDER BY created_at DESC LIMIT ?
             """, (agent_b, limit))
             overlap = _rows(conn, """
@@ -193,6 +195,8 @@ class CrossAgentTools:
                        ma.type, ma.created_at
                 FROM memories ma JOIN memories mb ON ma.content = mb.content
                 WHERE ma.agent_id = ? AND mb.agent_id = ? AND ma.layer = 'workspace_markdown'
+                  AND COALESCE(json_extract(ma.metadata_json,'$.soft_deleted'),0) != 1
+                  AND COALESCE(json_extract(mb.metadata_json,'$.soft_deleted'),0) != 1
                 LIMIT ?
             """, (agent_a, agent_b, limit))
         return {"ok": True, "agent_a": {"agent_id": agent_a, "recent": only_a}, "agent_b": {"agent_id": agent_b, "recent": only_b}, "overlapping": overlap, "overlap_count": len(overlap)}

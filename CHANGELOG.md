@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.3.26 - 2026-07-13
+
+### Maintenance (bloat vector cleanup)
+- Live DB had **1902 rows in `memory_vectors`**: **459 orphan-A** (no matching `(memory_id, layer)` row in `memories`) + **693 orphan-B** (matching row is soft-deleted) + 750 healthy. The 1152 dead vectors (60%) pointed at nonexistent/forgotten memories and could never serve a live recall.
+- Deleted both orphan classes in one transaction, then `VACUUM`: **1902 → 750 vectors**, DB file **818MB → 660MB** (158MB reclaimed), `PRAGMA integrity_check = ok`, 886 alive memories intact. Backup `super-memory.sqlite3.bak-vecclean-20260713-181457` retained.
+
+### Fixed (E26 — another shared-primitive soft-delete leak, same class as E25)
+- **`CrossAgentTools.cross_agent_compare` (live MCP tool `super_memory_cross_agent_compare`) ran three raw `SELECT ... FROM memories WHERE agent_id=? AND layer='workspace_markdown'` queries with no soft-delete guard.** On the live DB **374 of 597** `workspace_markdown` rows were soft-deleted, so forgotten memories leaked into the agent-comparison output (both `recent` lists and the content-overlap join).
+- **Fix:** added the `soft_deleted` guard to all three SELECTs. Live proof: 0 soft-deleted ids in output afterward (a lone content-collision turned out to be an alive row sharing content with a dead duplicate — correctly kept).
+
+### Audit (shared primitives feeding multiple consumers)
+- Swept every raw `SELECT ... FROM memories` that pulls content into a consumer. Verified guarded: `eternal_context`, `conflict`. State-analysis/repair callers that legitimately want all rows: `deep_auto`, `data_improvement`.
+- **Dormant (not fixed — dead code):** `affect.recall_by_affect` and `agent_isolation.search_memories/list_memories` are unguarded but have **zero callers and are not MCP-exposed**. Flagged to wire-with-guard or delete rather than adding guards no path reaches.
+
+### Tests
+- Regression suite now 61: added `TestCrossAgentCompareSoftDeleteRegression`.
+
+### Safety
+- No database files, memory contents, or private runtime config included.
+
+
 ## 2.3.25 - 2026-07-13
 
 ### Fixed (E25 — forgotten memories poisoned the whole consolidation pipeline)
