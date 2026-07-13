@@ -645,6 +645,34 @@ class TestFtsClobberRegression:
         assert n == 2, f"content-form FTS was clobbered, {n} rows (E23)"
         assert m == 1, "content-form FTS MATCH broken after init (E23)"
 
+class TestMaintenanceSerializationRegression:
+    """E24 (2026-07-13): maintenance.maintenance_run (live MCP tool
+    super_memory_maintenance_run, serialized via json.dumps in mcp_server)
+    assigned the raw ReplayResult dataclass from run_hippocampal_replay into
+    report['steps']['hippocampal_replay']. When replay actually ran (not
+    skipped), the tool return became non-JSON-serializable and crashed at the
+    transport layer. Fix: normalise the dataclass to a dict via asdict()."""
+
+    def test_replay_result_is_normalised_to_dict(self):
+        import inspect, json
+        from dataclasses import asdict, is_dataclass
+        from super_memory import maintenance
+        # source guard: maintenance normalises the dataclass
+        src = inspect.getsource(maintenance.maintenance_run)
+        assert "asdict" in src and "is_dataclass" in src, "maintenance_run does not normalise ReplayResult (E24)"
+        # behavioural: a ReplayResult must not be directly serializable, but
+        # asdict() output must be.
+        from super_memory.hippocampal_replay import ReplayResult
+        rr = ReplayResult()
+        try:
+            json.dumps(rr)
+            raised = False
+        except TypeError:
+            raised = True
+        assert raised, "ReplayResult unexpectedly serializable; test premise invalid"
+        assert is_dataclass(rr)
+        json.dumps(asdict(rr))  # must not raise
+
 class TestHybridRecallReindexResurrectionRegression:
     """E8 (2026-07-13): HybridRecall._search_memories (live MCP tool
     super_memory_cross_scope_recall) built its FTS/LIKE query with no

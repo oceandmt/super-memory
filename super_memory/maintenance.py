@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 from . import memory_core
@@ -236,7 +237,15 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
             cfg = _lc(config_path)
             store = SuperMemoryStore(cfg)
             hc = HippocampalReplayConfig(dry_run=dry_run)
-            report["steps"]["hippocampal_replay"] = _run(store, hc)
+            _replay_res = _run(store, hc)
+            # E24: run_hippocampal_replay returns a ReplayResult dataclass, which
+            # is not JSON-serializable. maintenance_run is a live MCP tool whose
+            # return is json.dumps()'d by mcp_server -- assigning the raw object
+            # crashed the tool whenever replay actually ran (not skipped).
+            # Normalise to a plain dict.
+            if is_dataclass(_replay_res) and not isinstance(_replay_res, type):
+                _replay_res = asdict(_replay_res)
+            report["steps"]["hippocampal_replay"] = _replay_res
             _record_run(config_path, "hippocampal_replay")
         else:
             report["steps"]["hippocampal_replay"] = {"ok": True, "skipped": True, "reason": "run within last 2 hours"}

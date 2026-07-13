@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.24 - 2026-07-13
+
+### Fixed (E24 — maintenance_run crashed at transport layer when replay ran)
+- **`maintenance.maintenance_run` (live MCP tool `super_memory_maintenance_run`, serialized via `json.dumps` in `mcp_server`) assigned the raw `ReplayResult` dataclass from `run_hippocampal_replay` into `report['steps']['hippocampal_replay']`.** When hippocampal replay actually ran (i.e. was not skipped by the 2-hour cooldown), the tool's return value became non-JSON-serializable and crashed at the MCP transport layer. Found via a real consolidation/maintenance dry-run.
+- **Fix:** normalise the dataclass to a plain dict via `dataclasses.asdict()` before storing it in the report.
+
+### Audit note (embeddings)
+- Investigated `memory_vectors` staleness: 459 orphaned vectors (no memory row) + 1575 vectors linked to soft-deleted memories. **Not a wrong-value bug** — both REM recall paths (`_rem_sqlite_vec`, `_rem_bruteforce`) already carry the E15 soft-delete guard, and their `JOIN memory_vectors v ON v.memory_id = m.id` structurally excludes orphaned vectors. This is DB bloat only; recall output stays correct. Left as an optional future cleanup, not a fix.
+
+### Tests
+- Regression suite now 59: added `TestMaintenanceSerializationRegression`.
+
+### Safety
+- No database files, memory contents, or private runtime config included.
+
+
 ## 2.3.23 - 2026-07-13
 
 ### Fixed (E23 — English/Latin FTS index permanently empty)
