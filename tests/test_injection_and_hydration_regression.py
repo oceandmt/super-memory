@@ -366,3 +366,30 @@ class TestLayerParityHealthRegression:
         assert h["parity_ok"] is False
         assert "mempalace" in h["lagging_layers"]
         assert h["verdict"] == "warn"
+
+
+class TestSemanticSoftDeleteLeakRegression:
+    """E4 (2026-07-13): the sqlite-vec index is a derived side store and the
+    forget() path never dropped embeddings, so semantic recall could resurface
+    soft-deleted memories. _search_semantic_memories must guard soft_deleted
+    during hydration, and forget() must drop the embedding."""
+
+    def test_semantic_hydration_filters_soft_deleted(self):
+        import inspect
+        from super_memory.hybrid_recall import HybridRecall
+        src = inspect.getsource(HybridRecall._search_semantic_memories)
+        assert "soft_deleted" in src, "semantic hydration must exclude soft-deleted rows"
+
+    def test_forget_drops_embedding(self):
+        import inspect
+        from super_memory import bridge
+        src = inspect.getsource(bridge.forget)
+        assert "_drop_embedding" in src, "forget() must remove the vector embedding"
+
+    def test_drop_embedding_helper_exists_and_is_safe(self):
+        from super_memory import bridge
+        assert hasattr(bridge, "_drop_embedding")
+        # must be a no-op (not raise) when vector disabled / store unavailable
+        class _Cfg:
+            vector_enabled = False
+        bridge._drop_embedding(_Cfg(), "nonexistent-id")

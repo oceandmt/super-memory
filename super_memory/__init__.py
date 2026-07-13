@@ -7,7 +7,7 @@ feature module here made MCP startup exceed the stdio contract test timeout on
 slower/loaded machines.
 """
 
-__version__ = "2.3.8"
+__version__ = "2.3.9"
 
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType
 from .service import SuperMemoryService

@@ -552,6 +552,22 @@ def promote(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
     return {"ok": True, "memory_id": memory_id, "long_term_path": mem_path, "register_path": reg_path}
 
 
+def _drop_embedding(cfg, memory_id: str) -> None:
+    """Best-effort removal of a memory's vector embedding on delete/forget.
+
+    The sqlite-vec index is a derived side store; if we never drop the row on
+    forget the index bloats and semantic recall can resurface deleted content.
+    Failures are swallowed (vector store is optional).
+    """
+    try:
+        if not getattr(cfg, "vector_enabled", False):
+            return
+        from .vector import VectorStore
+        VectorStore(cfg).delete_embedding(memory_id)
+    except Exception:
+        pass
+
+
 def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: str | None = None) -> dict[str, Any]:
     """Delete a memory. Soft delete by default (marks metadata; recoverable).
     Hard delete also removes related graph synapses, fibers, and cross-layer entries."""
@@ -575,6 +591,7 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
                     f"UPDATE memories SET metadata_json = '{new_json}' WHERE id = '{memory_id}' AND layer = '{esc_layer}';"
                 )
             conn.commit()
+        _drop_embedding(cfg, memory_id)
         return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete"}
     # Hard delete: cascade cleanup
     with store.connect() as conn:
@@ -588,6 +605,7 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
             DELETE FROM palace_drawers WHERE memory_id = '{esc_id}';
         """)
         conn.commit()
+    _drop_embedding(cfg, memory_id)
     return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete"}
 
 

@@ -165,7 +165,14 @@ class HybridRecall(DBMixin):
         session_kind, sid = validate_session_scope(session_scope)
         out = []
         for memory_id, score in semantic:
-            where = ["id=?", "layer=?"]
+            # Never hydrate soft-deleted rows: the vector index can still hold
+            # embeddings for forgotten memories (delete path is best-effort), so
+            # the soft_deleted guard must live here too or recall leaks deletions.
+            where = [
+                "id=?",
+                "layer=?",
+                "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)!=1",
+            ]
             args = [memory_id, "workspace_markdown"]
             if agent_kind == "agent":
                 where.append("agent_id=?")

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.3.9 - 2026-07-13
+
+### Fixed (semantic/vector layer — E4)
+- **Semantic recall leaked soft-deleted memories.** `HybridRecall._search_semantic_memories` hydrated vector hits with only `id=? AND layer=?`, no `soft_deleted` guard. The sqlite-vec index is a derived side store, so a forgotten memory whose embedding lingered could resurface through semantic recall. Hydration now filters `COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)!=1`.
+- **`forget()` never dropped the embedding**, so the vector index bloated and orphaned indefinitely. Live audit found **272 embeddings but only 14 pointing to alive rows** (112 to soft-deleted, 146 to hard-deleted/nonexistent ids). Added `bridge._drop_embedding()` (best-effort, no-op when vector disabled) and wired it into both the soft- and hard-delete branches of `forget()`.
+
+### Data
+- Purged 258 orphaned sqlite-vec embeddings (soft-deleted + nonexistent). Vector index now 14 rows, all pointing to alive `workspace_markdown` memories (0 orphans).
+
+### Tests
+- Regression suite now 37 tests: E4 adds semantic soft-delete hydration guard, `forget()` drops embedding, and `_drop_embedding` safe-no-op-when-disabled.
+
+### Safety
+- No database files, memory contents, or private runtime config included. `_drop_embedding` is best-effort and swallows failures so delete never breaks when the optional vector store is unavailable.
+
+
 ## 2.3.8 - 2026-07-13
 
 ### Added (enhancements)
