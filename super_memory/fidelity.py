@@ -258,13 +258,45 @@ def classify_fidelity_layer(content: str) -> FidelityLayer:
 
 # ── Safe wrapper ─────────────────────────────────────────────────────────────
 
+class FidelityResult:
+    """Result of extract_fidelity: essence text, target layer, confidence, savings."""
+
+    __slots__ = ("essence", "layer", "confidence", "tokens_saved")
+
+    def __init__(self, essence: str, layer: FidelityLayer, confidence: float, tokens_saved: int) -> None:
+        self.essence = essence
+        self.layer = layer
+        self.confidence = confidence
+        self.tokens_saved = tokens_saved
+
+def extract_fidelity(content: str) -> FidelityResult:
+    """Extract the essence + fidelity layer for a piece of memory content.
+
+    Combines extract_essence() (best single-sentence summary) with
+    classify_fidelity_layer() (structural richness classification) into the
+    single FidelityResult contract that extract_fidelity_safe() expects.
+    Previously this function did not exist at all -- every call fell into the
+    except branch and always returned the empty fallback.
+    """
+    content = content or ""
+    essence = extract_essence(content)
+    layer = classify_fidelity_layer(content)
+    # Rough token estimate (~4 chars/token) for content vs. its essence.
+    original_tokens = max(1, len(content) // 4)
+    essence_tokens = len(essence) // 4
+    tokens_saved = max(0, original_tokens - essence_tokens)
+    # Confidence: essence extraction is more reliable on longer, sentence-
+    # structured content; short/empty content yields a low-confidence guess.
+    confidence = 0.9 if essence and len(content) >= 40 else (0.5 if essence else 0.2)
+    return FidelityResult(essence=essence, layer=layer, confidence=confidence, tokens_saved=tokens_saved)
+
 def extract_fidelity_safe(content: str) -> dict:
     """Safe wrapper for extract_fidelity with error handling."""
     try:
         result = extract_fidelity(content)
         return {
             "essence": result.essence,
-            "layer": result.layer.value,
+            "layer": result.layer,  # FidelityLayer is a str alias, not an enum -- no .value
             "confidence": result.confidence,
             "tokens_saved": result.tokens_saved,
         }

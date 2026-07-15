@@ -22,6 +22,22 @@ logger = logging.getLogger("super-memory.vector")
 _HAS_SQLITE_VEC = importlib.util.find_spec("sqlite_vec") is not None
 
 
+def _normalize(vector: list[float]) -> list[float]:
+    """L2-normalize a vector to unit length.
+
+    sqlite-vec vec0 ranks by L2 (Euclidean) distance. For UNIT vectors,
+    L2 distance is a monotonic function of cosine similarity
+    (||a-b||^2 = 2 - 2*cos), so normalizing on both store and query paths
+    makes nearest-neighbor ranking equivalent to cosine and removes the
+    magnitude bias that unnormalized vectors introduce. Zero vectors are
+    returned unchanged.
+    """
+    norm = math.sqrt(sum(x * x for x in vector))
+    if norm == 0.0:
+        return list(vector)
+    return [x / norm for x in vector]
+
+
 class VectorStore:
     """Vector embedding store backed by sqlite-vec.
 
@@ -90,7 +106,7 @@ class VectorStore:
             conn = sqlite3.connect(str(self.db_path))
             conn.enable_load_extension(True)
             sqlite_vec.load(conn)
-            vec_json = json.dumps(vector)
+            vec_json = json.dumps(_normalize(vector))
             conn.execute(
                 """
                 INSERT OR REPLACE INTO embeddings (memory_id, embedding)
@@ -130,7 +146,7 @@ class VectorStore:
             sqlite_vec.load(conn)
             rows = conn.execute(
                 "SELECT memory_id, distance FROM embeddings WHERE embedding MATCH ? ORDER BY distance LIMIT ?",
-                (json.dumps(vector), top_k),
+                (json.dumps(_normalize(vector)), top_k),
             ).fetchall()
             conn.close()
 
@@ -176,12 +192,14 @@ class VectorStore:
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
-    """Compute cosine similarity between two vectors."""
+    """Compute cosine similarity between two vectors.
+
+    Vectors of different dimensionality are not comparable; zero-padding the
+    shorter one fabricates a score, so we refuse and return 0.0 instead.
+    """
     if len(a) != len(b):
-        # Pad the shorter vector with zeros
-        max_len = max(len(a), len(b))
-        a = a + [0.0] * (max_len - len(a))
-        b = b + [0.0] * (max_len - len(b))
+        logger.warning("cosine dim mismatch: %d vs %d -- refusing to compare", len(a), len(b))
+        return 0.0
     dot = sum(x * y for x, y in zip(a, b))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(y * y for y in b))
@@ -242,35 +260,22 @@ def embed_text(text: str, config=None, timeout: int = 300) -> list[float] | None
     endpoint = getattr(cfg, "embedding_endpoint", "http://127.0.0.1:11434/api/embed")
     model = getattr(cfg, "embedding_model", "nomic-embed-text")
     try:
-        # Split large texts into chunks to avoid timeout on CPU
+        # Send the full text in a single request. The previous implementation
+        # split on raw CHARACTER count (2000) and averaged per-chunk embeddings,
+        # which corrupts semantics (mean of chunk vectors != vector of the text
+        # and cuts mid-word/mid-token). nomic-embed-text handles long inputs, and
+        # embed_text already uses a generous timeout, so let the model own it.
+        # If a hard cap is ever needed it should be token-based on a word boundary,
+        # not a naive character slice + average.
         input_text = text or ""
-        if len(input_text) > 2000:
-            # For texts >2000 chars, embed in chunks and average
-            chunks = [input_text[i:i+2000] for i in range(0, len(input_text), 2000)]
-            all_embeddings = []
-            for chunk in chunks:
-                payload = json.dumps({"model": model, "input": [chunk]}).encode("utf-8")
-                req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
-                    data = json.loads(resp.read())
-                chunk_embs = data.get("embeddings") or []
-                if chunk_embs:
-                    all_embeddings.append(list(chunk_embs[0]))
-            if not all_embeddings:
-                return None
-            # Average the chunk embeddings
-            n = len(all_embeddings)
-            avg = [sum(vals[i] for vals in all_embeddings) / n for i in range(len(all_embeddings[0]))]
-            return avg
-        else:
-            payload = json.dumps({"model": model, "input": [input_text]}).encode("utf-8")
-            req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                data = json.loads(resp.read())
-            embeddings = data.get("embeddings") or []
-            if not embeddings:
-                return None
-            return list(embeddings[0])
+        payload = json.dumps({"model": model, "input": [input_text]}).encode("utf-8")
+        req = urllib.request.Request(endpoint, data=payload, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read())
+        embeddings = data.get("embeddings") or []
+        if not embeddings:
+            return None
+        return list(embeddings[0])
     except Exception as exc:
         logger.warning("Embedding request failed: %s", exc)
         return None

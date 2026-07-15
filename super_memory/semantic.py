@@ -36,7 +36,10 @@ def _ollama_embed_batch(texts: list[str], cfg: SuperMemoryConfig) -> list[list[f
     embeddings = data.get("embeddings") or []
     if len(embeddings) != len(texts):
         raise RuntimeError(f"embedding count mismatch: expected {len(texts)}, got {len(embeddings)}")
-    return [list(vec) for vec in embeddings]
+    # L2-normalize so vec0's Euclidean ranking matches cosine and stays
+    # consistent with VectorStore.add_embedding (which also normalizes).
+    from .vector import _normalize
+    return [_normalize(list(vec)) for vec in embeddings]
 
 
 def semantic_doctor(config_path: str | None = None, query: str = "semantic recall smoke test") -> dict[str, Any]:
@@ -112,7 +115,10 @@ def semantic_index(
     source = sqlite3.connect(str(db_path))
     source.row_factory = sqlite3.Row
     rows = source.execute(
-        "SELECT id, content FROM memories WHERE layer='workspace_markdown' ORDER BY rowid"
+        "SELECT id, content FROM memories "
+        "WHERE layer='workspace_markdown' "
+        "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 "
+        "ORDER BY rowid"
     ).fetchall()
     source.close()
     if limit is not None:
@@ -205,7 +211,9 @@ def semantic_verify(config_path: str | None = None, query: str = "semantic recal
         conn.row_factory = sqlite3.Row
         for memory_id, score in results:
             row = conn.execute(
-                "SELECT id, content, type, agent_id, session_id, project, source, trust_score, created_at FROM memories WHERE id=? AND layer='workspace_markdown'",
+                "SELECT id, content, type, agent_id, session_id, project, source, trust_score, created_at FROM memories "
+                "WHERE id=? AND layer='workspace_markdown' "
+                "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0",
                 (memory_id,),
             ).fetchone()
             if row:

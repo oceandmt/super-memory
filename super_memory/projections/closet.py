@@ -233,7 +233,7 @@ def _ensure_tables(store: SuperMemoryStore) -> None:
         }
         for col, spec in compat_cols.items():
             if col not in cols:
-                conn.execute(f"ALTER TABLE palace_drawers ADD COLUMN {col} {spec}")
+                conn.execute(f"ALTER TABLE palace_drawers ADD COLUMN {col} {spec}")  # nosec-sql: col/spec come from the fixed compat_cols dict literal
         conn.executescript("""
             CREATE INDEX IF NOT EXISTS idx_drawers_memory_id ON palace_drawers(memory_id);
             CREATE INDEX IF NOT EXISTS idx_drawers_content_hash ON palace_drawers(content_hash);

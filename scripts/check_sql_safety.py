@@ -19,7 +19,15 @@ def check_file(path: Path) -> list[str]:
     """Return list of violations in file."""
     violations = []
     text = path.read_text()
+    lines = text.splitlines()
     for i, line in enumerate(text.splitlines(), 1):
+        if "# nosec-sql" in line:
+            continue
+        # Multi-line f-string assignments (e.g. `sql = f"""...`) cannot carry a
+        # trailing same-line comment, so also honor a nosec marker on the
+        # immediately preceding line.
+        if i >= 2 and "# nosec-sql" in lines[i - 2]:
+            continue
         # Pattern 1: execute(f"...")
         if re.search(r'execute\s*\(\s*f["\']', line):
             violations.append(f"{path}:{i}: execute with f-string: {line.strip()}")

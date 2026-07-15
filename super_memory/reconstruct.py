@@ -49,6 +49,22 @@ def causal_chain(
     """
     visited: set[str] = set()
 
+    def _resolve_neuron_id(mid: str, conn: Any) -> str | None:
+        """Resolve a memory_id (or neuron_id) to its graph neuron id.
+
+        cognitive_synapses keys on neuron ids (n:kind:...), not memory ids.
+        Passing a raw memory_id straight into source_neuron_id/target_neuron_id
+        never matches, so the chain always stopped after the anchor step. Mirror
+        graph.neighbors()'s resolution: try neuron id first, then the memory's
+        anchor neuron via source_memory_id.
+        """
+        row = conn.execute(
+            "SELECT id FROM cognitive_neurons WHERE id = ? OR source_memory_id = ? "
+            "ORDER BY (id = ?) DESC LIMIT 1",
+            (mid, mid, mid),
+        ).fetchone()
+        return row["id"] if row else None
+
     def _traverse(
         mid: str,
         path: list[dict[str, Any]],
@@ -80,24 +96,30 @@ def causal_chain(
 
         with store.connect() as conn:
             try:
-                if direction == "forward":
+                neuron_id = _resolve_neuron_id(mid, conn)
+                if neuron_id is None:
+                    rows = []
+                elif direction == "forward":
                     rows = conn.execute(
-                        "SELECT target_neuron_id FROM cognitive_synapses "
-                        "WHERE source_neuron_id = ? AND relation = ?",
-                        (mid, syn_rel),
+                        "SELECT n.source_memory_id AS mid FROM cognitive_synapses s "
+                        "JOIN cognitive_neurons n ON n.id = s.target_neuron_id "
+                        "WHERE s.source_neuron_id = ? AND s.relation = ?",
+                        (neuron_id, syn_rel),
                     ).fetchall()
                 else:
                     rows = conn.execute(
-                        "SELECT source_neuron_id FROM cognitive_synapses "
-                        "WHERE target_neuron_id = ? AND relation = ?",
-                        (mid, syn_rel),
+                        "SELECT n.source_memory_id AS mid FROM cognitive_synapses s "
+                        "JOIN cognitive_neurons n ON n.id = s.source_neuron_id "
+                        "WHERE s.target_neuron_id = ? AND s.relation = ?",
+                        (neuron_id, syn_rel),
                     ).fetchall()
             except Exception:
                 rows = []
 
             for row in rows:
-                nid = row[0]
-                _traverse(nid, path, depth + 1)
+                next_mid = row["mid"]
+                if next_mid:
+                    _traverse(next_mid, path, depth + 1)
 
     result_path: list[dict[str, Any]] = []
     _traverse(memory_id, result_path, 0)

@@ -52,8 +52,10 @@ def _safe_memories_update(
     esc_id = where_id.replace("'", "''")
     if where_layer:
         esc_layer = where_layer.replace("'", "''")
+        # nosec-sql: esc_id/esc_layer are quote-escaped above; set_clause values come from callers that pre-escape via json.dumps(...).replace("'","''")
         sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}' AND layer = '{esc_layer}';"
     else:
+        # nosec-sql: esc_id is quote-escaped above
         sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}';"
     conn.executescript(sql)
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
@@ -586,9 +588,10 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
                 mj["soft_deleted"] = 1
                 mj["deleted_reason"] = reason
                 new_json = json.dumps(mj).replace("'", "''")
+                esc_id = memory_id.replace("'", "''")
                 esc_layer = row["layer"].replace("'", "''")
                 conn.executescript(
-                    f"UPDATE memories SET metadata_json = '{new_json}' WHERE id = '{memory_id}' AND layer = '{esc_layer}';"
+                    f"UPDATE memories SET metadata_json = '{new_json}' WHERE id = '{esc_id}' AND layer = '{esc_layer}';"
                 )
             conn.commit()
         _drop_embedding(cfg, memory_id)
@@ -636,9 +639,16 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
     set_clause = ", ".join(set_parts)
     with store.connect() as conn:
         esc_id = memory_id.replace("'", "''")
+        # nosec-sql: esc_id is quote-escaped above; set_clause values are json.dumps(...)-escaped
         sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}' AND layer = 'workspace_markdown';"
         conn.executescript(sql)
         conn.commit()
+    # When content changed, the old embedding is now stale. Drop it so the next
+    # semantic_index pass re-embeds the new content (semantic_index only skips
+    # ids already present unless rebuild=True, so a stale vector would otherwise
+    # persist forever after an edit).
+    if content is not None:
+        _drop_embedding(cfg, memory_id)
     updated = store.get_memory(memory_id)
     return {"ok": True, "memory_id": memory_id, "updated": updated.model_dump(mode="json") if updated else None}
 
@@ -651,8 +661,9 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     with store.connect() as conn:
         _ALIVE = "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
         total_all = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()["c"]
+        # nosec-sql: _ALIVE is a fixed module-local literal, not user input
         count = conn.execute(f"SELECT COUNT(*) as c FROM memories WHERE {_ALIVE}").fetchone()["c"]
-        layers = conn.execute(f"SELECT layer, COUNT(*) as c FROM memories WHERE {_ALIVE} GROUP BY layer").fetchall()
+        layers = conn.execute(f"SELECT layer, COUNT(*) as c FROM memories WHERE {_ALIVE} GROUP BY layer").fetchall()  # nosec-sql: _ALIVE is a fixed module-local literal
         leg_edges = conn.execute("SELECT COUNT(*) as c FROM graph_edges").fetchone()["c"]
         # Unified graph: cognitive_synapses primary + graph_edges legacy, graceful fallback
         try:
@@ -741,7 +752,15 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
                 "source": hit.get("path") or hit.get("source"),
                 "metadata": {"compat_hit": hit},
             }
-            layer = hit.get("layer") or "compat"
+            layer = hit.get("layer")
+            if not layer:
+                # Compatible search encodes the source layer as the id prefix
+                # (e.g. "mempalace:<uuid>"). Recover it so winner_policy never
+                # leaks the placeholder "compat" into recall arbitration output.
+                hit_id = hit.get("memory_id") or hit.get("id") or ""
+                prefix = hit_id.split(":", 1)[0] if ":" in hit_id else ""
+                _KNOWN_LAYERS = {"workspace_markdown", "mempalace", "honcho", "neural_memory"}
+                layer = prefix if prefix in _KNOWN_LAYERS else "workspace_markdown"
             layer_votes[layer] = layer_votes.get(layer, 0) + 1
             item = {
                 "layer": layer,
@@ -1208,8 +1227,13 @@ def cross_layer_health(config_path: str | None = None, parity_threshold: int = 1
     layers = st.get("layers", {}) or {}
     tracked = ["workspace_markdown", "mempalace", "honcho", "neural_memory"]
     counts = {k: int(layers.get(k, 0)) for k in tracked}
-    missing = [k for k in tracked if counts[k] == 0]
     present = [v for v in counts.values() if v > 0]
+    has_data = bool(present)
+    # A layer is "missing" only when OTHER layers hold data but this one does
+    # not (a partial/failed projection). An entirely empty store — or one that
+    # only holds standalone Honcho captures, which are intentionally not layer
+    # projections — has nothing to be inconsistent about and must read healthy.
+    missing = [k for k in tracked if counts[k] == 0] if has_data else []
     spread = (max(present) - min(present)) if present else 0
     # the layer(s) below the max by more than the threshold are lagging
     ceil = max(present) if present else 0

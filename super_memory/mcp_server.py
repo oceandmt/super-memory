@@ -221,6 +221,7 @@ ADVANCED_TOOLS = {
     "super_memory_load_current_handoff",
     "super_memory_complete_handoff_with_outcome",
     "super_memory_cross_agent_report",
+    "super_memory_cross_layer_health",
     "super_memory_session_health",
     "super_memory_memory_pollution_report",
     "super_memory_export_memory_graph",
@@ -442,9 +443,17 @@ TOOLS: dict[str, JSON] = {
         "description": "Run local supervised no-live-config Phase 8 runtime smoke.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
     },
+    "super_memory_list_agents": {
+        "description": "List known agent ids that have memories in the store, with per-agent counts.",
+        "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
     "super_memory_health": {
         "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
         "inputSchema": _schema({"config_path": {"type": "string"}}),
+    },
+    "super_memory_cross_layer_health": {
+        "description": "Cross-layer parity/health report: per-layer counts, sqlite-only ids, and content drift across memory layers.",
+        "inputSchema": _schema({"config_path": {"type": "string"}, "parity_threshold": {"type": "integer"}}),
     },
     "super_memory_sanitize_prompt": {
         "description": "Sanitize recall/prompt text by redacting common secrets and normalizing whitespace/control characters.",
@@ -999,6 +1008,8 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.supervised_runtime_smoke(config_path=args.get("config_path"))
     if name == "super_memory_health":
         return bridge.health(config_path=args.get("config_path"))
+    if name == "super_memory_cross_layer_health":
+        return bridge.cross_layer_health(config_path=args.get("config_path"), parity_threshold=args.get("parity_threshold", 10))
     if name == "super_memory_sanitize_prompt":
         return {"text": bridge.sanitize_prompt(args["text"])}
     if name == "super_memory_sanitize_auto_capture":

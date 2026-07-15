@@ -237,9 +237,12 @@ def promote_events_to_durable(config_path: str | None = None, dry_run: bool = Fa
         
         if new_type and not dry_run:
             try:
-                c = store.connect()
-                c.execute('UPDATE memories SET type=? WHERE id=?', (new_type, memory_id))
-                c.close()
+                # with-block commits on success; do NOT call c.close() -- the
+                # connection is a shared per-thread pooled handle, and closing
+                # it here broke the pool for every subsequent op. The previous
+                # code also never committed, so promotions silently rolled back.
+                with store.connect() as c:
+                    c.execute('UPDATE memories SET type=? WHERE id=?', (new_type, memory_id))
                 promoted_type += 1
             except Exception as exc:
                 logger.warning("Failed to promote type for %s: %s", memory_id, exc)
@@ -250,9 +253,8 @@ def promote_events_to_durable(config_path: str | None = None, dry_run: bool = Fa
         if scope == 'session' and _is_durable(mem_type or new_type or 'context') and len(content) >= 100:
             if not dry_run:
                 try:
-                    c = store.connect()
-                    c.execute('UPDATE memories SET scope=? WHERE id=?', ('project', memory_id))
-                    c.close()
+                    with store.connect() as c:
+                        c.execute('UPDATE memories SET scope=? WHERE id=?', ('project', memory_id))
                     promoted_scope += 1
                 except Exception as exc:
                     logger.warning("Failed to promote scope for %s: %s", memory_id, exc)

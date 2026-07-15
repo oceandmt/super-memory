@@ -50,8 +50,10 @@ class DedupPipeline:
             return DedupResult(False, reason="empty content")
 
         if content_hash is None:
-            from ..simhash import compute_content_hash
-            content_hash = compute_content_hash(content)
+            # Use the SAME simhash implementation as storage
+            from ..write_contract.fingerprint import build_fingerprint
+            fp = build_fingerprint(content)
+            content_hash = fp.simhash
 
         # Tier 1: SimHash
         hash_candidates = self._get_candidates_by_hash(content_hash)
@@ -84,18 +86,21 @@ class DedupPipeline:
         return DedupResult(False, reason="no tier found match")
 
     def _get_candidates_by_hash(self, content_hash: int) -> list[dict]:
-        """Fast path: fetch candidates by exact content_hash."""
+        """Fast path: fetch candidates by simhash from fingerprints table."""
         if content_hash == 0:
             return []
         try:
             with self._store.connect() as conn:
                 rows = conn.execute(
-                    "SELECT id, content, metadata_json FROM memories "
-                    "WHERE json_extract(metadata_json, '$.simhash_fingerprint') = ? "
-                    "AND (json_extract(metadata_json, '$.soft_deleted') IS NULL "
-                    "OR json_extract(metadata_json, '$.soft_deleted') != 1) "
+                    "SELECT m.id, m.content, m.metadata_json, f.simhash "
+                    "FROM memories m "
+                    "JOIN memory_fingerprints f ON m.id = f.memory_id AND m.layer = f.layer "
+                    "WHERE f.simhash = ? "
+                    "AND f.layer = 'workspace_markdown' "
+                    "AND (json_extract(m.metadata_json, '$.soft_deleted') IS NULL "
+                    "OR json_extract(m.metadata_json, '$.soft_deleted') != 1) "
                     "LIMIT 10",
-                    (str(content_hash),),
+                    (content_hash,),
                 ).fetchall()
             return [dict(r) for r in rows]
         except Exception:
@@ -131,8 +136,12 @@ class DedupPipeline:
         from ..simhash import hamming_distance
         threshold = self._config.simhash_threshold
         for row in candidates:
-            meta = json.loads(row.get("metadata_json", "{}"))
-            existing_fp = meta.get("simhash_fingerprint", 0)
+            # Try to get simhash from JOIN result first (from memory_fingerprints)
+            existing_fp = row.get("simhash", 0)
+            # Fallback to metadata_json for backwards compatibility
+            if not existing_fp:
+                meta = json.loads(row.get("metadata_json", "{}"))
+                existing_fp = meta.get("simhash_fingerprint", 0)
             if existing_fp:
                 try:
                     existing_fp = int(existing_fp)

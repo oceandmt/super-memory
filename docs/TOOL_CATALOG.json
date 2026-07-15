@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 235,
+  "total_tools": 237,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -287,6 +287,23 @@
       ]
     },
     {
+      "name": "super_memory_list_agents",
+      "category": "cross_session",
+      "description": "List known agent ids that have memories in the store, with per-agent counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
       "name": "super_memory_health",
       "category": "core",
       "description": "Check Super Memory consistency guardrails: canonical-first and workspace markdown enabled.",
@@ -303,6 +320,26 @@
         "user",
         "admin",
         "readonly"
+      ]
+    },
+    {
+      "name": "super_memory_cross_layer_health",
+      "category": "other",
+      "description": "Cross-layer parity/health report: per-layer counts, sqlite-only ids, and content drift across memory layers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "config_path": {
+            "type": "string"
+          },
+          "parity_threshold": {
+            "type": "integer"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
       ]
     },
     {

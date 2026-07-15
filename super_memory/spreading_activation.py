@@ -13,6 +13,7 @@ __all__ = [
 import heapq
 import logging
 import math
+import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
@@ -230,7 +231,18 @@ class SpreadingActivation:
     def _fetch_neighbors(self, neuron_id: str) -> list[tuple[dict, dict]]:
         """Fetch neighbor neurons and synapses from graph storage."""
         neighbors: list[tuple[dict, dict]] = []
-        conn = self._db() if callable(self._db) else self._db
+        # NOTE: plain sqlite3.Connection objects are themselves callable on
+        # Python 3.14+ (Connection.__call__ exists), so callable(self._db) no
+        # longer distinguishes "connection" from "factory function" and used to
+        # call the connection itself, raising TypeError (swallowed below,
+        # collapsing spreading activation to anchor-only). Check explicitly for
+        # a real sqlite3.Connection first.
+        if isinstance(self._db, sqlite3.Connection):
+            conn = self._db
+        elif callable(self._db):
+            conn = self._db()
+        else:
+            conn = self._db
         try:
             # Query cognitive_synapses for outgoing edges
             rows = conn.execute(
@@ -243,8 +255,9 @@ class SpreadingActivation:
                 "LIMIT 30",
                 (neuron_id,),
             ).fetchall()
-            for r in rows:
-                neighbor = {"id": r["nid"] or r["nid"], "content": r.get("content", ""), "kind": r.get("kind", "memory")}
+            for row in rows:
+                r = dict(row)
+                neighbor = {"id": r.get("nid") or r.get("id", ""), "content": r.get("content", ""), "kind": r.get("kind", "memory")}
                 synapse = {"type": r.get("stype", "structural"), "weight": r.get("weight", _DEFAULT_SYNAPSE_WEIGHT)}
                 if neighbor.get("id"):
                     neighbors.append((neighbor, synapse))
@@ -260,14 +273,15 @@ class SpreadingActivation:
                 (neuron_id,),
             ).fetchall()
             seen_ids = {n.get("id", "") for n, _ in neighbors}
-            for r in rows2:
-                nid = r["nid"] or r.get("id", "")
+            for row2 in rows2:
+                r = dict(row2)
+                nid = r.get("nid") or r.get("id", "")
                 if nid and nid not in seen_ids:
                     neighbor = {"id": nid, "content": r.get("content", ""), "kind": r.get("kind", "memory")}
                     synapse = {"type": r.get("stype", "structural"), "weight": r.get("weight", _DEFAULT_SYNAPSE_WEIGHT)}
                     neighbors.append((neighbor, synapse))
         except Exception as e:
-            logger.debug("fetch_neighbors failed for %s: %s", neuron_id, e)
+            logger.warning("fetch_neighbors failed for %s: %s", neuron_id, e)
         return neighbors
 
     def activate_from_multiple(

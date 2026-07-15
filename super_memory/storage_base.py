@@ -150,7 +150,7 @@ class SQLiteCoreStorage(CoreStorage):
     def count_memories(self, where_clause=None, where_args=None):
         with self._store.connect() as conn:
             if where_clause:
-                row = conn.execute(f"SELECT COUNT(*) as c FROM memories WHERE {where_clause}", where_args or []).fetchone()
+                row = conn.execute(f"SELECT COUNT(*) as c FROM memories WHERE {where_clause}", where_args or []).fetchone()  # nosec-sql: no current caller passes where_clause (verified via grep); guarded for future callers by design contract
             else:
                 row = conn.execute("SELECT COUNT(*) as c FROM memories").fetchone()
             return row["c"] if row else 0

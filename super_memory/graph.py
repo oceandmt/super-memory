@@ -213,7 +213,22 @@ def project_memory(record: MemoryRecord, config_path: str | None = None) -> dict
             neurons.append(n)
             synapses.append(_upsert_synapse(conn, source=anchor, target=n, relation="tagged" if kind == "tag" else "mentions", weight=0.65, confidence=record.trust_score or 0.6))
         for target in record.metadata.get("related_memory_ids", []) or []:
-            target_n = _upsert_neuron(conn, kind="memory", content=f"memory:{target}", source_memory_id=str(target), confidence=record.trust_score or 0.55)
+            target_str = str(target)
+            # Prefer linking to the target memory's REAL anchor neuron (the one
+            # created by its own project_memory() call, kind="memory",
+            # source_memory_id=target_str). The previous code always minted a
+            # fresh phantom neuron with placeholder content "memory:{target}",
+            # so traversal from the target's real anchor never reached this
+            # link. Only fall back to a placeholder when the target hasn't
+            # been projected yet.
+            existing = conn.execute(
+                "SELECT id FROM cognitive_neurons WHERE source_memory_id = ? AND kind = 'memory' LIMIT 1",
+                (target_str,),
+            ).fetchone()
+            if existing:
+                target_n = existing["id"]
+            else:
+                target_n = _upsert_neuron(conn, kind="memory", content=f"memory:{target_str}", source_memory_id=target_str, confidence=record.trust_score or 0.55)
             neurons.append(target_n)
             synapses.append(_upsert_synapse(conn, source=anchor, target=target_n, relation=record.metadata.get("relation", "related_to"), weight=float(record.metadata.get("weight", 0.7)), confidence=record.trust_score or 0.55))
         neuron_ids = list(dict.fromkeys(neurons))

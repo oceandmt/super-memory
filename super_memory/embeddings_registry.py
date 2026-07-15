@@ -72,23 +72,30 @@ class SQLiteVecAdapter(EmbeddingAdapter):
     name = "sqlite_vec"
 
     def is_available(self) -> bool:
+        # Only advertise availability when this adapter can actually produce a
+        # semantic text embedding. sqlite-vec 0.1.x ships vector storage/search
+        # but NOT text embedding (vector_from_text); if that is missing we must
+        # NOT claim availability, otherwise select_best_adapter() would pick us
+        # and silently return a non-semantic lexical hash instead of deferring
+        # to a real provider (sentence_transformers/openai/...).
         try:
             import sqlite_vec  # type: ignore  # noqa: F401
+            from sqlite_vec.experimental import vector_from_text  # type: ignore  # noqa: F401
             return True
-        except ImportError:
+        except Exception:
             return False
 
     def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
-        dim = dimensions or 384
+        dim = dimensions or 768
         try:
             from sqlite_vec.experimental import vector_from_text
             return vector_from_text(text, dim)
         except Exception:
             # sqlite-vec 0.1.x exposes vector storage/search but not text embedding.
-            # Provide a deterministic local lexical hash fallback so REM can be
-            # initialized without external APIs. This is not semantic embedding, but
-            # it gives stable approximate lexical vectors until a real provider
-            # (sentence_transformers/openai/etc.) is configured.
+            # Deterministic local lexical hash fallback (NOT semantic) so REM can be
+            # initialized without external APIs. is_available() returns False when
+            # vector_from_text is missing, so this path is only reached when a caller
+            # invokes embed() directly with no real provider configured.
             import hashlib
             import math
             import re

@@ -164,7 +164,11 @@ def train(path: str, *, domain_tag: str = "local", recursive: bool = True, limit
                     "metadata": {"flow": "train", "domain_tag": domain_tag, "chunk_index": idx, "chunks": len(file_chunks), "sha256": file_item["sha256"]},
                 }
                 result = bridge.remember(payload, config_path=config_path)
-                if result["results"] and result["results"][0]["ok"]:
+                # bridge.remember() returns no "results" key when the WriteGate
+                # blocks the write (result["ok"] is False in that case) -- only
+                # the allow-path includes "results"/"record". Guard with .get()
+                # so a blocked/quarantined write doesn't crash the whole flow.
+                if result.get("results") and result["results"][0].get("ok"):
                     saved_count += 1
                     file_item["saved"] += 1
                     _manifest_record(store, key=key, flow="train", path=rel, sha256=file_item["sha256"], chunk_index=idx, memory_id=result["record"]["id"])

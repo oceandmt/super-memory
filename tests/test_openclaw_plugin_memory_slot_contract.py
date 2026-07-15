@@ -12,20 +12,31 @@ def _run_node(script: str) -> dict:
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
+def _cfg(plugin_config: dict) -> str:
+    """Build the JS config object literal matching real OpenClaw runtime shape:
+    api.config is the global config; plugin-specific settings live under
+    plugins.entries['super-memory'].config (see index.js pluginCfg lookup).
+    """
+    return json.dumps({
+        "plugins": {"entries": {"super-memory": {"config": plugin_config}}},
+        **plugin_config,
+    })
+
+
 def test_plugin_memory_capability_guarded_by_default():
     script = f"""
 const plugin = require({json.dumps(str(PLUGIN))});
 const calls = {{ capabilities: 0, tools: [] }};
 global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
 plugin({{
-  config: {{ apiBaseUrl: 'http://super-memory.test' }},
+  config: {{cfg}},
   registerMemoryCapability() {{ calls.capabilities += 1; }},
   registerTool(tool) {{ calls.tools.push(tool.name); }},
   registerMemoryCorpusSupplement() {{}},
   registerMemoryPromptSupplement() {{}},
 }});
 console.log(JSON.stringify(calls));
-"""
+""".replace("{cfg}", _cfg({"apiBaseUrl": "http://super-memory.test"}))
     result = _run_node(script)
     assert result["capabilities"] == 0
     assert "memory_search" not in result["tools"]
@@ -59,11 +70,7 @@ global.fetch = async (url, opts = {{}}) => {{
   throw new Error('unexpected url ' + url);
 }};
 plugin({{
-  config: {{
-    apiBaseUrl: 'http://super-memory.test',
-    registerExclusiveMemoryCapability: true,
-    registerLegacyMemoryShims: true
-  }},
+  config: {{cfg}},
   registerMemoryCapability(capability) {{ calls.capabilities.push(capability); }},
   registerTool(tool) {{ calls.tools.push(tool.name); }},
   registerMemoryCorpusSupplement() {{}},
@@ -85,7 +92,11 @@ plugin({{
     status: manager.status()
   }}));
 }})().catch(err => {{ console.error(err); process.exit(1); }});
-"""
+""".replace("{cfg}", _cfg({
+    "apiBaseUrl": "http://super-memory.test",
+    "registerExclusiveMemoryCapability": True,
+    "registerLegacyMemoryShims": True,
+}))
     result = _run_node(script)
     assert result["capabilityCount"] == 1
     assert result["hasLegacySearch"] is True
@@ -107,7 +118,7 @@ const plugin = require({json.dumps(str(PLUGIN))});
 const calls = {{ capabilities: 0, tools: [], hooks: [] }};
 global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
 plugin({{
-  config: {{ apiBaseUrl: 'http://super-memory.test', mode: 'admin' }},
+  config: {{cfg}},
   registerMemoryCapability() {{ calls.capabilities += 1; }},
   registerTool(tool) {{ calls.tools.push(tool.name); }},
   registerMemoryCorpusSupplement() {{}},
@@ -117,7 +128,7 @@ plugin({{
   logger: {{ info: () => {{}}, warn: () => {{}} }}
 }});
 console.log(JSON.stringify(calls));
-"""
+""".replace("{cfg}", _cfg({"apiBaseUrl": "http://super-memory.test", "mode": "admin"}))
     result = _run_node(script)
     assert result["capabilities"] == 0
     assert "memory_search" not in result["tools"]
@@ -132,7 +143,7 @@ const plugin = require({json.dumps(str(PLUGIN))});
 const calls = {{ capabilities: 0, tools: [] }};
 global.fetch = async () => {{ throw new Error('fetch should not be called during registration'); }};
 plugin({{
-  config: {{ apiBaseUrl: 'http://super-memory.test', mode: 'exclusive' }},
+  config: {{cfg}},
   registerMemoryCapability() {{ calls.capabilities += 1; }},
   registerTool(tool) {{ calls.tools.push(tool.name); }},
   registerMemoryCorpusSupplement() {{}},
@@ -142,7 +153,7 @@ plugin({{
   logger: {{ info: () => {{}}, warn: () => {{}} }}
 }});
 console.log(JSON.stringify(calls));
-"""
+""".replace("{cfg}", _cfg({"apiBaseUrl": "http://super-memory.test", "mode": "exclusive"}))
     result = _run_node(script)
     assert result["capabilities"] == 1
     assert "memory_search" in result["tools"]

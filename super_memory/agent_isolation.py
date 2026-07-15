@@ -123,7 +123,7 @@ class AgentStore:
         Only returns agent-local memories for this agent, plus
         shared/cross-agent/project memories visible to all.
         """
-        where_clause, params = self._scope_filter(scopes)
+        where_clause, params = self._scope_filter(scopes)  # nosec-sql: where_clause built from fixed literals, not user input
         sql = f"""SELECT * FROM memories WHERE 1=1{where_clause}
                   AND content LIKE ?
                   AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
@@ -141,7 +141,7 @@ class AgentStore:
         scopes: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """List recent memories visible to this agent."""
-        where_clause, params = self._scope_filter(scopes)
+        where_clause, params = self._scope_filter(scopes)  # nosec-sql: where_clause built from fixed literals, not user input
         sql = f"""SELECT * FROM memories WHERE 1=1{where_clause}
                   AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0) != 1
                   ORDER BY created_at DESC LIMIT ?"""

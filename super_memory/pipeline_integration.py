@@ -118,7 +118,7 @@ def run_spreading_activation(
     try:
         from .spreading_activation import SpreadingActivation, should_stop_spreading
         conn = store.connect()
-        sa = SpreadingActivation(conn, config)
+        sa = SpreadingActivation(conn, cfg)
         seeds = anchor_neurons or _find_seed_neurons(query, store)
         if not seeds:
             return {"activated": 0, "results": {}}

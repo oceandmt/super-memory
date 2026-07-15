@@ -275,6 +275,13 @@ class SuperMemoryService:
         """
         import hashlib
 
+        # Empty/whitespace-only content (e.g. empty openclaw.turn events) all
+        # hash identically, so treating them as duplicates collapses distinct
+        # events into one and breaks per-event counting/pruning downstream.
+        # Each empty-content record is its own event -- never dedup on it.
+        if not (record.content or "").strip():
+            return {"skipped": False}
+
         content_hash = record.metadata.get("content_hash")
         if not content_hash:
             content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()

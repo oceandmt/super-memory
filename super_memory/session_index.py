@@ -129,8 +129,8 @@ def index_session_file(
     chunks = chunk_session_text(text)
 
     # Remove old entries
-    conn.execute(f"DELETE FROM {SESSION_FTS_TABLE} WHERE source_path=?", (str(file_path),))
-    conn.execute(f"DELETE FROM {SESSION_META_TABLE} WHERE source_path=?", (str(file_path),))
+    conn.execute(f"DELETE FROM {SESSION_FTS_TABLE} WHERE source_path=?", (str(file_path),))  # nosec-sql: SESSION_FTS_TABLE is a fixed module-level constant
+    conn.execute(f"DELETE FROM {SESSION_META_TABLE} WHERE source_path=?", (str(file_path),))  # nosec-sql: SESSION_META_TABLE is a fixed module-level constant
 
     # Insert chunks
     for i, chunk in enumerate(chunks):
@@ -197,7 +197,7 @@ def index_all_sessions(
     # Stats
     indexed = sum(1 for r in results if r.get("ok"))
     unchanged = sum(1 for r in results if r.get("unchanged"))
-    total_chunks = conn.execute(f"SELECT COUNT(*) FROM {SESSION_FTS_TABLE}").fetchone()[0]
+    total_chunks = conn.execute(f"SELECT COUNT(*) FROM {SESSION_FTS_TABLE}").fetchone()[0]  # nosec-sql: SESSION_FTS_TABLE is a fixed module-level constant
 
     return {
         "ok": True,
@@ -370,9 +370,9 @@ def session_index_status(config_path: str | None = None) -> dict[str, Any]:
     conn = store.connect()
 
     try:
-        total_chunks = conn.execute(f"SELECT COUNT(*) FROM {SESSION_FTS_TABLE}").fetchone()[0]
-        total_files = conn.execute(f"SELECT COUNT(*) FROM {SESSION_META_TABLE}").fetchone()[0]
-        total_chars = conn.execute(f"SELECT COALESCE(SUM(total_chars), 0) FROM {SESSION_META_TABLE}").fetchone()[0]
+        total_chunks = conn.execute(f"SELECT COUNT(*) FROM {SESSION_FTS_TABLE}").fetchone()[0]  # nosec-sql: fixed module-level constant
+        total_files = conn.execute(f"SELECT COUNT(*) FROM {SESSION_META_TABLE}").fetchone()[0]  # nosec-sql: fixed module-level constant
+        total_chars = conn.execute(f"SELECT COALESCE(SUM(total_chars), 0) FROM {SESSION_META_TABLE}").fetchone()[0]  # nosec-sql: fixed module-level constant
     except Exception:
         return {"ok": True, "available": False, "error": "session tables not initialized"}
 

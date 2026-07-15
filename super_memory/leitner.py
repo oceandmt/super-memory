@@ -161,12 +161,18 @@ def auto_seed(config_path: str | None = None, limit: int = 100) -> dict[str, Any
     _ensure_columns(store)
     _next = _next_review(0)
     with store.connect() as conn:
-        esc_next = _next.replace("'", "''")
-        conn.executescript(
-            f"UPDATE memories SET leiter_box = 0, next_review = '{esc_next}' "
-            f"WHERE (leiter_box IS NULL OR leiter_box = 0) AND next_review IS NULL LIMIT {limit};"
+        # Use execute (not executescript) so we can read cursor.rowcount and
+        # report the ACTUAL number of rows seeded. The previous code hardcoded
+        # seeded = limit, so an empty DB wrongly reported seeded=100. Bind the
+        # timestamp as a parameter instead of string-escaping it.
+        cur = conn.execute(
+            "UPDATE memories SET leiter_box = 0, next_review = ? "
+            "WHERE (leiter_box IS NULL OR leiter_box = 0) AND next_review IS NULL "
+            "AND id IN (SELECT id FROM memories "
+            "WHERE (leiter_box IS NULL OR leiter_box = 0) AND next_review IS NULL LIMIT ?)",
+            (_next, limit),
         )
-        seeded = limit
+        seeded = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
         conn.commit()
     return {"ok": True, "seeded": seeded, "next_review": _next}
 

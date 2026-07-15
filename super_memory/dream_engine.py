@@ -46,24 +46,47 @@ def _jaccard_similarity(a: str, b: str) -> float:
 
 def _token_frequencies(
     store: SuperMemoryStore,
-    limit: int = 1000,
+    limit: int = 2000,
 ) -> dict[str, float]:
-    """Build inverse token frequency over recent memories."""
+    """Build inverse token frequency over recent active memories.
+    
+    Uses larger corpus (2000 memories) and filters stopwords for accurate IDF.
+    """
+    # Common stopwords to exclude from IDF computation
+    stopwords = {
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has',
+        'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
+        'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you',
+        'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+        'my', 'your', 'his', 'her', 'its', 'our', 'their', 'with', 'from',
+        'by', 'as', 'if', 'when', 'where', 'what', 'which', 'who', 'whom'
+    }
+    
     with store.connect() as conn:
         rows = conn.execute(
-            "SELECT content FROM memories ORDER BY created_at DESC LIMIT ?",
+            """SELECT content FROM memories 
+               WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
+               AND length(content) > 20
+               ORDER BY created_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()
+    
     token_counts: Counter[str] = Counter()
     total = 0
+    
     for (content,) in rows:
         tokens = set(re.split(r"\W+", content.lower()))
-        tokens.discard("")
+        # Filter: non-empty, length >= 3, not stopword
+        tokens = {t for t in tokens if t and len(t) >= 3 and t not in stopwords}
         for t in tokens:
             token_counts[t] += 1
         total += 1
+    
     if total == 0:
         return {}
+    
+    # IDF formula: log(N / df) where N = total docs, df = document frequency
     return {t: math.log(total / max(1, c)) for t, c in token_counts.items()}
 
 

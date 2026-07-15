@@ -6,6 +6,7 @@ from typing import Any
 
 from . import memory_core
 from . import lifecycle
+from . import dream_engine
 from .semantic import semantic_doctor, semantic_index, semantic_verify
 
 
@@ -59,14 +60,9 @@ def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -
     into maintenance so they run automatically instead of requiring manual invocation.
     """
     report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "expired": 0, "active_hypotheses": 0, "notes": []}
-    from . import bridge as _bridge, telemetry as _telemetry, config as _config, storage as _storage
+    from . import bridge as _bridge
 
-    # Telemetry collection (P3 #9)
     try:
-        report["steps"]["telemetry"] = _telemetry.telemetry_status()
-    except Exception as exc:
-        report["steps"]["telemetry"] = {"ok": False, "error": str(exc)}
-
         # Step 1: Expire stale predictions
         expire_r = _bridge.expire_predictions(config_path=config_path)
         report["expired"] = expire_r.get("count", 0)
@@ -137,6 +133,7 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     Auto-schedule: tracks last run time and skips if run within 1 hour.
     """
     recently = _was_run_recently(config_path, "maintenance_run")
+    from . import bridge as bridge_ops
     report: dict[str, Any] = {
         "ok": True, "dry_run": dry_run, "steps": {},
         "auto_schedule": {"skipped_recently": recently, "window_hours": 1},
@@ -147,7 +144,7 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
 
     report["steps"]["embedding_doctor"] = memory_core.embedding_doctor(config_path=config_path)
     try:
-        report["steps"]["lifecycle_quality_cleanup"] = lifecycle.quality_cleanup(dry_run=dry_run, limit=limit, config_path=config_path)
+        report["steps"]["lifecycle_quality_cleanup"] = bridge_ops.lifecycle_quality_cleanup(dry_run=dry_run, limit=limit, config_path=config_path)
     except Exception as exc:
         report["steps"]["lifecycle_quality_cleanup"] = {"ok": False, "error": str(exc), "retryable": "locked" in str(exc).lower()}
 
@@ -221,7 +218,7 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
             from .storage import SuperMemoryStore
             cfg = _lc(config_path)
             store = SuperMemoryStore(cfg)
-            report["steps"]["schema_assimilation"] = _run(store, dry_run=dry_run)
+            report["steps"]["schema_assimilation"] = _run(store)
             _record_run(config_path, "schema_assimilation")
         else:
             report["steps"]["schema_assimilation"] = {"ok": True, "skipped": True, "reason": "run within last 4 hours"}
@@ -256,8 +253,9 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
     # Dream consolidation engine (P0 #2) — idle-time memory consolidation
     try:
         if not _was_run_recently(config_path, "dream_engine", within_hours=4):
+            from .config import load_config as _lc_dream
             report["steps"]["dream_engine"] = dream_engine.run_dream_cycle(
-                SuperMemoryStore(load_config(config_path)),
+                SuperMemoryStore(_lc_dream(config_path)),
                 dry_run=dry_run,
                 window_hours=48,
                 max_insights=5,
@@ -321,11 +319,11 @@ def maintenance_run(*, dry_run: bool = True, limit: int = 500, config_path: str 
 
     # Telemetry collection (P3 #9)
     try:
-        report["steps"]["telemetry"] = telemetry.telemetry_status()
+        report["steps"]["telemetry"] = telemetry.stats(config_path=config_path)
     except Exception as exc:
         report["steps"]["telemetry"] = {"ok": False, "error": str(exc)}
 
-    from . import bridge, dream_engine
+    from . import bridge
     report["steps"]["cross_layer_health"] = bridge.cross_layer_health(config_path=config_path)
     report["steps"]["durable_pack_status"] = bridge.durable_pack_status(config_path=config_path)
     report["ok"] = all(not isinstance(v, dict) or v.get("ok", True) for v in report["steps"].values())
@@ -386,7 +384,7 @@ def hard_delete_soft_deleted(*, dry_run: bool = True, config_path: str | None = 
     report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "child_deleted": {}}
 
     with store.connect() as conn:
-        dead_rows = conn.execute(f"SELECT COUNT(*) c FROM memories WHERE {dead}").fetchone()["c"]
+        dead_rows = conn.execute(f"SELECT COUNT(*) c FROM memories WHERE {dead}").fetchone()["c"]  # nosec-sql: dead is a fixed module-local literal
         # ids that have NO alive projection in any layer (safe to fully remove)
         dead_ids = [r["id"] for r in conn.execute(
             f"SELECT DISTINCT id FROM memories WHERE id NOT IN (SELECT id FROM memories WHERE {alive})"
@@ -419,12 +417,12 @@ def hard_delete_soft_deleted(*, dry_run: bool = True, config_path: str | None = 
         ph = ",".join("?" * len(dead_ids))
         for col, tbl in _MEMORY_CHILD_REFS:
             try:
-                cur = conn.execute(f"DELETE FROM {tbl} WHERE {col} IN ({ph})", dead_ids)
+                cur = conn.execute(f"DELETE FROM {tbl} WHERE {col} IN ({ph})", dead_ids)  # nosec-sql: tbl/col come from the fixed _MEMORY_CHILD_REFS constant; ph is a placeholder string of "?"
                 if cur.rowcount:
                     report["child_deleted"][f"{tbl}.{col}"] = cur.rowcount
             except Exception as exc:
                 report["child_deleted"][f"{tbl}.{col}"] = f"error: {exc}"
-        removed = conn.execute(f"DELETE FROM memories WHERE {dead}").rowcount
+        removed = conn.execute(f"DELETE FROM memories WHERE {dead}").rowcount  # nosec-sql: dead is a fixed module-local literal
         conn.execute("COMMIT")
         report["memories_deleted"] = removed
 

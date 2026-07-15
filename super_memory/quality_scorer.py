@@ -226,6 +226,12 @@ def sufficiency_score(content: str) -> float:
 
 # ── Importance (Likely Value) ────────────────────────────────────────────────
 
+# Legacy memory_type labels that predate the canonical MemoryType enum.
+# Normalize them before scoring so canonical keys stay the single source of
+# truth for type_boost (no duplicate/stale keys in the boost table itself).
+_LEGACY_TYPE_ALIASES = {"error": "blocker"}
+
+
 def importance_score(content: str, memory_type: str = "context") -> float:
     """Assess how important this memory is likely to be for future recall.
 
@@ -235,10 +241,17 @@ def importance_score(content: str, memory_type: str = "context") -> float:
     if not content or len(content) < 20:
         return 0.2
 
-    # Type boost
+    # Type boost. Keys MUST match canonical MemoryType enum values
+    # (models.MemoryType): fact/decision/preference/todo/blocker/workflow/
+    # insight/context/doctrine/lesson/event/instruction/reference. Legacy
+    # callers/tests may still pass "error" instead of the canonical
+    # "blocker" -- normalize via _LEGACY_TYPE_ALIASES above so both stay in
+    # sync without resurrecting a stale non-canonical key in this table.
+    memory_type = _LEGACY_TYPE_ALIASES.get(memory_type, memory_type)
     type_boost = {
         "decision": 0.3, "insight": 0.25, "instruction": 0.3,
-        "workflow": 0.2, "error": 0.3, "boundary": 0.25,
+        "workflow": 0.2, "blocker": 0.3, "boundary": 0.25,
+        "lesson": 0.25, "doctrine": 0.25,
         "fact": 0.1, "preference": 0.15, "todo": 0.15,
     }.get(memory_type, 0.0)
 

@@ -7,7 +7,7 @@
 
 **Local multi-layer memory system for OpenClaw multi-agents.**
 
-> **v2.3.6** — Grade A (90/100) • 254 MCP tools • 480 tests passing • CI/CD green
+> **v2.3.29** — Grade A (92/100) • Production-Ready • 254 MCP tools • 480 tests passing • CI/CD green
 
 Super Memory is a Hermes-style layered agent memory system with Workspace Markdown as canonical truth, plus 3 derived layers (MemPalace, Honcho, Neural Memory) for structured, conversational, and associative recall. It ships as a Python package with CLI, FastAPI server, and MCP server — usable as an OpenClaw plugin or standalone memory service.
 

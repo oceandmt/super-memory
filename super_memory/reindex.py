@@ -339,20 +339,30 @@ def reindex_fts5(config_path: str | None = None) -> dict[str, Any]:
 
 
 def reindex_vectors(config_path: str | None = None) -> dict[str, Any]:
-    """Rebuild vector index for sqlite_vec.
+    """Rebuild the semantic vector index.
 
-    Currently a placeholder — sqlite_vec manages its own index.
+    Previously a placeholder that only ran SELECT COUNT(*) on a non-existent
+    `memory_vectors` table (the real vec0 store is named `embeddings` and lives
+    in data/vectors.sqlite3) and returned ok=True regardless -- a silent no-op
+    that reported "reindexed" without touching a single vector. This now
+    delegates to semantic_index(rebuild=True), which drops and repopulates the
+    `embeddings` table from all live memories, and reports the true vector count.
     """
-    cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg)
     try:
-        with store.connect() as conn:
-            count = conn.execute(
-                "SELECT COUNT(*) FROM memory_vectors WHERE vector IS NOT NULL"
-            ).fetchone()
-            return {"ok": True, "vectors": count[0] if count else 0}
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        from .semantic import semantic_index, _sqlite_vec_available
+    except Exception as exc:  # pragma: no cover - import guard
+        return {"ok": False, "error": f"semantic module unavailable: {exc}"}
+    if not _sqlite_vec_available():
+        return {"ok": False, "error": "sqlite-vec not installed; vector reindex skipped"}
+    result = semantic_index(config_path=config_path, rebuild=True)
+    # Normalize to this module's {ok, vectors} contract while preserving detail.
+    out: dict[str, Any] = {"ok": bool(result.get("ok"))}
+    if "total_vectors" in result:
+        out["vectors"] = result["total_vectors"]
+    elif "indexed" in result:
+        out["vectors"] = result["indexed"]
+    out["detail"] = result
+    return out
 
 
 # ── Micro-gap 8: FTS-only reindex ─────────────────────────────────────────

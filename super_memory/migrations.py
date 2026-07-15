@@ -312,6 +312,10 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
 
     # CJK trigram FTS5 tables (P2 #6) — tokenize=trigram for multi-language search
     try:
+        # Idempotency: only report a change on FIRST creation, not on every run.
+        # Previously this appended the marker whenever the table merely EXISTED,
+        # so run_migrations() never converged to change_count==0.
+        cjk_existed = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memories_cjk_fts'").fetchone() is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS memories_cjk_fts "
             "USING fts5(content, tokenize='trigram', content=memories, content_rowid=rowid)"
@@ -328,12 +332,13 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
                 INSERT INTO memories_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
             END;
         """)
-        if conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_cjk_fts'").fetchone():
+        if not cjk_existed and conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_cjk_fts'").fetchone():
             changed.append("memories_cjk_fts")
     except sqlite3.OperationalError:
         pass
 
     try:
+        hcjk_existed = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='honcho_events_cjk_fts'").fetchone() is not None
         conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS honcho_events_cjk_fts "
             "USING fts5(content, tokenize='trigram', content=honcho_events, content_rowid=rowid)"
@@ -350,7 +355,7 @@ def _migrate_fts5(conn: sqlite3.Connection) -> list[str]:
                 INSERT INTO honcho_events_cjk_fts(rowid, content) VALUES (new.rowid, new.content);
             END;
         """)
-        if conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='honcho_events_cjk_fts'").fetchone():
+        if not hcjk_existed and conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='honcho_events_cjk_fts'").fetchone():
             changed.append("honcho_events_cjk_fts")
     except sqlite3.OperationalError:
         pass
@@ -454,7 +459,11 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                     from .maintenance_jobs import ensure_schema as _mj_ensure_schema
                     _hc_ensure_schema(conn)
                     _mj_ensure_schema(conn)
-                    changed2.append("write_contract_health_maintenance_schema")
+                    # NOTE: these ensure_schema() calls are CREATE IF NOT EXISTS and
+                    # report no status, so we cannot tell whether they changed
+                    # anything. Appending a marker unconditionally broke migration
+                    # idempotency (change_count never reached 0). Only record a
+                    # change on the error path below.
                 except Exception as exc:
                     changed2.append(f"write_contract_schema_error:{type(exc).__name__}:{exc}")
                 view_changed = _migrate_views(conn)
