@@ -21,6 +21,8 @@ from .hybrid_recall import HybridRecall, HYBRID_RECALL_TOOLS
 from .claim_extractor import ClaimExtractor, CLAIM_EXTRACTOR_TOOLS
 from .session_archive import SessionArchive, SESSION_ARCHIVE_TOOLS
 from .reports import Reports, REPORTS_TOOLS
+from .execution_tools_definitions import EXECUTION_TOOLS
+from . import mcp_execution_tools
 
 JSON = dict[str, Any]
 
@@ -100,6 +102,13 @@ NORMAL_TOOLS = {
     # Micro-gap 6: Read-only Recovery
     "super_memory_recovery_status",
     "super_memory_reset_recovery_state",
+    # Execution Patterns (v2.4.0)
+    "super_memory_route_task",
+    "super_memory_create_execution_contract",
+    "super_memory_create_plan",
+    "super_memory_update_plan_progress",
+    "super_memory_recover_incomplete_tasks",
+    "super_memory_detect_memory_loss",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -813,7 +822,7 @@ TOOLS: dict[str, JSON] = {
     },
 }
 
-for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
+for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS + EXECUTION_TOOLS:
     TOOLS[_tool["name"]] = {
         "description": _tool["description"],
         "inputSchema": _tool["inputSchema"],
@@ -1543,6 +1552,46 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
     if name == "super_memory_edit":
         return bridge.edit(args.get("memory_id"), content=args.get("content"), type=args.get("type"), priority=args.get("priority"), tier=args.get("tier"), config_path=args.get("config_path"))
+    
+    # ── Execution Patterns (v2.4.0) ──────────────────────────
+    if name == "super_memory_route_task":
+        return mcp_execution_tools.route_task(
+            duration_min=args["duration_min"],
+            steps=args["steps"],
+            files=args.get("files", 0),
+            complexity=args.get("complexity", "medium")
+        )
+    if name == "super_memory_create_execution_contract":
+        return {"contract_file": mcp_execution_tools.create_execution_contract(
+            task=args["task"],
+            mode=args["mode"],
+            steps=args["steps"],
+            estimated_time=args["estimated_time"],
+            checkpoints=args["checkpoints"],
+            auto_continue=args.get("auto_continue", True)
+        )}
+    if name == "super_memory_create_plan":
+        return {"plan_file": mcp_execution_tools.create_plan_file(
+            task_description=args["task_description"],
+            steps=args["steps"],
+            mode=args["mode"],
+            estimated_time=args["estimated_time"],
+            session_id=args.get("session_id")
+        )}
+    if name == "super_memory_update_plan_progress":
+        success = mcp_execution_tools.update_plan_progress(
+            plan_file=args["plan_file"],
+            step_index=args["step_index"],
+            status=args["status"]
+        )
+        return {"success": success}
+    if name == "super_memory_recover_incomplete_tasks":
+        return {"incomplete_tasks": mcp_execution_tools.recover_incomplete_tasks(
+            max_age_hours=args.get("max_age_hours", 24),
+            limit=args.get("limit", 10)
+        )}
+    if name == "super_memory_detect_memory_loss":
+        return mcp_execution_tools.detect_memory_loss()
 
     raise ValueError(f"unknown tool: {name}")
 

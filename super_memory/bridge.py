@@ -69,6 +69,39 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
 
     payload = apply_quality_gate(normalize_memory_payload(payload))
 
+    # ── Execution Patterns v2.4.0: Auto-detection ──
+    try:
+        from .execution_auto_detect import is_multi_step_task, auto_create_execution_state, should_auto_apply_patterns
+        
+        content = payload.get('content', '')
+        type_hint = payload.get('type', 'context')
+        
+        # Quick check if we should try auto-detection
+        if should_auto_apply_patterns(content, type_hint):
+            # Detect multi-step task
+            detection = is_multi_step_task(content, payload)
+            
+            if detection['is_multi_step'] and detection['confidence'] > 0.5:
+                # Auto-create execution state (contract + plan files)
+                exec_state = auto_create_execution_state(content, payload, detection)
+                
+                if exec_state:
+                    # Add execution state reference to metadata
+                    if 'metadata' not in payload:
+                        payload['metadata'] = {}
+                    
+                    payload['metadata']['execution_state'] = {
+                        'contract_file': exec_state['contract_file'],
+                        'plan_file': exec_state['plan_file'],
+                        'mode': exec_state['mode'],
+                        'auto_detected': True,
+                        'confidence': detection['confidence']
+                    }
+    except Exception:
+        # Silently fail - don't break remember() if execution patterns have issues
+        pass
+    # ── End Execution Patterns Auto-detection ──
+
     # Build envelope for contract metadata
     env = _build_envelope(
         content=payload["content"],
@@ -132,6 +165,16 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         },
     )
     results = svc.save(record)
+    
+    # ── Execution Patterns: Lifecycle hook after save ──
+    try:
+        from .execution_lifecycle import hook_memory_save
+        execution_state = payload.get('metadata', {}).get('execution_state')
+        if execution_state:
+            hook_memory_save(record, execution_state)
+    except Exception:
+        pass
+    # ── End Lifecycle hook ──
     graph_projection = None
     try:
         graph_projection = graph.project_memory(record, config_path=config_path)
