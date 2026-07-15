@@ -20,7 +20,7 @@ Usage:
     )
     
     # Auto-enforce plan creation
-    enforcer = PlanEnforcement()
+    enforcer = PlanEnforcer()
     plan_file = enforcer.create_plan_file(contract)
     
     # Route to correct execution mode
@@ -33,17 +33,17 @@ Usage:
 """
 
 from .contract import ExecutionContract
-from .plan_enforcement import PlanEnforcement
+from .plan_enforcement import PlanEnforcer
 from .task_routing import TaskRouter
 from .recovery import TaskRecovery
-from .monitoring import ProgressMonitor
+from .monitoring import MemoryLossDetector
 
 __all__ = [
     'ExecutionContract',
-    'PlanEnforcement',
+    'PlanEnforcer',
     'TaskRouter',
     'TaskRecovery',
-    'ProgressMonitor',
+    'MemoryLossDetector',
 ]
 
 __version__ = '1.0.0'
