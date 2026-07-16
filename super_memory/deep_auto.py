@@ -317,17 +317,25 @@ def deep_debug(config_path=None):
     with store.connect() as conn:
         # Check for schema issues
         tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        expected_tables = {
+        required_tables = {
             "memories", "honcho_events", "cognitive_neurons", "cognitive_synapses",
             "cognitive_fibers", "cognitive_hypotheses", "cognitive_evidence",
             "cognitive_predictions", "palace_drawers", "intelligence_events",
             "lifecycle_state", "dream_events", "telemetry_events", "telemetry_daily",
-            "agent_isolation_rules", "autocomplete_index", "short_term_reviews",
-            "semantic_index",
+            "agent_isolation_rules", "autocomplete_index",
         }
-        missing_tables = expected_tables - tables
-        if missing_tables:
-            warnings_list.append(f"Tables not yet created (normal for fresh DB): {len(missing_tables)}")
+        # Legacy/optional feature tables should not make mature databases look
+        # noisy. Report them structurally for diagnostics, but do not emit an
+        # operator warning unless a required runtime table is missing.
+        optional_tables = {"short_term_reviews", "semantic_index"}
+        missing_required_tables = required_tables - tables
+        missing_optional_tables = optional_tables - tables
+        if missing_required_tables:
+            problems.append({
+                "severity": "high",
+                "issue": f"Missing required tables: {sorted(missing_required_tables)}",
+                "fix": "run migrations/schema initialization",
+            })
 
         # Pending sync
         pending = conn.execute(
@@ -365,12 +373,16 @@ def deep_debug(config_path=None):
             pass
 
     return {
-        "ok": True,
+        "ok": len([p for p in problems if p.get("severity") in ("high", "critical")]) == 0,
         "problems": problems,
         "warnings": warnings_list,
         "problem_count": len(problems),
         "warning_count": len(warnings_list),
-        "fix_suggestions": [p["fix"] for p in problems],
+        "diagnostics": {
+            "missing_optional_tables": sorted(missing_optional_tables) if 'missing_optional_tables' in locals() else [],
+            "missing_required_tables": sorted(missing_required_tables) if 'missing_required_tables' in locals() else [],
+        },
+        "fix_suggestions": [p.get("fix") for p in problems if p.get("fix")],
     }
 
 
