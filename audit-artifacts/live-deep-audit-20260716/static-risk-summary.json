@@ -1,0 +1,14 @@
+{
+  "static_risk_lines": 1085,
+  "categories": {
+    "except Exception": 370,
+    "pass": 85,
+    "ok": 491,
+    "TODO": 7,
+    "executescript": 34,
+    "INSERT OR REPLACE": 38,
+    "PRAGMA table_info": 12,
+    "FIXME": 1,
+    "NotImplemented": 1
+  }
+}

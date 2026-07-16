@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,8 +16,11 @@ class CaptureHook:
     def __init__(self, config=None):
         self.config = config or load_config()
         self.db_path = Path(self.config.workspace_root) / self.config.sqlite_path
+        self._tables_ready = False
 
     def ensure_tables(self) -> None:
+        if self._tables_ready:
+            return
         with sqlite3.connect(self.db_path, timeout=30) as conn:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA busy_timeout=30000")
@@ -34,6 +38,7 @@ class CaptureHook:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+        self._tables_ready = True
 
     def capture_event(
         self,
@@ -53,29 +58,40 @@ class CaptureHook:
         # B1: never persist runtime-appended prompt-injection / boilerplate noise.
         if is_injection_content(content):
             return {
-                "ok": True,
+                "ok": False,
                 "event_id": None,
                 "session_id": session_id,
                 "captured": False,
                 "skipped": "injection_content",
             }
         content = sanitize_auto_capture(content)
-        with sqlite3.connect(self.db_path, timeout=30) as conn:
-            event_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
-            # Standalone Honcho captures are not layer projections. Keep memory_id
-            # NULL unless the caller explicitly links this event to a canonical
-            # memory row; otherwise cross-layer health will treat successful
-            # captures as false orphan projections.
-            created_at = datetime.now(timezone.utc).isoformat()
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA busy_timeout=30000")
-            conn.execute("""
-                INSERT INTO honcho_events
-                (id, memory_id, workspace, session_id, observer_peer_id, observed_peer_id,
-                 content, source, metadata_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (event_id, memory_id, workspace, session_id, observer_peer_id,
-                  observed_peer_id, content, source, json.dumps(metadata), created_at))
+        if not content.strip():
+            return {"ok": False, "event_id": None, "session_id": session_id,
+                    "captured": False, "skipped": "empty_after_sanitize"}
+        event_id = None
+        for attempt in range(6):
+            try:
+                with sqlite3.connect(self.db_path, timeout=30) as conn:
+                    event_id = conn.execute("SELECT lower(hex(randomblob(16)))").fetchone()[0]
+                    # Standalone Honcho captures are not layer projections. Keep
+                    # memory_id NULL unless explicitly linked to canonical data.
+                    created_at = datetime.now(timezone.utc).isoformat()
+                    # WAL mode is established during table initialization; changing
+                    # journal mode in every concurrent writer causes avoidable locks.
+                    conn.execute("PRAGMA busy_timeout=30000")
+                    conn.execute("""
+                        INSERT INTO honcho_events
+                        (id, memory_id, workspace, session_id, observer_peer_id, observed_peer_id,
+                         content, source, metadata_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (event_id, memory_id, workspace, session_id, observer_peer_id,
+                          observed_peer_id, content, source, json.dumps(metadata), created_at))
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 5:
+                    raise
+                time.sleep(0.01 * (2 ** attempt))
+        assert event_id is not None
         result: dict[str, Any] = {"ok": True, "event_id": event_id, "session_id": session_id, "captured": True}
         if analyze:
             result["analysis"] = self.analyze_turn(content, observed_peer_id, session_id)

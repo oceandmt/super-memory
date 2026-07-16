@@ -21,8 +21,9 @@ from .storage import sqlite_path
 
 from .config import load_config
 from .models import MemoryLayer, MemoryRecord, SuperMemoryConfig
+from .retrieval_backends import RetrievalContext, retrieval_context, visibility_predicate
 from .service import SuperMemoryService
-from .storage import SuperMemoryStore
+from .storage import SuperMemoryStore, row_to_memory
 from .cooldown import get_cooldown_manager, Deadline, TimeoutError
 
 
@@ -47,6 +48,7 @@ class MemorySearchHit:
     # Super Memory extensions
     layer: str = ""
     memory_id: str = ""
+    citation_details: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -60,9 +62,16 @@ class MemorySearchHit:
             "source": self.source,
             "corpus": self.corpus,
             "citation": self.citation,
+            # Stable Super Memory extensions. ``id`` remains the OpenClaw
+            # layer-qualified hit id; callers use ``memory_id`` for canonical
+            # show/get/provenance operations.
+            "layer": self.layer,
+            "memory_id": self.memory_id,
         }
         if self.vectorScore is not None:
             d["vectorScore"] = self.vectorScore
+        if self.citation_details is not None:
+            d["citation_details"] = self.citation_details
         return d
 
 
@@ -88,23 +97,41 @@ def _has_cjk(text: str) -> bool:
     return False
 
 
-def _cjk_fts_search(store: SuperMemoryStore, query: str, limit: int = 10) -> list[MemoryRecord]:
-    """Search CJK trigram FTS5 tables."""
-    from .storage import row_to_memory
-
-    results: list[MemoryRecord] = []
+def _cjk_fts_search(
+    store: SuperMemoryStore,
+    query: str,
+    limit: int = 10,
+    *,
+    context: RetrievalContext | None = None,
+) -> list[tuple[MemoryRecord, MemoryLayer]]:
+    """Search CJK trigram FTS5 while preserving each canonical layer."""
+    results: list[tuple[MemoryRecord, MemoryLayer]] = []
+    seen: set[tuple[str, MemoryLayer]] = set()
     terms = [t.strip() for t in query.split() if len(t.strip()) >= 1]
+    predicate, visibility_params = visibility_predicate(context or RetrievalContext(), alias="m")
     with store.connect() as conn:
         for term in terms[:3]:
             try:
                 rows = conn.execute(
-                    "SELECT m.* FROM memories_cjk_fts f JOIN memories m ON m.rowid = f.rowid WHERE memories_cjk_fts MATCH ? ORDER BY rank LIMIT ?",
-                    (term, max(limit // len(terms), 1)),
+                    "SELECT m.* FROM memories_cjk_fts f "
+                    "JOIN memories m ON m.rowid = f.rowid "
+                    "WHERE memories_cjk_fts MATCH ? AND "
+                    + predicate
+                    + " ORDER BY rank, "
+                    "CASE m.layer WHEN 'workspace_markdown' THEN 0 ELSE 1 END "
+                    "LIMIT ?",
+                    [term, *visibility_params, max(limit, 1)],
                 ).fetchall()
                 for row in rows:
+                    try:
+                        layer = MemoryLayer(row["layer"])
+                    except (KeyError, ValueError):
+                        continue
                     mem = row_to_memory(row)
-                    if not any(r.id == mem.id for r in results):
-                        results.append(mem)
+                    key = (mem.id, layer)
+                    if key not in seen:
+                        seen.add(key)
+                        results.append((mem, layer))
             except Exception:
                 continue
     return results[:limit]
@@ -130,6 +157,7 @@ def _layer_in_corpus(layer: MemoryLayer, corpus: str) -> bool:
 
 
 # ── Scoring ─────────────────────────────────────────────────────────────────
+
 
 
 def _score_record(query: str, record: MemoryRecord, *, base: float) -> float:
@@ -186,6 +214,11 @@ def memory_search_compatible(
     corpus: str = "all",
     config: SuperMemoryConfig | None = None,
     cooldown_key: str | None = None,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
 ) -> dict[str, Any]:
     """Return a standard memory_search payload matching OpenClaw memory-core.
 
@@ -198,6 +231,29 @@ def memory_search_compatible(
     Auto-detects CJK queries and routes to trigram FTS5.
     """
     cfg = config or load_config(None)
+    resolved = retrieval_context(
+        context=context,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        scope=scope,
+    )
+    if not any((resolved.agent_id, resolved.session_id, resolved.project, resolved.scope)):
+        # CLI/OpenClaw compatibility calls historically searched the current
+        # super-memory project without requiring an explicit caller context.
+        # Limit this legacy inference to the built-in project so arbitrary
+        # project/agent-local memories remain fail-closed unless caller context
+        # is forwarded by API/MCP.
+        try:
+            store = SuperMemoryStore(cfg)
+            with store.connect() as conn:
+                projects = [r[0] for r in conn.execute(
+                    "SELECT DISTINCT project FROM memories WHERE project IS NOT NULL AND project != '' LIMIT 2"
+                ).fetchall()]
+            if len(projects) == 1 and str(projects[0]) == "super-memory":
+                resolved = retrieval_context(context=resolved, project="super-memory", agent_id="lucas")
+        except Exception:
+            pass
     cd_key = cooldown_key or f"search:{corpus}:{_hash_query(query)}"
 
     # Fast path for fresh/local test configs: avoid booting the full layered
@@ -222,7 +278,9 @@ def memory_search_compatible(
     deadline = Deadline()
 
     try:
-        results, debug_info = _run_search(query, max_results, min_score, corpus, cfg, deadline)
+        results, debug_info = _run_search(
+            query, max_results, min_score, corpus, cfg, deadline, resolved
+        )
         cd_mgr.record_success(cd_key)
         return {
             "results": results,
@@ -272,6 +330,7 @@ def _run_search(
     corpus: str,
     cfg: SuperMemoryConfig,
     deadline: Deadline,
+    context: RetrievalContext,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Execute search across requested corpora."""
     deadline.check()
@@ -285,24 +344,31 @@ def _run_search(
 
     if cjk:
         debug["cjk"] = True
-        hits = _cjk_search(query, max_results, min_score, cfg, deadline)
+        hits = _cjk_search(query, max_results, min_score, cfg, deadline, context, include_memory, include_sm)
     else:
         if include_memory:
             deadline.check()
-            memory_hits = _search_layer(query, max_results, min_score, cfg, MemoryLayer.WORKSPACE_MARKDOWN, "memory")
+            memory_hits = _search_layer(
+                query, max_results, min_score, cfg,
+                MemoryLayer.WORKSPACE_MARKDOWN, "memory", context,
+            )
             hits.extend(memory_hits)
 
         if include_sm:
             deadline.check()
             for layer in (MemoryLayer.MEMPALACE, MemoryLayer.HONCHO, MemoryLayer.NEURAL_MEMORY):
-                layer_hits = _search_layer(query, max_results // 2, min_score, cfg, layer, "super-memory")
+                layer_hits = _search_layer(
+                    query, max_results // 2, min_score, cfg,
+                    layer, "super-memory", context,
+                )
                 hits.extend(layer_hits)
 
     # Merge + sort + dedup
     seen_paths: set[str] = set()
     deduped: list[MemorySearchHit] = []
     for h in sorted(hits, key=lambda x: x.score, reverse=True):
-        key = h.path or h.id
+        # Projection/layer copies of one canonical memory are one result.
+        key = h.memory_id or h.path or h.id
         if key not in seen_paths:
             seen_paths.add(key)
             deduped.append(h)
@@ -312,17 +378,29 @@ def _run_search(
     # Include sessions (separate FTS index)
     if include_sessions and not cjk:
         deadline.check()
-        try:
-            from .session_index import search_sessions as _ss
-
-            sres = _ss(query, max_results=max_results, min_score=min_score, config_path=getattr(cfg, 'config_path', None))
+        if not (
+            context.agent_id
+            and context.session_id
+            and context.scope in (None, "session")
+        ):
+            debug["sessions_skipped"] = "agent_id and session_id required"
+        else:
+            try:
+                sres = _search_sessions_authorized(
+                    query,
+                    max_results=max_results,
+                    min_score=min_score,
+                    cfg=cfg,
+                    context=context,
+                )
+            except Exception:
+                debug["sessions_error"] = "session index unavailable"
+                sres = {"results": []}
             for sr in sres.get("results", []):
                 sr_key = sr.get("path", sr.get("id", ""))
                 if sr_key not in seen_paths and sr.get("score", 0) >= min_score:
                     deduped.append(sr)
                     seen_paths.add(sr_key)
-        except Exception:
-            debug["sessions_error"] = "session index unavailable"
 
     deduped = sorted(deduped, key=lambda x: x.get("score", 0) if isinstance(x, dict) else x.score, reverse=True)[:max_results]
 
@@ -339,19 +417,31 @@ def _run_search(
 
 def _cjk_search(
     query: str, max_results: int, min_score: float,
-    cfg: SuperMemoryConfig, deadline: Deadline,
+    cfg: SuperMemoryConfig, deadline: Deadline, context: RetrievalContext,
+    include_memory: bool, include_sm: bool,
 ) -> list[MemorySearchHit]:
     """CJK-specific search via trigram FTS5."""
     deadline.check()
     store = SuperMemoryStore(cfg)
-    cjk_records = _cjk_fts_search(store, query, limit=max_results)
+    cjk_records = _cjk_fts_search(
+        store, query, limit=max_results, context=context
+    )
     hits: list[MemorySearchHit] = []
-    for idx, record in enumerate(cjk_records):
+    for idx, (record, layer) in enumerate(cjk_records):
         deadline.check()
+        corpus_name = _corpus_for_layer(layer)
+
+        # Filter by requested corpus
+        if corpus_name == "memory" and not include_memory:
+            continue
+        if corpus_name == "super-memory" and not include_sm:
+            continue
+
         score = _score_record(query, record, base=1.0 - (idx * 0.05))
         if score < min_score:
             continue
-        hit = _record_to_hit(record, layer=MemoryLayer.NEURAL_MEMORY, score=score, query=query)
+        hit = _record_to_hit(record, layer=layer, score=score, query=query)
+        hit.corpus = corpus_name
         hits.append(hit)
     hits.sort(key=lambda h: h.score, reverse=True)
     return hits[:max_results]
@@ -360,14 +450,19 @@ def _cjk_search(
 def _search_layer(
     query: str, max_results: int, min_score: float,
     cfg: SuperMemoryConfig, layer: MemoryLayer, corpus_name: str,
+    context: RetrievalContext,
 ) -> list[MemorySearchHit]:
     """Search one memory layer."""
     svc = SuperMemoryService(cfg)
     try:
-        records = svc.search_layer(layer, query, limit=max_results)
+        records = svc.search_layer(
+            layer, query, limit=max_results, context=context
+        )
     except AttributeError:
         # Fallback: use recall
-        layer_hits = svc.recall(query, limit=max_results)
+        layer_hits = svc.recall(
+            query, limit=max_results, context=context
+        )
         records = layer_hits.get(layer, [])
 
     hits: list[MemorySearchHit] = []
@@ -385,7 +480,7 @@ def _search_layer(
 
 
 def _record_to_hit(record: MemoryRecord, *, layer: MemoryLayer, score: float, query: str) -> MemorySearchHit:
-    source_path = record.source or f"super-memory://{layer.value}/{record.id}"
+    source_path = f"super-memory://{layer.value}/{record.id}"
     display_content = _ranking_content(record)
     snippet = _snippet(display_content, query)
     return MemorySearchHit(
@@ -401,6 +496,7 @@ def _record_to_hit(record: MemoryRecord, *, layer: MemoryLayer, score: float, qu
         citation=_make_citation(record),
         layer=layer.value,
         memory_id=record.id,
+        citation_details=_citation_details(record, layer, display_content),
     )
 
 
@@ -413,6 +509,21 @@ def _make_citation(record: MemoryRecord) -> str:
     return " · ".join(parts)
 
 
+def _citation_details(record: MemoryRecord, layer: MemoryLayer, content: str) -> dict[str, Any]:
+    """Machine-verifiable citation while retaining the legacy string label."""
+    import hashlib
+
+    return {
+        "uri": f"super-memory://{layer.value}/{record.id}",
+        "source": record.source,
+        "layer": layer.value,
+        "memory_id": record.id,
+        "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "line_span": {"start": 1, "end": max(1, len(content.splitlines()))},
+        "created_at": record.created_at.isoformat() if hasattr(record.created_at, "isoformat") else record.created_at,
+    }
+
+
 # ── memory_get ──────────────────────────────────────────────────────────────
 
 
@@ -423,34 +534,65 @@ def memory_get_compatible(
     lines: int = 20,
     corpus: str = "all",
     config: SuperMemoryConfig | None = None,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
 ) -> dict[str, Any]:
     """Standard memory_get output matching OpenClaw memory-core format.
 
     Returns: { path, from, lines, content, truncated, source, metadata }
     """
     cfg = config or load_config(None)
+    resolved = retrieval_context(
+        context=context,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        scope=scope,
+    )
     if path.startswith("super-memory://"):
-        return _memory_get_virtual(path, cfg)
+        return _memory_get_virtual(path, cfg, resolved, from_line=from_line, lines=lines)
     return _memory_get_file(path, cfg, from_line=from_line, lines=lines)
 
 
-def _memory_get_virtual(path: str, cfg: SuperMemoryConfig) -> dict[str, Any]:
+def _memory_get_virtual(
+    path: str,
+    cfg: SuperMemoryConfig,
+    context: RetrievalContext,
+    *,
+    from_line: int,
+    lines: int,
+) -> dict[str, Any]:
     try:
         _, rest = path.split("super-memory://", 1)
         layer, memory_id = rest.split("/", 1)
     except ValueError:
         return {"path": path, "error": "invalid super-memory virtual path", "source": "super-memory"}
     store = SuperMemoryStore(cfg)
-    record = store.get_memory(memory_id, layer=layer)
+    predicate, params = visibility_predicate(context, alias="m")
+    with store.connect() as conn:
+        row = conn.execute(
+            "SELECT m.* FROM memories m WHERE m.id = ? AND m.layer = ? AND "
+            + predicate
+            + " LIMIT 1",
+            [memory_id, layer, *params],
+        ).fetchone()
+    record = row_to_memory(row) if row else None
     if not record:
         return {"path": path, "error": "memory not found", "source": "super-memory"}
-    text = record.content
+    all_lines = record.content.splitlines()
+    start = max(1, from_line)
+    requested = max(1, lines)
+    end = min(len(all_lines), start + requested - 1)
+    text = "\n".join(all_lines[start - 1:end])
     return {
         "path": path,
-        "from": 1,
-        "lines": len(text.splitlines()) or 1,
+        "from": start,
+        "lines": max(0, end - start + 1),
         "content": text,
-        "truncated": False,
+        "truncated": end < len(all_lines),
         "source": "super-memory",
         "metadata": record.model_dump(mode="json"),
     }

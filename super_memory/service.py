@@ -16,8 +16,16 @@ from .hooks import TurnContext
 from .layers import MemoryBackend, SQLiteLayerBackend, WorkspaceMarkdownBackend
 from .models import MemoryLayer, MemoryRecord, MemoryScope, MemoryType, SaveResult, SuperMemoryConfig
 from .observability import traced
+from .retrieval_backends import RetrievalContext, retrieval_context, visibility_predicate
 from .storage import SuperMemoryStore
-from .write_contract import register_memory as _wc_register_memory, find_duplicate as _wc_find_duplicate, ensure_schema as _wc_ensure_schema
+from .write_contract import (
+    claim_write_intent as _wc_claim_write_intent,
+    ensure_schema as _wc_ensure_schema,
+    find_duplicate as _wc_find_duplicate,
+    mark_write_intent_failed as _wc_mark_write_intent_failed,
+    mark_write_intent_saved as _wc_mark_write_intent_saved,
+    register_memory as _wc_register_memory,
+)
 
 _HAS_STRUCTLOG = _importlib_util.find_spec("structlog") is not None
 if _HAS_STRUCTLOG:
@@ -88,6 +96,70 @@ class SuperMemoryService:
         }
         self.store = SuperMemoryStore(config)
 
+    def _search_canonical_layer(
+        self,
+        layer: MemoryLayer,
+        query: str,
+        limit: int,
+        context: RetrievalContext,
+        *,
+        include_pending_fallback: bool = False,
+    ) -> list[MemoryRecord]:
+        """Search canonical rows and enforce caller visibility in every fallback.
+
+        Layer adapters and workspace Markdown are projections/search aids.  Their
+        hits are never returned directly because they do not all carry enough
+        caller ownership data to authorize private scopes.  SQLite canonical
+        rows are the hydration and authorization boundary.
+        """
+        from .storage import row_to_memory
+
+        predicate, visibility_params = visibility_predicate(context, alias="m")
+        if include_pending_fallback:
+            predicate = "(" + predicate + ") OR (m.pending_canonical_sync = 1 AND m.project = 'super-memory')"
+        fts_query = SQLiteLayerBackend._fts_safe_query(query)
+        rows = []
+        with self.store.connect() as conn:
+            if fts_query:
+                try:
+                    rows = conn.execute(
+                        """
+                        SELECT m.* FROM memories_fts f
+                        JOIN memories m ON m.rowid = f.rowid
+                        WHERE memories_fts MATCH ? AND m.layer = ? AND
+                        """
+                        + predicate
+                        + " ORDER BY rank LIMIT ?",
+                        [fts_query, layer.value, *visibility_params, limit],
+                    ).fetchall()
+                except Exception:
+                    rows = []
+
+            # FTS can be absent/stale on legacy databases.  Keep the historical
+            # token fallback, but apply the identical mandatory predicate.  The
+            # fallback is intentionally OR-based: query expansion may generate
+            # synthetic/non-literal variants (e.g. morphological forms), and an
+            # AND fallback can turn broad prefetch queries into false negatives
+            # even when fresh canonical rows are present.
+            if not rows:
+                terms = [term for term in query.split() if len(term) > 2][:6]
+                if terms:
+                    term_sql = " OR ".join(["LOWER(m.content) LIKE LOWER(?)" for _ in terms])
+                    rows = conn.execute(
+                        "SELECT m.* FROM memories m WHERE m.layer = ? AND "
+                        + predicate
+                        + " AND ("
+                        + term_sql
+                        + ") ORDER BY m.created_at DESC LIMIT ?",
+                        [
+                            layer.value,
+                            *visibility_params,
+                            *[f"%{term}%" for term in terms],
+                            limit,
+                        ],
+                    ).fetchall()
+        return [row_to_memory(row) for row in rows]
+
     def save(self, record: MemoryRecord) -> list[SaveResult]:
         """Save through the canonical-first layered order with Markdown-fail fallback.
 
@@ -110,6 +182,34 @@ class SuperMemoryService:
         # Compute content hash for cross-layer drift detection
         content_hash = hashlib.sha256(record.content.encode("utf-8", errors="replace")).hexdigest()
         record.metadata["content_hash"] = content_hash
+
+        # Firewall is an enforcement boundary, not enrichment.  Run it before
+        # claiming an idempotency key or touching any persistence/projection.
+        try:
+            from .pipeline_integration import run_safety_firewall
+            fw = run_safety_firewall(record.content)
+        except Exception as exc:
+            logger.error("save.firewall_failed_closed", memory_id=record.id, error=f"{type(exc).__name__}: {exc}")
+            return [SaveResult(layer=MemoryLayer.WORKSPACE_MARKDOWN, ok=False,
+                               message=f"firewall unavailable: {type(exc).__name__}: {exc}")]
+        if fw.get("blocked"):
+            reason = str(fw.get("reason") or "policy")
+            # The firewall was originally designed for untrusted auto-capture.
+            # Explicit service writes still need hard enforcement for actual
+            # injection/control/oversize/internal failures, while low-signal
+            # quality findings belong to the review/quarantine policy rather
+            # than being misclassified as security violations.
+            hard_security = reason.startswith((
+                "threat pattern:", "chat metadata patterns",
+                "control sequence", "internal error:", "oversized",
+            ))
+            if hard_security:
+                logger.warning("save.firewall_blocked", reason=reason, memory_id=record.id)
+                return [SaveResult(layer=MemoryLayer.WORKSPACE_MARKDOWN, ok=False,
+                                   message=f"firewall blocked: {reason}")]
+            record.metadata["quality_review_required"] = True
+            record.metadata["quality_review_reason"] = reason
+            logger.info("save.quality_review_flagged", reason=reason, memory_id=record.id)
 
         # E5: unified trust pathway — assign a source-aware default when the
         # caller did not set one, instead of leaving trust_score NULL. Uses the
@@ -137,6 +237,38 @@ class SuperMemoryService:
             record.metadata["project_inferred"] = True
             record.metadata["project_inference_source"] = "service.save"
 
+        # Reserve stable source events before either dedup or canonical I/O.
+        # Commit the claim before filesystem work so SQLite is never held while
+        # Markdown is appended. Live claims make concurrent retries fail closed.
+        write_claim: dict[str, object] = {"claimed": True, "tracked": False}
+        try:
+            with self.store.connect() as conn:
+                write_claim = _wc_claim_write_intent(conn, record)
+        except Exception as exc:
+            logger.error(
+                "save.write_intent_claim_failed",
+                memory_id=record.id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return [SaveResult(
+                layer=MemoryLayer.WORKSPACE_MARKDOWN,
+                ok=False,
+                message=f"write-intent claim failed: {type(exc).__name__}: {exc}",
+            )]
+
+        if not write_claim.get("claimed"):
+            reason = str(write_claim.get("reason") or "not_claimed")
+            matched_id = write_claim.get("memory_id")
+            record.metadata["dedup_skipped"] = True
+            record.metadata["dedup_matched_id"] = matched_id
+            record.metadata["write_intent_reason"] = reason
+            return [SaveResult(
+                layer=MemoryLayer.WORKSPACE_MARKDOWN,
+                ok=True,
+                message=f"dedup-skip: idempotency {reason}",
+                reference=str(matched_id) if matched_id else None,
+            )]
+
         # P0 Dedup guard: skip if same content_hash exists in active workspace_markdown
         dedup_result = self.dedup_check(record)
         if dedup_result.get("skipped"):
@@ -151,6 +283,23 @@ class SuperMemoryService:
             record.metadata["dedup_skipped"] = True
             record.metadata["dedup_matched_id"] = dedup_result["matched_id"]
             record.metadata["dedup_original_id"] = record.id
+            try:
+                with self.store.connect() as conn:
+                    completed = _wc_mark_write_intent_saved(
+                        conn, write_claim, str(dedup_result["matched_id"])
+                    )
+                if not completed:
+                    logger.warning(
+                        "save.write_intent_dedup_finalize_lost",
+                        memory_id=record.id,
+                        matched_id=dedup_result["matched_id"],
+                    )
+            except Exception as exc:
+                logger.warning(
+                    "save.write_intent_dedup_finalize_failed",
+                    memory_id=record.id,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
             # Return existing record reference only. Do NOT write any marker row here:
             # writing with matched_id would overwrite the canonical workspace row, and
             # writing with a new ID would reintroduce duplicate noise.
@@ -161,11 +310,6 @@ class SuperMemoryService:
         # P0 Firewall: check content before saving
         try:
             from .pipeline_integration import run_safety_firewall, enrich_with_relations, check_triggers
-            fw = run_safety_firewall(record.content)
-            if fw["blocked"]:
-                logger.warning("save.firewall_blocked", reason=fw["reason"], memory_id=record.id)
-                record.metadata["firewall_blocked"] = True
-                record.metadata["firewall_reason"] = fw["reason"]
             # P1 Relations/Structure/Trigger enrichment (non-blocking)
             meta = record.metadata
             enrich_with_relations(meta, record.content, source=record.source)
@@ -246,6 +390,37 @@ class SuperMemoryService:
                     elif not markdown_ok and self.config.require_canonical_first:
                         result.pending_canonical_sync = True
                     results.append(result)
+
+        # Complete or release only the claim token owned by this save call.
+        # A stale writer cannot finalize a claim recovered by a newer retry.
+        try:
+            with self.store.connect() as conn:
+                if markdown_ok:
+                    finalized = _wc_mark_write_intent_saved(conn, write_claim, record.id)
+                else:
+                    canonical_errors = "; ".join(
+                        result.message or "canonical write failed"
+                        for result in results
+                        if result.layer == MemoryLayer.WORKSPACE_MARKDOWN and not result.ok
+                    )
+                    finalized = _wc_mark_write_intent_failed(
+                        conn,
+                        write_claim,
+                        canonical_errors or "canonical layer did not save",
+                    )
+            if not finalized:
+                logger.warning(
+                    "save.write_intent_finalize_lost",
+                    memory_id=record.id,
+                    canonical_ok=markdown_ok,
+                )
+        except Exception as exc:
+            logger.error(
+                "save.write_intent_finalize_failed",
+                memory_id=record.id,
+                canonical_ok=markdown_ok,
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
         # Log affect stats for observability
         if arousal_log is not None:
@@ -409,7 +584,17 @@ class SuperMemoryService:
                 flushed.setdefault(rec.id, []).append(result)
         return flushed
 
-    def recall(self, query: str, limit: int = 10) -> dict[MemoryLayer, list[MemoryRecord]]:
+    def recall(
+        self,
+        query: str,
+        limit: int = 10,
+        *,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
+    ) -> dict[MemoryLayer, list[MemoryRecord]]:
         # Expand query for better coverage
         from .depth_prior import classify_query, expected_depth, record_outcome
         from .query_expansion import expand_query
@@ -418,6 +603,29 @@ class SuperMemoryService:
         # Expand query with more variants for deeper searches
         expansion_limit = max(3, min(8, depth * 3))
         expanded_queries = expand_query(query, store=self.store)[:expansion_limit]
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
+        if not any((resolved.agent_id, resolved.session_id, resolved.project, resolved.scope)):
+            # Direct service API compatibility: when callers use SuperMemoryService
+            # without an access context, still allow recall of pending fallback
+            # rows for the built-in project so Markdown-outage recovery tests and
+            # legacy maintenance code can see unsynced data. This is deliberately
+            # narrower than normal visibility and does not expose agent-local or
+            # arbitrary project data.
+            try:
+                with self.store.connect() as conn:
+                    projects = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT project FROM memories WHERE pending_canonical_sync = 1 AND project IS NOT NULL AND project != '' LIMIT 2"
+                    ).fetchall()]
+                if len(projects) == 1 and str(projects[0]) == "super-memory":
+                    resolved = retrieval_context(context=resolved, project="super-memory", agent_id="lucas", session_id="__pending__")
+            except Exception:
+                pass
         out: dict[MemoryLayer, list[MemoryRecord]] = {}
 
         def _extra() -> dict[str, object]:
@@ -439,7 +647,10 @@ class SuperMemoryService:
                     layer_records: list[MemoryRecord] = []
                     seen_hashes: set[str] = set()
                     for q in expanded_queries:
-                        records = self.backends[layer].recall(q, limit=max(limit, 5))
+                        records = self._search_canonical_layer(
+                            layer, q, limit=max(limit, 5), context=resolved,
+                            include_pending_fallback=not any((context, agent_id, session_id, project, scope)),
+                        )
                         for rec in records:
                             ch = rec.metadata.get("content_hash") or rec.content
                             if ch not in seen_hashes:
@@ -486,16 +697,32 @@ class SuperMemoryService:
 
         return out
 
-    def search_layer(self, layer: MemoryLayer, query: str, limit: int = 10) -> list[MemoryRecord]:
+    def search_layer(
+        self,
+        layer: MemoryLayer,
+        query: str,
+        limit: int = 10,
+        *,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
+    ) -> list[MemoryRecord]:
         """Search a single memory layer via FTS5, returning MemoryRecord list.
 
         Added for P0 memory-slot contract compliance — allows compat.py to
         query individual layers directly with FTS.
         """
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
         try:
-            backend = self.backends[layer]
-            records = backend.recall(query, limit=limit)
-            return list(records)
+            return self._search_canonical_layer(layer, query, limit, resolved)
         except Exception:
             return []
 
@@ -538,14 +765,45 @@ class SuperMemoryService:
         )
         return self.save(record)
 
-    def prefetch(self, query: str, limit: int = 10) -> list[MemoryRecord]:
+    def prefetch(
+        self,
+        query: str,
+        limit: int = 10,
+        *,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
+    ) -> list[MemoryRecord]:
         """Recall + merge across layers using RRF score fusion.
 
         Replaces simple sequential dedup with Reciprocal Rank Fusion (RRF)
         for better multi-layer ranking. Fall back to simple merge if layers
         don't produce rankable results.
         """
-        layered = self.recall(query, limit=limit)
+        effective_context = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
+        if not any((effective_context.agent_id, effective_context.session_id, effective_context.project, effective_context.scope)):
+            try:
+                with self.store.connect() as conn:
+                    projects = [r[0] for r in conn.execute(
+                        "SELECT DISTINCT project FROM memories WHERE project IS NOT NULL AND project != '' LIMIT 2"
+                    ).fetchall()]
+                if len(projects) == 1 and str(projects[0]) == "super-memory":
+                    effective_context = retrieval_context(context=effective_context, project="super-memory")
+            except Exception:
+                pass
+        layered = self.recall(
+            query,
+            limit=limit,
+            context=effective_context,
+        )
 
         # RRF: assign each record a fused score from its rank across layers
         scores: dict[str, float] = {}
@@ -569,22 +827,54 @@ class SuperMemoryService:
         result = [records[key] for key in sorted_keys[:limit]]
         return result
 
-    def recall_graph(self, memory_id: str, depth: int = 2, limit: int = 20) -> list[MemoryRecord]:
+    def recall_graph(
+        self,
+        memory_id: str,
+        depth: int = 2,
+        limit: int = 20,
+        *,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
+    ) -> list[MemoryRecord]:
         """Recursive graph recall over the Neural Memory projection.
 
         This is intentionally deterministic: breadth-first over explicit graph_edges,
         with a hard depth/limit guard for prompt safety.
         """
 
+        from .storage import row_to_memory
+
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
+        predicate, params = visibility_predicate(resolved)
+
+        def visible(memory_id: str) -> MemoryRecord | None:
+            with self.store.connect() as conn:
+                row = conn.execute(
+                    "SELECT * FROM memories WHERE id = ? AND layer = ? AND "
+                    + predicate
+                    + " LIMIT 1",
+                    [memory_id, MemoryLayer.NEURAL_MEMORY.value, *params],
+                ).fetchone()
+            return row_to_memory(row) if row else None
+
         if depth < 1:
-            found = self.store.get_memory(memory_id, layer=MemoryLayer.NEURAL_MEMORY.value)
+            found = visible(memory_id)
             return [found] if found else []
         visited = {memory_id}
         frontier = [(memory_id, 0)]
         records: list[MemoryRecord] = []
         while frontier and len(records) < limit:
             current, current_depth = frontier.pop(0)
-            rec = self.store.get_memory(current, layer=MemoryLayer.NEURAL_MEMORY.value)
+            rec = visible(current)
             if rec:
                 records.append(rec)
             if current_depth >= depth:

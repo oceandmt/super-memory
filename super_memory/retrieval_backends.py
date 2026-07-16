@@ -13,11 +13,10 @@ Backends:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Protocol
 
 from .models import MemoryRecord, SuperMemoryConfig
 from .storage import SuperMemoryStore, row_to_memory
@@ -46,6 +45,94 @@ class RetrievalHit:
     backend: str
 
 
+@dataclass(frozen=True)
+class RetrievalContext:
+    """Caller identity used by every canonical-memory hydration query.
+
+    Private scopes fail closed when their required context is absent:
+    session requires agent + session, agent-local requires agent, and project
+    requires project. Shared and cross-agent memories are globally visible.
+    ``scope`` is an optional caller-requested narrowing, not an authorization
+    bypass.
+    """
+
+    agent_id: str | None = None
+    session_id: str | None = None
+    project: str | None = None
+    scope: str | None = None
+
+
+def retrieval_context(
+    *,
+    context: RetrievalContext | None = None,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+) -> RetrievalContext:
+    """Build context while preserving the legacy keyword argument contract."""
+    base = context or RetrievalContext()
+    return RetrievalContext(
+        agent_id=agent_id if agent_id is not None else base.agent_id,
+        session_id=session_id if session_id is not None else base.session_id,
+        project=project if project is not None else base.project,
+        scope=scope if scope is not None else base.scope,
+    )
+
+
+def visibility_predicate(
+    context: RetrievalContext,
+    *,
+    alias: str | None = None,
+) -> tuple[str, list[object]]:
+    """Return the mandatory alive + scope visibility SQL predicate.
+
+    The predicate is composed only from fixed SQL fragments; all caller data
+    is bound as parameters. JSON ``false`` and numeric ``0`` are alive, while
+    JSON ``true`` and numeric ``1`` are deleted. Malformed non-boolean values
+    fail closed rather than accidentally becoming recallable.
+    """
+    prefix = f"{alias}." if alias else ""
+    metadata = f"{prefix}metadata_json"
+    scope_column = f"{prefix}scope"
+    agent_column = f"{prefix}agent_id"
+    session_column = f"{prefix}session_id"
+    project_column = f"{prefix}project"
+
+    clauses = [f"COALESCE(json_extract({metadata}, '$.soft_deleted'), 0) = 0"]
+    visible = [f"{scope_column} IN ('shared', 'cross-agent')"]
+    params: list[object] = []
+    if context.project:
+        visible.append(f"({scope_column} = 'project' AND {project_column} = ?)")
+        params.append(context.project)
+    if context.agent_id:
+        visible.append(f"({scope_column} = 'agent-local' AND {agent_column} = ?)")
+        params.append(context.agent_id)
+    if context.agent_id and context.session_id:
+        visible.append(f"({scope_column} = 'session' AND {agent_column} = ? AND {session_column} = ?)")
+        params.extend([context.agent_id, context.session_id])
+    clauses.append("(" + " OR ".join(visible) + ")")
+    if context.scope:
+        clauses.append(f"{scope_column} = ?")
+        params.append(context.scope)
+    return " AND ".join(clauses), params
+
+
+def _visible_memory_row(
+    store: SuperMemoryStore,
+    memory_id: str,
+    context: RetrievalContext,
+):
+    predicate, params = visibility_predicate(context)
+    sql = (
+        "SELECT * FROM memories WHERE id = ? AND "
+        + predicate
+        + " ORDER BY CASE WHEN layer = 'workspace_markdown' THEN 0 ELSE 1 END, layer LIMIT 1"
+    )
+    with store.connect() as conn:
+        return conn.execute(sql, [memory_id, *params]).fetchone()
+
+
 class RetrievalBackend(Protocol):
     name: str
 
@@ -57,6 +144,8 @@ class RetrievalBackend(Protocol):
         agent_id: str | None = None,
         session_id: str | None = None,
         project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
     ) -> list[RetrievalHit]: ...
 
 
@@ -81,22 +170,22 @@ class SQLiteExactBackend:
         agent_id: str | None = None,
         session_id: str | None = None,
         project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
     ) -> list[RetrievalHit]:
-        where = ["json_extract(metadata_json, '$.soft_deleted') IS NULL"]
-        params: list[object] = []
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
+        predicate, params = visibility_predicate(resolved)
+        where = [predicate]
         if query:
             where.append("(content LIKE ? OR tags_json LIKE ?)")
             like = "%" + query + "%"
             params.extend([like, like])
-        if agent_id:
-            where.append("agent_id = ?")
-            params.append(agent_id)
-        if session_id:
-            where.append("session_id = ?")
-            params.append(session_id)
-        if project:
-            where.append("project = ?")
-            params.append(project)
         params.append(limit)
         sql = "SELECT * FROM memories WHERE " + " AND ".join(where) + " ORDER BY created_at DESC LIMIT ?"
         with self.store.connect() as conn:
@@ -132,25 +221,33 @@ class ChromaBackend:
         agent_id: str | None = None,
         session_id: str | None = None,
         project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
     ) -> list[RetrievalHit]:
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
         try:
             results = self.collection.query(query_texts=[query], n_results=limit)
             if not results or not results.get("ids"):
-                return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+                return self.fallback.search(query, limit=limit, context=resolved)
             ids = results["ids"][0] if results.get("ids") else []
             distances = results["distances"][0] if results.get("distances") else []
             hits: list[RetrievalHit] = []
             for i, mem_id in enumerate(ids):
                 dist = distances[i] if i < len(distances) else 1.0
                 score = 1.0 / (1.0 + float(dist))
-                with self.fallback.store.connect() as conn:
-                    row = conn.execute("SELECT * FROM memories WHERE id = ?", (mem_id,)).fetchone()
-                    if row:
-                        hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
+                row = _visible_memory_row(self.fallback.store, str(mem_id), resolved)
+                if row:
+                    hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
             return hits
         except Exception as exc:
             logger.warning("Chroma search failed, falling back to sqlite_exact: %s", exc)
-            return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+            return self.fallback.search(query, limit=limit, context=resolved)
 
 
 class QdrantBackend:
@@ -175,6 +272,7 @@ class QdrantBackend:
     def _init_collection(self):
         from qdrant_client.http.exceptions import UnexpectedResponse
         from qdrant_client.models import Distance, VectorParams
+
         try:
             self.client.get_collection(self.collection_name)
         except (UnexpectedResponse, Exception):
@@ -194,12 +292,22 @@ class QdrantBackend:
         agent_id: str | None = None,
         session_id: str | None = None,
         project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
     ) -> list[RetrievalHit]:
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
         try:
             from .vector import embed_text
+
             vector = embed_text(query, config=self.config)
             if vector is None:
-                return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+                return self.fallback.search(query, limit=limit, context=resolved)
             results = self.client.search(
                 collection_name=self.collection_name,
                 query_vector=vector,
@@ -209,14 +317,13 @@ class QdrantBackend:
             for scored in results:
                 mem_id = str(scored.id)
                 score = float(scored.score)
-                with self.fallback.store.connect() as conn:
-                    row = conn.execute("SELECT * FROM memories WHERE id = ?", (mem_id,)).fetchone()
-                    if row:
-                        hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
+                row = _visible_memory_row(self.fallback.store, mem_id, resolved)
+                if row:
+                    hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
             return hits
         except Exception as exc:
             logger.warning("Qdrant search failed, falling back to sqlite_exact: %s", exc)
-            return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+            return self.fallback.search(query, limit=limit, context=resolved)
 
 
 class PGVectorBackend:
@@ -254,12 +361,22 @@ class PGVectorBackend:
         agent_id: str | None = None,
         session_id: str | None = None,
         project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
     ) -> list[RetrievalHit]:
+        resolved = retrieval_context(
+            context=context,
+            agent_id=agent_id,
+            session_id=session_id,
+            project=project,
+            scope=scope,
+        )
         try:
             from .vector import embed_text
+
             vector = embed_text(query, config=self.config)
             if vector is None:
-                return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+                return self.fallback.search(query, limit=limit, context=resolved)
             vec_str = json.dumps(vector)
             with self.conn.cursor() as cur:
                 cur.execute(
@@ -269,14 +386,13 @@ class PGVectorBackend:
                 hits: list[RetrievalHit] = []
                 for mem_id, dist in cur:
                     score = 1.0 / (1.0 + float(dist))
-                    with self.fallback.store.connect() as conn:
-                        row = conn.execute("SELECT * FROM memories WHERE id = ?", (mem_id,)).fetchone()
-                        if row:
-                            hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
+                    row = _visible_memory_row(self.fallback.store, str(mem_id), resolved)
+                    if row:
+                        hits.append(RetrievalHit(memory=row_to_memory(row), score=score, backend=self.name))
                 return hits
         except Exception as exc:
             logger.warning("PGVector search failed, falling back to sqlite_exact: %s", exc)
-            return self.fallback.search(query, limit=limit, agent_id=agent_id, session_id=session_id, project=project)
+            return self.fallback.search(query, limit=limit, context=resolved)
 
 
 class DisabledVectorBackend:
@@ -285,7 +401,17 @@ class DisabledVectorBackend:
     def __init__(self, config: SuperMemoryConfig):
         self.config = config
 
-    def search(self, query: str, *, limit: int = 10, agent_id: str | None = None, session_id: str | None = None, project: str | None = None) -> list[RetrievalHit]:
+    def search(
+        self,
+        query: str,
+        *,
+        limit: int = 10,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+        project: str | None = None,
+        scope: str | None = None,
+        context: RetrievalContext | None = None,
+    ) -> list[RetrievalHit]:
         return []
 
 
@@ -299,6 +425,7 @@ register_backend("disabled", DisabledVectorBackend)
 
 
 # ── Factory ────────────────────────────────────────────────────────
+
 
 def get_retrieval_backend(name: str | None, config: SuperMemoryConfig) -> RetrievalBackend:
     """Get a retrieval backend by name.

@@ -19,8 +19,12 @@ WARN=0
 QUICK=false
 CHECK_API=false
 
-# Auto-detect Python from venv
-if [ -f "$REPO_ROOT/.venv_test/bin/python3" ]; then
+# Respect an explicit interpreter first, then the activated environment.
+if [ -n "${PYTHON:-}" ]; then
+    :
+elif [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PYTHON="$VIRTUAL_ENV/bin/python"
+elif [ -f "$REPO_ROOT/.venv_test/bin/python3" ]; then
     PYTHON="$REPO_ROOT/.venv_test/bin/python3"
 elif [ -f "$REPO_ROOT/.venv/bin/python3" ]; then
     PYTHON="$REPO_ROOT/.venv/bin/python3"
@@ -42,11 +46,16 @@ yellow() { echo -e "\033[33m$1\033[0m"; }
 
 check() {
     local label="$1"; shift
-    if "$@" >/dev/null 2>&1; then
+    local log
+    log="$(mktemp "${TMPDIR:-/tmp}/sm-qualify.XXXXXX.log")"
+    if "$@" >"$log" 2>&1; then
         green "  ✅ $label"
         PASS=$((PASS + 1))
+        rm -f "$log"
     else
         red "  ❌ $label"
+        cat "$log" >&2
+        echo "     diagnostic log: $log" >&2
         FAIL=$((FAIL + 1))
     fi
 }
@@ -136,11 +145,14 @@ echo ""
 # ── Test suite (quick) ──────────────────────────────────────────────────
 echo "🧪 Test Suite"
 cd "$REPO_ROOT"
-if $PYTHON -m pytest tests/test_super_memory.py tests/test_promotion.py -x --tb=short -q >/tmp/sm-qualify-test.log 2>&1; then
+TEST_LOG="$(mktemp "${TMPDIR:-/tmp}/sm-qualify-tests.XXXXXX.log")"
+if $PYTHON -m pytest tests/test_super_memory.py tests/test_promotion.py -x --tb=short -q >"$TEST_LOG" 2>&1; then
     green "  ✅ Core tests pass"
     PASS=$((PASS + 1))
 else
     red "  ❌ Core tests failed"
+    cat "$TEST_LOG" >&2
+    echo "     diagnostic log: $TEST_LOG" >&2
     FAIL=$((FAIL + 1))
 fi
 echo ""

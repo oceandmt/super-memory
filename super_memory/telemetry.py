@@ -191,3 +191,15 @@ def telemetry_history(kind: str | None = None, limit: int = 100, config_path=Non
         except Exception: d['detail']={}
         events.append(d)
     return {'ok': True, 'events': events}
+
+def operational_slo(days: int = 1, limit: int = 10000, config_path=None):
+    """Return the bounded operational SLO view over local telemetry/storage."""
+    from pathlib import Path
+    from .operational_slo import snapshot
+    cfg = load_config(config_path)
+    return snapshot(
+        Path(cfg.workspace_root) / cfg.sqlite_path,
+        vector_path=Path(cfg.workspace_root) / "data" / "vectors.sqlite3",
+        window_hours=max(1, min(int(days), 30)) * 24,
+        limit=limit,
+    )

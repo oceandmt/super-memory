@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -28,6 +30,13 @@ def ensure_schema(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_maintenance_jobs_status ON maintenance_jobs(status, job_type, created_at);
         """
     )
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(maintenance_jobs)")}
+    # Static statements keep identifier provenance auditable; SQLite cannot
+    # parameterize identifiers and these are the only supported lease columns.
+    if "lease_owner" not in columns:
+        conn.execute("ALTER TABLE maintenance_jobs ADD COLUMN lease_owner TEXT")
+    if "lease_expires_at" not in columns:
+        conn.execute("ALTER TABLE maintenance_jobs ADD COLUMN lease_expires_at TEXT")
 
 
 def enqueue(job_type: str, args: dict[str, Any] | None = None, config_path: str | None = None) -> dict[str, Any]:
@@ -73,30 +82,47 @@ def _run(job_type: str, args: dict[str, Any], config_path: str | None = None) ->
     return {"ok": False, "error": f"unknown job_type: {job_type}"}
 
 
-def process_jobs(limit: int = 5, config_path: str | None = None) -> dict[str, Any]:
+def process_jobs(limit: int = 5, config_path: str | None = None, *, lease_seconds: int = 300) -> dict[str, Any]:
     cfg = load_config(config_path)
     store = SuperMemoryStore(cfg)
     processed = []
+    owner = f"{os.getpid()}-{uuid.uuid4().hex}"
+    now = datetime.now(timezone.utc)
+    expires = datetime.fromtimestamp(now.timestamp() + max(1, lease_seconds), timezone.utc).isoformat()
+    # Claim atomically. Expired running leases are eligible after worker death;
+    # the conditional UPDATE prevents duplicate delivery between workers.
     with store.connect() as conn:
         ensure_schema(conn)
-        jobs = conn.execute("SELECT * FROM maintenance_jobs WHERE status IN ('pending','retry') ORDER BY created_at ASC LIMIT ?", (limit,)).fetchall()
+        candidates = conn.execute(
+            "SELECT id FROM maintenance_jobs WHERE status IN ('pending','retry') "
+            "OR (status='running' AND lease_expires_at < ?) ORDER BY created_at ASC LIMIT ?",
+            (now.isoformat(), limit),
+        ).fetchall()
+        claimed = []
+        for candidate in candidates:
+            changed = conn.execute(
+                "UPDATE maintenance_jobs SET status='running', lease_owner=?, lease_expires_at=?, "
+                "started_at=COALESCE(started_at,?), updated_at=? WHERE id=? AND "
+                "(status IN ('pending','retry') OR (status='running' AND lease_expires_at < ?))",
+                (owner, expires, now.isoformat(), now.isoformat(), candidate["id"], now.isoformat()),
+            ).rowcount
+            if changed:
+                claimed.append(candidate["id"])
+        jobs = [conn.execute("SELECT * FROM maintenance_jobs WHERE id=?", (jid,)).fetchone() for jid in claimed]
     for job in jobs:
-        now = datetime.now(timezone.utc).isoformat()
-        with store.connect() as conn:
-            conn.execute("UPDATE maintenance_jobs SET status='running', started_at=COALESCE(started_at,?), updated_at=? WHERE id=?", (now, now, job["id"]))
         try:
             args = json.loads(job["args_json"] or "{}")
             result = _run(job["job_type"], args, config_path=config_path)
             done = datetime.now(timezone.utc).isoformat()
             with store.connect() as conn:
-                conn.execute("UPDATE maintenance_jobs SET status='done', result_json=?, completed_at=?, updated_at=?, error=NULL WHERE id=?", (json.dumps(result, ensure_ascii=False), done, done, job["id"]))
+                conn.execute("UPDATE maintenance_jobs SET status='done', result_json=?, completed_at=?, updated_at=?, error=NULL, lease_owner=NULL, lease_expires_at=NULL WHERE id=? AND lease_owner=?", (json.dumps(result, ensure_ascii=False), done, done, job["id"], owner))
             processed.append({"job_id": job["id"], "status": "done"})
         except Exception as exc:
             done = datetime.now(timezone.utc).isoformat()
             attempts = int(job["attempts"] or 0) + 1
             st = "failed" if attempts >= 3 else "retry"
             with store.connect() as conn:
-                conn.execute("UPDATE maintenance_jobs SET status=?, attempts=?, error=?, updated_at=? WHERE id=?", (st, attempts, f"{type(exc).__name__}: {exc}", done, job["id"]))
+                conn.execute("UPDATE maintenance_jobs SET status=?, attempts=?, error=?, updated_at=?, lease_owner=NULL, lease_expires_at=NULL WHERE id=? AND lease_owner=?", (st, attempts, f"{type(exc).__name__}: {exc}", done, job["id"], owner))
             processed.append({"job_id": job["id"], "status": st})
     return {"ok": True, "processed": len(processed), "jobs": processed}
 

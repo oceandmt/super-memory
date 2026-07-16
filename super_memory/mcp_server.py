@@ -7,7 +7,7 @@ import sys
 import traceback
 from typing import Any, Callable
 
-from . import bridge
+from . import __version__, bridge
 from .config import load_config
 from .mempalace.tools import MemPalaceTools, MEMPALACE_TOOLS
 from .honcho.tools import HonchoTools, HONCHO_TOOLS
@@ -21,12 +21,10 @@ from .hybrid_recall import HybridRecall, HYBRID_RECALL_TOOLS
 from .claim_extractor import ClaimExtractor, CLAIM_EXTRACTOR_TOOLS
 from .session_archive import SessionArchive, SESSION_ARCHIVE_TOOLS
 from .reports import Reports, REPORTS_TOOLS
-from .execution_tools_definitions import EXECUTION_TOOLS
-from . import mcp_execution_tools
 
 JSON = dict[str, Any]
 
-SERVER_INFO = {"name": "super-memory", "version": "0.1.0"}
+SERVER_INFO = {"name": "super-memory", "version": __version__}
 PROTOCOL_VERSION = "2024-11-05"
 MCP_PROFILE = "normal"
 
@@ -102,13 +100,6 @@ NORMAL_TOOLS = {
     # Micro-gap 6: Read-only Recovery
     "super_memory_recovery_status",
     "super_memory_reset_recovery_state",
-    # Execution Patterns (v2.4.0)
-    "super_memory_route_task",
-    "super_memory_create_execution_contract",
-    "super_memory_create_plan",
-    "super_memory_update_plan_progress",
-    "super_memory_recover_incomplete_tasks",
-    "super_memory_detect_memory_loss",
 }
 ADMIN_TOOLS = NORMAL_TOOLS | {"super_memory_promote"}
 ADVANCED_TOOLS = {
@@ -366,6 +357,22 @@ def _schema(properties: JSON, required: list[str] | None = None) -> JSON:
     return {"type": "object", "properties": properties, "required": required or []}
 
 
+CALLER_CONTEXT_PROPERTIES: JSON = {
+    "agent_id": {"type": "string"},
+    "session_id": {"type": "string"},
+    "project": {"type": "string"},
+    "scope": {"type": "string"},
+}
+
+
+def _caller_context(args: JSON) -> dict[str, str]:
+    return {
+        key: value
+        for key in CALLER_CONTEXT_PROPERTIES
+        if (value := args.get(key)) is not None
+    }
+
+
 TOOLS: dict[str, JSON] = {
     "super_memory_remember": {
         "description": "Save a memory through Super Memory canonical-first layer order.",
@@ -398,7 +405,8 @@ TOOLS: dict[str, JSON] = {
     },
     "super_memory_show": {
         "description": "Show a memory by id across derived Super Memory layers without changing canonical markdown.",
-        "inputSchema": _schema({"memory_id": {"type": "string"}, "config_path": {"type": "string"}}, ["memory_id"]),
+        "inputSchema": _schema({"memory_id": {"type": "string"}, **CALLER_CONTEXT_PROPERTIES,
+                "config_path": {"type": "string"}}, ["memory_id"]),
     },
     "super_memory_context": {
         "description": "Get recent or query-relevant Super Memory context from the merged layer view.",
@@ -406,6 +414,7 @@ TOOLS: dict[str, JSON] = {
             {
                 "query": {"type": "string", "default": ""},
                 "limit": {"type": "integer", "default": 10},
+                **CALLER_CONTEXT_PROPERTIES,
                 "config_path": {"type": "string"},
             }
         ),
@@ -482,6 +491,7 @@ TOOLS: dict[str, JSON] = {
             {
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 10},
+                **CALLER_CONTEXT_PROPERTIES,
                 "config_path": {"type": "string"},
             },
             ["query"],
@@ -493,6 +503,7 @@ TOOLS: dict[str, JSON] = {
             {
                 "query": {"type": "string"},
                 "limit": {"type": "integer", "default": 10},
+                **CALLER_CONTEXT_PROPERTIES,
                 "config_path": {"type": "string"},
             },
             ["query"],
@@ -520,6 +531,7 @@ TOOLS: dict[str, JSON] = {
                 "max_results": {"type": "integer", "default": 5},
                 "min_score": {"type": "number", "default": 0},
                 "corpus": {"type": "string", "default": "all"},
+                **CALLER_CONTEXT_PROPERTIES,
                 "config_path": {"type": "string"},
             },
             ["query"],
@@ -533,6 +545,7 @@ TOOLS: dict[str, JSON] = {
                 "from_line": {"type": "integer", "default": 1},
                 "lines": {"type": "integer", "default": 20},
                 "corpus": {"type": "string", "default": "all"},
+                **CALLER_CONTEXT_PROPERTIES,
                 "config_path": {"type": "string"},
             },
             ["path"],
@@ -822,7 +835,7 @@ TOOLS: dict[str, JSON] = {
     },
 }
 
-for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS + EXECUTION_TOOLS:
+for _tool in MEMPALACE_TOOLS + HONCHO_TOOLS + CROSS_AGENT_TOOLS + SESSION_TIMELINE_TOOLS + CAPTURE_HOOK_TOOLS + HANDOFF_TOOLS + SYNTHESIS_TOOLS + HOOKS_TOOLS + HYBRID_RECALL_TOOLS + CLAIM_EXTRACTOR_TOOLS + SESSION_ARCHIVE_TOOLS + REPORTS_TOOLS:
     TOOLS[_tool["name"]] = {
         "description": _tool["description"],
         "inputSchema": _tool["inputSchema"],
@@ -876,7 +889,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_hypothesis_create", "Create a deterministic cognitive hypothesis.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.5}, "tags": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, ["content"]),
     ("super_memory_hypothesis_get", "Get hypothesis detail with evidence/predictions.", {"hypothesis_id": {"type": "string"}, "config_path": {"type": "string"}}, ["hypothesis_id"]),
     ("super_memory_hypothesis_list", "List hypotheses.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
-    ("super_memory_evidence_add", "Add evidence for/against a hypothesis.", {"hypothesis_id": {"type": "string"}, "content": {"type": "string"}, "direction": {"type": "string", "default": "for"}, "weight": {"type": "number", "default": 0.5}, "config_path": {"type": "string"}}, ["hypothesis_id", "content"]),
+    ("super_memory_evidence_add", "Add evidence for/against a hypothesis with mandatory source provenance.", {"hypothesis_id": {"type": "string"}, "content": {"type": "string"}, "direction": {"type": "string", "default": "for"}, "weight": {"type": "number", "default": 0.5}, "source_id": {"type": "string"}, "source_type": {"type": "string"}, "source_hash": {"type": "string"}, "source_revision": {"type": "string"}, "source_trust": {"type": "number"}, "config_path": {"type": "string"}}, ["hypothesis_id", "content", "source_id"]),
     ("super_memory_prediction_create", "Create a falsifiable prediction.", {"content": {"type": "string"}, "confidence": {"type": "number", "default": 0.7}, "hypothesis_id": {"type": "string"}, "deadline": {"type": "string"}, "config_path": {"type": "string"}}, ["content"]),
     ("super_memory_prediction_list", "List predictions.", {"status": {"type": "string"}, "limit": {"type": "integer", "default": 20}, "config_path": {"type": "string"}}, []),
     ("super_memory_verify_prediction", "Verify a prediction as correct/wrong.", {"prediction_id": {"type": "string"}, "outcome": {"type": "string"}, "content": {"type": "string"}, "config_path": {"type": "string"}}, ["prediction_id", "outcome"]),
@@ -998,9 +1011,18 @@ def _call_tool(name: str, args: JSON) -> Any:
         config_path = args.pop("config_path", None)
         return bridge.remember_batch(args["memories"], config_path=config_path)
     if name == "super_memory_show":
-        return bridge.show(args["memory_id"], config_path=args.get("config_path"))
+        return bridge.show(
+            args["memory_id"],
+            config_path=args.get("config_path"),
+            **_caller_context(args),
+        )
     if name == "super_memory_context":
-        return bridge.context(args.get("query", ""), limit=args.get("limit", 10), config_path=args.get("config_path"))
+        return bridge.context(
+            args.get("query", ""),
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+            **_caller_context(args),
+        )
     if name == "super_memory_todo":
         return bridge.todo(args["task"], priority=args.get("priority", 5), config_path=args.get("config_path"))
     if name == "super_memory_auto":
@@ -1026,9 +1048,19 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_normalize_memory":
         return bridge.normalize_memory_payload(args["memory"], auto_capture=args.get("auto_capture", False))
     if name == "super_memory_recall":
-        return bridge.recall(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
+        return bridge.recall(
+            args["query"],
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+            **_caller_context(args),
+        )
     if name == "super_memory_prefetch":
-        return bridge.prefetch(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
+        return bridge.prefetch(
+            args["query"],
+            limit=args.get("limit", 10),
+            config_path=args.get("config_path"),
+            **_caller_context(args),
+        )
     if name == "super_memory_sync_turn":
         config_path = args.pop("config_path", None)
         return bridge.sync_turn(args, config_path=config_path)
@@ -1039,6 +1071,7 @@ def _call_tool(name: str, args: JSON) -> Any:
             min_score=args.get("min_score", 0.0),
             corpus=args.get("corpus", "all"),
             config_path=args.get("config_path"),
+            **_caller_context(args),
         )
     if name == "super_memory_memory_get":
         return bridge.memory_get(
@@ -1047,6 +1080,7 @@ def _call_tool(name: str, args: JSON) -> Any:
             lines=args.get("lines", 20),
             corpus=args.get("corpus", "all"),
             config_path=args.get("config_path"),
+            **_caller_context(args),
         )
     if name == "super_memory_promote":
         return bridge.promote(args["memory_id"], config_path=args.get("config_path"))
@@ -1295,7 +1329,7 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_hypothesis_list":
         return bridge.hypothesis_list(status=args.get("status"), limit=args.get("limit", 20), config_path=args.get("config_path"))
     if name == "super_memory_evidence_add":
-        return bridge.evidence_add(args["hypothesis_id"], args["content"], direction=args.get("direction", "for"), weight=args.get("weight", 0.5), config_path=args.get("config_path"))
+        return bridge.evidence_add(args["hypothesis_id"], args["content"], direction=args.get("direction", "for"), weight=args.get("weight", 0.5), config_path=args.get("config_path"), source_id=args.get("source_id"), source_type=args.get("source_type"), source_hash=args.get("source_hash"), source_revision=args.get("source_revision"), source_trust=args.get("source_trust"))
     if name == "super_memory_prediction_create":
         return bridge.prediction_create(args["content"], confidence=args.get("confidence", 0.7), hypothesis_id=args.get("hypothesis_id"), deadline=args.get("deadline"), config_path=args.get("config_path"))
     if name == "super_memory_prediction_list":
@@ -1429,7 +1463,9 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.dream_full_cycle(limit=args.get("limit", 200), dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
     # ── Telemetry (P3) ───────────────────────────────────────
     if name == "super_memory_telemetry_record_event":
-        return bridge.telemetry_record_event(args.get("kind"), agent_id=args.get("agent_id", "lucas"), tool_name=args.get("tool_name"), duration_ms=args.get("duration_ms"), success=args.get("success", True), detail=args.get("detail"), config_path=args.get("config_path"))
+        if not args.get("kind"):
+            raise ValueError("kind is required")
+        return bridge.telemetry_record_event(args["kind"], agent_id=args.get("agent_id", "lucas"), tool_name=args.get("tool_name"), duration_ms=args.get("duration_ms"), success=args.get("success", True), detail=args.get("detail"), config_path=args.get("config_path"))
     if name == "super_memory_telemetry_stats":
         return bridge.telemetry_stats(days=args.get("days", 7), config_path=args.get("config_path"))
     if name == "super_memory_telemetry_aggregate_daily":
@@ -1473,38 +1509,64 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.issue_memory_update(title=args.get("title", ""), status=args.get("status", "open"), cause=args.get("cause", ""), fix=args.get("fix", ""), verification=args.get("verification", ""), config_path=args.get("config_path"))
     # ── P0: MemoryEnvelope ───────────────────────────────────
     if name == "super_memory_build_envelope":
-        return bridge.build_envelope(args.get("content"), memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
+        if not args.get("content"):
+            raise ValueError("content is required")
+        return bridge.build_envelope(args["content"], memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
     if name == "super_memory_remember_through_envelope":
-        return bridge.remember_through_envelope(args.get("content"), memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
+        if not args.get("content"):
+            raise ValueError("content is required")
+        return bridge.remember_through_envelope(args["content"], memory_type=args.get("memory_type"), scope=args.get("scope"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), tags=args.get("tags"), source_adapter=args.get("source_adapter", "direct"), trust_score=args.get("trust_score"), lifecycle_tier=args.get("lifecycle_tier", "warm"), auto_pin=args.get("auto_pin", False), config_path=args.get("config_path"))
     # ── P0: SourceAdapter ────────────────────────────────────
     if name == "super_memory_ingest_through_adapter":
-        return bridge.ingest_through_adapter(args.get("source_path"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
+        if not args.get("source_path"):
+            raise ValueError("source_path is required")
+        return bridge.ingest_through_adapter(args["source_path"], agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
     if name == "super_memory_list_source_adapters":
         return bridge.list_source_adapters(config_path=args.get("config_path"))
     if name == "super_memory_ingest_and_remember":
-        return bridge.ingest_and_remember(args.get("source_path"), agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
+        if not args.get("source_path"):
+            raise ValueError("source_path is required")
+        return bridge.ingest_and_remember(args["source_path"], agent_id=args.get("agent_id", "lucas"), session_id=args.get("session_id"), project=args.get("project"), config_path=args.get("config_path"))
     # ── P0: Semantic Closets ─────────────────────────────────
     if name == "super_memory_build_closets":
         return bridge.build_closets_for_memory(args.get("memory_id"), config_path=args.get("config_path"))
     if name == "super_memory_rebuild_all_closets":
         return bridge.rebuild_all_closets(limit=args.get("limit", 500), config_path=args.get("config_path"))
     if name == "super_memory_search_closets":
-        return bridge.search_closets(args.get("query"), limit=args.get("limit", 10), config_path=args.get("config_path"))
+        if not args.get("query"):
+            raise ValueError("query is required")
+        return bridge.search_closets(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"))
     if name == "super_memory_hydrate_drawers":
         return bridge.hydrate_drawers(drawer_ids=args.get("drawer_ids"), closet_ids=args.get("closet_ids"), config_path=args.get("config_path"))
     if name == "super_memory_closet_stats":
         return bridge.closet_stats(config_path=args.get("config_path"))
     # ── P0: Recall Arbitration v3 ────────────────────────────
     if name == "super_memory_recall_arbitrate_v3":
-        return bridge.recall_arbitrate_v3(args.get("query"), limit=args.get("limit", 10), config_path=args.get("config_path"), min_score=args.get("min_score", 0.0))
+        if not args.get("query"):
+            raise ValueError("query is required")
+        return bridge.recall_arbitrate_v3(args["query"], limit=args.get("limit", 10), config_path=args.get("config_path"), min_score=args.get("min_score", 0.0))
     if name == "super_memory_recall_quick":
-        return bridge.recall_quick(args.get("query"), limit=args.get("limit", 5), config_path=args.get("config_path"))
+        if not args.get("query"):
+            raise ValueError("query is required")
+        return bridge.recall_quick(args["query"], limit=args.get("limit", 5), config_path=args.get("config_path"))
     # ── P0: Recall Feedback Loop ─────────────────────────────
     if name == "super_memory_recall_record_event":
+        if not args.get('query'):
+            raise ValueError("query is required")
+        if args.get('selected_memory_ids') is None:
+            raise ValueError("selected_memory_ids is required")
         return bridge.recall_record_event(args.get("query"), args.get("selected_memory_ids", []), shown_to_user=args.get("shown_to_user", True), config_path=args.get("config_path"))
     if name == "super_memory_recall_record_feedback":
+        if not args.get('recall_event_id'):
+            raise ValueError("recall_event_id is required")
+        if not args.get('memory_id'):
+            raise ValueError("memory_id is required")
+        if not args.get('outcome'):
+            raise ValueError("outcome is required")
         return bridge.recall_record_feedback(args.get("recall_event_id"), args.get("memory_id"), args.get("outcome"), confidence=args.get("confidence", 1.0), notes=args.get("notes", ""), config_path=args.get("config_path"))
     if name == "super_memory_recall_record_correction":
+        if not args.get('query'):
+            raise ValueError("query is required")
         return bridge.recall_record_correction(args.get("query"), args.get("memory_id", ""), wrong_answer=args.get("wrong_answer", ""), expected_answer=args.get("expected_answer", ""), notes=args.get("notes", ""), config_path=args.get("config_path"))
     if name == "super_memory_recall_feedback_stats":
         return bridge.recall_feedback_stats(config_path=args.get("config_path"))
@@ -1524,6 +1586,9 @@ def _call_tool(name: str, args: JSON) -> Any:
     if name == "super_memory_full_drift_repair":
         return bridge.full_drift_repair(dry_run=args.get("dry_run", True), config_path=args.get("config_path"))
     if name == "super_memory_register_projection":
+        for required in ("table_name", "memory_id", "projection_key"):
+            if not args.get(required):
+                raise ValueError(f"{required} is required")
         return bridge.register_projection(table_name=args.get("table_name"), memory_id=args.get("memory_id"), projection_key=args.get("projection_key"), config_path=args.get("config_path"))
     # ── P2: Adapter-driven Watcher ───────────────────────────
     if name == "super_memory_adapter_scan_once":
@@ -1539,7 +1604,9 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.track_source(memory_id=args.get("memory_id"), file_path=args.get("file_path"), line_start=args.get("line_start", 0), config_path=args.get("config_path"))
     # ── P2: Agentic Dialectic Mode ───────────────────────────
     if name == "super_memory_dialectic_answer":
-        return bridge.dialectic_answer(query=args.get("query"), recall_result=args.get("recall_result"), mode=args.get("mode", "format"), config_path=args.get("config_path"))
+        if not args.get("query"):
+            raise ValueError("query is required")
+        return bridge.dialectic_answer(query=args["query"], recall_result=args.get("recall_result"), mode=args.get("mode", "format"), config_path=args.get("config_path"))
     # ── P2: Self-Education Curriculum ────────────────────────
     if name == "super_memory_analyze_recall_failures":
         return bridge.analyze_recall_failures(config_path=args.get("config_path"))
@@ -1552,46 +1619,6 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
     if name == "super_memory_edit":
         return bridge.edit(args.get("memory_id"), content=args.get("content"), type=args.get("type"), priority=args.get("priority"), tier=args.get("tier"), config_path=args.get("config_path"))
-    
-    # ── Execution Patterns (v2.4.0) ──────────────────────────
-    if name == "super_memory_route_task":
-        return mcp_execution_tools.route_task(
-            duration_min=args["duration_min"],
-            steps=args["steps"],
-            files=args.get("files", 0),
-            complexity=args.get("complexity", "medium")
-        )
-    if name == "super_memory_create_execution_contract":
-        return {"contract_file": mcp_execution_tools.create_execution_contract(
-            task=args["task"],
-            mode=args["mode"],
-            steps=args["steps"],
-            estimated_time=args["estimated_time"],
-            checkpoints=args["checkpoints"],
-            auto_continue=args.get("auto_continue", True)
-        )}
-    if name == "super_memory_create_plan":
-        return {"plan_file": mcp_execution_tools.create_plan_file(
-            task_description=args["task_description"],
-            steps=args["steps"],
-            mode=args["mode"],
-            estimated_time=args["estimated_time"],
-            session_id=args.get("session_id")
-        )}
-    if name == "super_memory_update_plan_progress":
-        success = mcp_execution_tools.update_plan_progress(
-            plan_file=args["plan_file"],
-            step_index=args["step_index"],
-            status=args["status"]
-        )
-        return {"success": success}
-    if name == "super_memory_recover_incomplete_tasks":
-        return {"incomplete_tasks": mcp_execution_tools.recover_incomplete_tasks(
-            max_age_hours=args.get("max_age_hours", 24),
-            limit=args.get("limit", 10)
-        )}
-    if name == "super_memory_detect_memory_loss":
-        return mcp_execution_tools.detect_memory_loss()
 
     raise ValueError(f"unknown tool: {name}")
 

@@ -45,8 +45,10 @@ class HookManager(DBMixin):
             }
 
         with traced("hooks.post_turn_capture", extra=_extra):
-            self.ensure_tables()
+            # HookManager initialization owns schema setup; do not recreate FTS
+            # schema on each concurrent turn.
             hook = CaptureHook(self.config)
+            hook._tables_ready = True
             meta = {"kind": "turn", "agent_id": agent_id}
             user = hook.capture_event(user_message, session_id, agent_id, "boss", workspace, "post_turn_user", metadata=meta)
             assistant = hook.capture_event(assistant_message, session_id, agent_id, agent_id, workspace, "post_turn_assistant", metadata=meta)

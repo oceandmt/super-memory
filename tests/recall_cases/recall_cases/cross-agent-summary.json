@@ -1,0 +1,9 @@
+{
+  "query": "cross_agent_summary agent memory honcho event count",
+  "expected_contains": [
+    "agent"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.553709Z"
+}

@@ -406,7 +406,7 @@ def deep_improve(dry_run=True, config_path=None):
                         esc_tags = json.dumps(sorted(tags)).replace("'", "''")
                         conn.executescript(f"UPDATE memories SET tags_json='{esc_tags}' WHERE id='{row['id']}' AND layer='{row['layer']}';")
                         updated += 1
-                applied.append({"action": "tag_memories", "updated": updated})
+                applied.append({"action": "tag_memories", "ok": True, "updated": updated})
 
     # 2. Promote context to decision where applicable
     if qualify_result.get("context_ratio", 0) > 0.5:
@@ -432,7 +432,7 @@ def deep_improve(dry_run=True, config_path=None):
                 result = bridge.graph_cleanup_orphans(config_path=config_path)
                 applied.append({"action": "graph_cleanup", "result": result})
             except Exception as exc:
-                applied.append({"action": "graph_cleanup", "error": str(exc)})
+                applied.append({"action": "graph_cleanup", "ok": False, "error": str(exc)})
 
     # 4. Prediction expiry
     pred_issues = [p for p in debug_result["problems"] if "prediction" in p.get("issue", "")]
@@ -446,7 +446,7 @@ def deep_improve(dry_run=True, config_path=None):
         if not dry_run:
             from . import reasoning
             result = reasoning.expire_predictions(config_path=config_path)
-            applied.append({"action": "expire_predictions", "result": result})
+            applied.append({"action": "expire_predictions", "ok": bool(result.get("ok")), "result": result})
 
     # 5. Run consolidation if duplicates
     if audit_result["audit"]["duplicate_clusters"] > 0:
@@ -459,10 +459,11 @@ def deep_improve(dry_run=True, config_path=None):
         if not dry_run:
             from . import consolidation
             result = consolidation.consolidate_real(strategy="dedup", dry_run=False, config_path=config_path)
-            applied.append({"action": "dedup_consolidation", "result": result})
+            applied.append({"action": "dedup_consolidation", "ok": bool(result.get("ok")), "result": result})
 
+    applied_ok = all(bool(item.get("ok", True)) for item in applied)
     return {
-        "ok": True,
+        "ok": applied_ok,
         "dry_run": dry_run,
         "audit_grade": audit_result["grade"],
         "qualify_score": qualify_result.get("score", 0),
@@ -483,8 +484,9 @@ def auto_deep_pipeline(dry_run=True, config_path=None):
     debug_result = deep_debug(config_path=config_path)
     improve = deep_improve(dry_run=dry_run, config_path=config_path)
 
+    sub_ok = all(bool(part.get("ok", True)) for part in (audit, qualify, debug_result, improve))
     return {
-        "ok": True,
+        "ok": sub_ok,
         "pipeline": "auto_deep",
         "dry_run": dry_run,
         "audit": audit,

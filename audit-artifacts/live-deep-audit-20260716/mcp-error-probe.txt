@@ -1,0 +1,1 @@
+{'jsonrpc': '2.0', 'id': 123, 'error': {'code': -32000, 'message': "tool not exposed in 'all' MCP profile: super_memory_no_such_tool"}}

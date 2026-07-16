@@ -14,6 +14,7 @@ from .sanitize import normalize_memory_batch, normalize_memory_payload, sanitize
 from .quality_gate import apply_quality_gate
 from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
+from .retrieval_backends import RetrievalContext, retrieval_context, visibility_predicate
 from . import intelligence, cognitive, graph, lifecycle, safe_flows, reasoning, phase8, code_index, leitner, semantic_quality, short_term, session_index, cooldown, mmr, temporal_decay, hybrid_search, session_visibility, embeddings_registry, rem, watcher, flush_plan, reindex, index_identity, self_heal, prompt_section, narrative, rem_evidence, qmd
 from . import semantic as semantic_ops
 from . import maintenance as maintenance_ops
@@ -39,6 +40,67 @@ def _envelope_dict(env: Any) -> dict[str, Any]:
         return _json_safe(env.to_dict())
     return _json_safe(asdict(env) if is_dataclass(env) else getattr(env, "__dict__", {}))
 
+def _retrieval_context(
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> RetrievalContext:
+    """Build the single caller-visibility context used by every read path."""
+    return retrieval_context(
+        context=context,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        scope=scope,
+    )
+
+
+def _visible_canonical_ids(
+    store: SuperMemoryStore,
+    memory_ids: list[str] | set[str] | tuple[str, ...],
+    context: RetrievalContext,
+) -> set[str]:
+    """Authorize projection IDs against canonical SQLite rows, fail closed."""
+    ids = sorted({str(memory_id) for memory_id in memory_ids if memory_id})
+    if not ids:
+        return set()
+    predicate, params = visibility_predicate(context, alias="m")
+    placeholders = ",".join("?" for _ in ids)
+    sql = (
+        f"SELECT DISTINCT m.id FROM memories m WHERE m.id IN ({placeholders}) "
+        "AND m.layer = 'workspace_markdown' AND " + predicate
+    )
+    with store.connect() as conn:
+        return {str(row["id"]) for row in conn.execute(sql, [*ids, *params]).fetchall()}
+
+
+def _projection_memory_id(row: dict[str, Any]) -> str | None:
+    """Extract only explicit canonical references; never infer identity from text."""
+    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    value = (
+        row.get("memory_id")
+        or row.get("source_memory_id")
+        or metadata.get("memory_id")
+        or metadata.get("source_memory_id")
+    )
+    return str(value) if value else None
+
+
+def _filter_visible_projections(
+    rows: list[dict[str, Any]],
+    store: SuperMemoryStore,
+    context: RetrievalContext,
+) -> list[dict[str, Any]]:
+    ids = [_projection_memory_id(row) for row in rows if isinstance(row, dict)]
+    visible = _visible_canonical_ids(store, [memory_id for memory_id in ids if memory_id], context)
+    return [
+        row for row in rows
+        if isinstance(row, dict) and _projection_memory_id(row) in visible
+    ]
+
 
 def _safe_memories_update(
     conn: "sqlite3.Connection",
@@ -58,6 +120,24 @@ def _safe_memories_update(
         # nosec-sql: esc_id is quote-escaped above
         sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}';"
     conn.executescript(sql)
+
+def _canonical_outcome(results: list[Any]) -> tuple[bool, bool, str | None]:
+    """Return (committed, deduplicated, canonical id) from service results."""
+    canonical = next((r for r in results if getattr(getattr(r, "layer", None), "value", None) == "workspace_markdown"), None)
+    if canonical is None or not canonical.ok:
+        return False, False, None
+    dedup = str(canonical.message or "").startswith("dedup-skip")
+    return True, dedup, str(canonical.reference) if dedup and canonical.reference else None
+
+def _write_conflicts(content: str, store: SuperMemoryStore) -> list[str]:
+    """Best-effort discovery; storage failure must not invent a conflict."""
+    try:
+        from .conflict import detect_conflicts_for_content
+        report = detect_conflicts_for_content(content, store)
+        return sorted({c.memory_b_id for c in report.conflicts if c.memory_b_id})
+    except Exception:
+        return []
+
 def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
     """Save a memory through MemoryEnvelope + WriteGate + canonical-first layer order.
 
@@ -67,40 +147,10 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
     from .core.envelope import build_envelope as _build_envelope
     from .core.write_gate import evaluate_write, WriteGateResult
 
+    caller_external_id = payload.get("id")
     payload = apply_quality_gate(normalize_memory_payload(payload))
-
-    # ── Execution Patterns v2.4.0: Auto-detection ──
-    try:
-        from .execution_auto_detect import is_multi_step_task, auto_create_execution_state, should_auto_apply_patterns
-        
-        content = payload.get('content', '')
-        type_hint = payload.get('type', 'context')
-        
-        # Quick check if we should try auto-detection
-        if should_auto_apply_patterns(content, type_hint):
-            # Detect multi-step task
-            detection = is_multi_step_task(content, payload)
-            
-            if detection['is_multi_step'] and detection['confidence'] > 0.5:
-                # Auto-create execution state (contract + plan files)
-                exec_state = auto_create_execution_state(content, payload, detection)
-                
-                if exec_state:
-                    # Add execution state reference to metadata
-                    if 'metadata' not in payload:
-                        payload['metadata'] = {}
-                    
-                    payload['metadata']['execution_state'] = {
-                        'contract_file': exec_state['contract_file'],
-                        'plan_file': exec_state['plan_file'],
-                        'mode': exec_state['mode'],
-                        'auto_detected': True,
-                        'confidence': detection['confidence']
-                    }
-    except Exception:
-        # Silently fail - don't break remember() if execution patterns have issues
-        pass
-    # ── End Execution Patterns Auto-detection ──
+    if caller_external_id and not payload.get("id"):
+        payload["id"] = caller_external_id
 
     # Build envelope for contract metadata
     env = _build_envelope(
@@ -118,18 +168,20 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
 
     # WriteGate evaluation
     cfg = load_config(config_path)
-    store = SuperMemoryStore(cfg) if payload.get("source") else None
+    store = SuperMemoryStore(cfg)
     existing_hashes = None
     if store:
         try:
             with store.connect() as conn:
                 rows = conn.execute(
-                    "SELECT content_hash, id FROM memories WHERE content_hash IS NOT NULL AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 ORDER BY created_at DESC LIMIT 50"
+                    "SELECT content_hash, id FROM memories WHERE layer='workspace_markdown' AND content_hash IS NOT NULL AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 ORDER BY created_at DESC"
                 ).fetchall()
                 existing_hashes = {r["content_hash"]: r["id"] for r in rows if r["content_hash"]}
         except Exception:
             pass
-    write_gate: WriteGateResult = evaluate_write(env, existing_hashes=existing_hashes)
+    write_gate: WriteGateResult = evaluate_write(
+        env, existing_hashes=existing_hashes, conflicts=_write_conflicts(payload["content"], store)
+    )
 
     if not write_gate.allow:
         return {
@@ -139,8 +191,10 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
             "reason": f"WriteGate blocked: {write_gate.action} ({', '.join(write_gate.reasons)})",
         }
 
-    # Pass envelope metadata + id through to MemoryRecord
-    record_id = payload.get("id") or env.id
+    # Server-authoritative canonical id. Caller-supplied ids are external ids
+    # only, preventing canonical/projection split-brain on id collisions.
+    external_id = payload.get("id")
+    record_id = env.id
     svc = SuperMemoryService(cfg)
     record = MemoryRecord(
         id=record_id,
@@ -152,9 +206,10 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         project=payload.get("project"),
         tags=payload.get("tags", []) + write_gate.suggested_tags,
         source=payload.get("source"),
-        trust_score=payload.get("trust_score") or env.effective_trust,
+        trust_score=env.effective_trust if payload.get("trust_score") is None else payload.get("trust_score"),
         metadata={
             **(payload.get("metadata", {})),
+            **({"external_id": external_id} if external_id else {}),
             "envelope_id": env.id,
             "quality_score": env.quality_score,
             "content_hash": env.content_hash,
@@ -165,28 +220,21 @@ def remember(payload: dict[str, Any], config_path: str | None = None) -> dict[st
         },
     )
     results = svc.save(record)
-    
-    # ── Execution Patterns: Lifecycle hook after save ──
-    try:
-        from .execution_lifecycle import hook_memory_save
-        execution_state = payload.get('metadata', {}).get('execution_state')
-        if execution_state:
-            hook_memory_save(record, execution_state)
-    except Exception:
-        pass
-    # ── End Lifecycle hook ──
     graph_projection = None
-    try:
-        graph_projection = graph.project_memory(record, config_path=config_path)
-    except Exception as exc:
-        graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    canonical_ok, dedup_skipped, canonical_id = _canonical_outcome(results)
+    if canonical_ok and not dedup_skipped:
+        try:
+            graph_projection = graph.project_memory(record, config_path=config_path)
+        except Exception as exc:
+            graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     return {
-        "ok": True,
+        "ok": canonical_ok,
         "envelope": _envelope_dict(env),
         "write_gate": write_gate.to_dict(),
         "record": record.model_dump(mode="json"),
         "results": [r.model_dump(mode="json") for r in results],
         "graph_projection": graph_projection,
+        **({"dedup": {"skipped": True, "matched_id": canonical_id}} if dedup_skipped else {}),
     }
 
 
@@ -213,17 +261,43 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             trust_score=payload.get("trust_score"),
             metadata=payload.get("metadata", {}),
         )
-        write_gate: WriteGateResult = evaluate_write(env)
+        store = svc.store
+        existing_hashes = None
+        try:
+            with store.connect() as conn:
+                rows = conn.execute(
+                    "SELECT content_hash, id FROM memories WHERE layer='workspace_markdown' "
+                    "AND content_hash IS NOT NULL "
+                    "AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+                ).fetchall()
+                existing_hashes = {r["content_hash"]: r["id"] for r in rows if r["content_hash"]}
+        except Exception:
+            pass
+        # Exact duplicates are benign/idempotent and must be resolved before
+        # approximate conflict discovery can quarantine the same content.
+        write_gate: WriteGateResult = evaluate_write(
+            env, existing_hashes=existing_hashes,
+            conflicts=_write_conflicts(payload["content"], store),
+        )
         if not write_gate.allow:
-            items.append({
-                "ok": False,
-                "envelope": env.__dict__,
-                "write_gate": write_gate.to_dict(),
-                "reason": f"WriteGate blocked: {write_gate.action}",
-            })
+            if write_gate.action == "skip_duplicate" and write_gate.duplicate_id:
+                items.append({
+                    "ok": True,
+                    "envelope": _envelope_dict(env),
+                    "write_gate": write_gate.to_dict(),
+                    "dedup": {"skipped": True, "matched_id": write_gate.duplicate_id},
+                })
+            else:
+                items.append({
+                    "ok": False,
+                    "envelope": _envelope_dict(env),
+                    "write_gate": write_gate.to_dict(),
+                    "reason": f"WriteGate blocked: {write_gate.action}",
+                })
             continue
+        external_id = payload.get("id")
         record = MemoryRecord(
-            id=payload.get("id") or env.id,
+            id=env.id,
             content=payload["content"],
             type=payload.get("type", MemoryType.CONTEXT),
             scope=payload.get("scope", MemoryScope.SESSION),
@@ -232,9 +306,10 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             project=payload.get("project"),
             tags=payload.get("tags", []) + write_gate.suggested_tags,
             source=payload.get("source"),
-            trust_score=payload.get("trust_score") or env.effective_trust,
+            trust_score=env.effective_trust if payload.get("trust_score") is None else payload.get("trust_score"),
             metadata={
                 **(payload.get("metadata", {})),
+                **({"external_id": external_id} if external_id else {}),
                 "envelope_id": env.id,
                 "quality_score": env.quality_score,
                 "content_hash": env.content_hash,
@@ -244,14 +319,14 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
         )
         results = svc.save(record)
         graph_projection = None
-        try:
-            graph_projection = graph.project_memory(record, config_path=config_path)
-        except Exception as exc:
-            graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-        canonical = next((r for r in results if r.layer.value == "workspace_markdown"), None)
-        dedup_skipped = bool(canonical and canonical.message and str(canonical.message).startswith("dedup-skip"))
+        canonical_ok, dedup_skipped, canonical_id = _canonical_outcome(results)
+        if canonical_ok and not dedup_skipped:
+            try:
+                graph_projection = graph.project_memory(record, config_path=config_path)
+            except Exception as exc:
+                graph_projection = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
         item = {
-            "ok": bool(canonical and canonical.ok),
+            "ok": canonical_ok,
             "envelope": _envelope_dict(env),
             "write_gate": write_gate.to_dict(),
             "record": record.model_dump(mode="json"),
@@ -259,15 +334,30 @@ def remember_batch(payloads: list[dict[str, Any]], config_path: str | None = Non
             "graph_projection": graph_projection,
         }
         if dedup_skipped:
-            item["dedup"] = {"skipped": True, "matched_id": canonical.reference, "message": canonical.message}
+            item["dedup"] = {"skipped": True, "matched_id": canonical_id}
         items.append(item)
     return {"ok": all(item["ok"] for item in items), "items": items}
 
-def show(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
+def show(
+    memory_id: str,
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
     cfg = load_config(config_path)
     store = SuperMemoryStore(cfg)
+    resolved = _retrieval_context(
+        context=context, agent_id=agent_id, session_id=session_id,
+        project=project, scope=scope,
+    )
+    if memory_id not in _visible_canonical_ids(store, [memory_id], resolved):
+        return {"ok": False, "error": f"memory not found: {memory_id}"}
     layers = {}
-    for layer in ["mempalace", "honcho", "neural_memory"]:
+    for layer in ["workspace_markdown", "mempalace", "honcho", "neural_memory"]:
         record = store.get_memory(memory_id, layer=layer)
         if record:
             layers[layer] = record.model_dump(mode="json")
@@ -275,13 +365,34 @@ def show(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
         return {"ok": False, "error": f"memory not found: {memory_id}"}
     return {"ok": True, "memory_id": memory_id, "layers": layers}
 
-def context(query: str = "", limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
+
+def context(
+    query: str = "",
+    limit: int = 10,
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
+    resolved = _retrieval_context(
+        context=context, agent_id=agent_id, session_id=session_id,
+        project=project, scope=scope,
+    )
     if query:
-        records = svc.prefetch(query, limit=limit)
+        records = svc.prefetch(query, limit=limit, context=resolved)
     else:
-        rows = svc.store.list_memory_rows(limit=limit)
+        predicate, params = visibility_predicate(resolved)
+        with svc.store.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE " + predicate
+                + " ORDER BY created_at DESC LIMIT ?",
+                [*params, limit],
+            ).fetchall()
         records = [row_to_memory(row) for row in rows]
     return {"records": [r.model_dump(mode="json") for r in records]}
 
@@ -322,16 +433,10 @@ def stats(config_path: str | None = None) -> dict[str, Any]:
     return status(config_path=config_path)
 
 def health(config_path: str | None = None) -> dict[str, Any]:
-    cfg = load_config(config_path)
-    st = status(config_path=config_path)
-    canonical_enabled = "workspace_markdown" in [layer.value for layer in cfg.enabled_layers]
-    return {
-        "ok": canonical_enabled and cfg.require_canonical_first,
-        "canonical_first": cfg.require_canonical_first,
-        "workspace_markdown_enabled": canonical_enabled,
-        "enabled_layers": [layer.value for layer in cfg.enabled_layers],
-        "status": st,
-    }
+    """Return one read-only liveness/readiness contract for API and MCP."""
+    from .readiness import readiness
+
+    return readiness(config_path=config_path)
 
 def conflicts(content: str | None = None, memory_id: str | None = None, config_path: str | None = None) -> dict[str, Any]:
     return intelligence.conflicts(content=content, memory_id=memory_id, config_path=config_path)
@@ -389,49 +494,87 @@ def optional_heavy(action: str, **kwargs: Any) -> dict[str, Any]:
         )
     return intelligence.heavy_optional(action, **kwargs)
 
-def _build_recall_channels(query: str, limit: int, config_path: str | None = None) -> dict[str, list[dict[str, Any]]]:
-    """Collect recall candidates from all implemented recall channels."""
+def _build_recall_channels(
+    query: str,
+    limit: int,
+    config_path: str | None = None,
+    *,
+    context: RetrievalContext | None = None,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
+    """Collect candidates, authorizing every projection via canonical IDs."""
     cfg = load_config(config_path)
     svc = SuperMemoryService(cfg)
-    hits = svc.recall(query, limit=max(limit * 2, 20))
+    resolved = context or RetrievalContext()
+    hits = svc.recall(query, limit=max(limit * 2, 20), context=resolved)
     channels: dict[str, list[dict[str, Any]]] = {
         layer.value: [r.model_dump(mode="json") for r in records]
         for layer, records in hits.items()
     }
+    status: dict[str, dict[str, Any]] = {
+        name: {"ok": True, "status": "ok" if rows else "no_hit", "degraded": False, "attempted_backend": "canonical", "count": len(rows)}
+        for name, rows in channels.items()
+    }
 
-    # Add semantic closet/drawer evidence as a first-class channel when available.
+    # Vector indexes are candidate generators only. Hydrate every ID through
+    # the canonical visibility predicate and let VectorStore reject stale or
+    # identity-mismatched embeddings before this boundary.
+    if cfg.vector_enabled or cfg.vector.enabled:
+        try:
+            from .vector import VectorStore
+            vector_store = VectorStore(cfg)
+            if not vector_store.available:
+                status["vector"] = {"ok": False, "status": "unavailable", "degraded": True, "error_code": "vector_unavailable", "attempted_backend": "sqlite-vec", "count": 0}
+            else:
+                candidates = vector_store.search_text(query, top_k=max(limit * 4, 20))
+                rows = []
+                for memory_id, score in candidates:
+                    predicate, params = visibility_predicate(resolved, alias="m")
+                    with svc.store.connect() as conn:
+                        canonical = conn.execute(
+                            "SELECT m.* FROM memories m WHERE m.id = ? AND " + predicate
+                            + " ORDER BY CASE WHEN m.layer = 'workspace_markdown' THEN 0 ELSE 1 END LIMIT 1",
+                            [memory_id, *params],
+                        ).fetchone()
+                    if canonical:
+                        row = row_to_memory(canonical).model_dump(mode="json")
+                        row.update({"memory_id": memory_id, "canonical_id": memory_id, "score": score})
+                        rows.append(row)
+                channels["vector"] = rows
+                status["vector"] = {"ok": True, "status": "ok" if rows else "no_hit", "degraded": False, "attempted_backend": "sqlite-vec", "count": len(rows)}
+        except Exception as exc:
+            status["vector"] = {"ok": False, "status": "error", "degraded": True, "error_code": "vector_search_failed", "attempted_backend": "sqlite-vec", "error": type(exc).__name__, "count": 0}
+    else:
+        status["vector"] = {"ok": False, "status": "disabled", "degraded": False, "error_code": "vector_disabled", "attempted_backend": "disabled", "count": 0}
+
     try:
         from .projections.closet import search_closets
         closet_hits = search_closets(query, limit=limit, config_path=config_path)
         rows = closet_hits.get("results") or closet_hits.get("items") or []
+        rows = _filter_visible_projections(rows, svc.store, resolved)
+        for row in rows:
+            meta = dict(row.get("metadata") or {})
+            if row.get("drawer_id") and not meta.get("drawer_id"):
+                meta["drawer_id"] = row["drawer_id"]
+            if row.get("closet_id") and not meta.get("closet_id"):
+                meta["closet_id"] = row["closet_id"]
+            if row.get("summary") and not row.get("content"):
+                row["content"] = row["summary"]
+            row["metadata"] = meta
         if rows:
-            # search_closets exposes drawer_id/closet_id at top level, but the
-            # arbitration layer only carries `metadata` into selected evidence.
-            # Fold the pointers into metadata so hydration can resolve them.
-            for r in rows:
-                meta = dict(r.get("metadata") or {})
-                if r.get("drawer_id") and not meta.get("drawer_id"):
-                    meta["drawer_id"] = r["drawer_id"]
-                if r.get("closet_id") and not meta.get("closet_id"):
-                    meta["closet_id"] = r["closet_id"]
-                if r.get("summary") and not r.get("content"):
-                    r["content"] = r["summary"]
-                r["metadata"] = meta
             channels["semantic_closet"] = rows
-    except Exception:
-        pass
+    except Exception as exc:
+        status["semantic_closet"] = {"ok": False, "status": "error", "degraded": True, "error_code": "semantic_closet_failed", "error": type(exc).__name__, "count": 0}
 
-    # Add graph recall as a channel when available.
     try:
         grecall = graph.recall(query, limit=limit, config_path=config_path)
-        rows = grecall.get("results") or grecall.get("records") or []
+        rows = grecall.get("fibers") or grecall.get("results") or grecall.get("records") or []
+        rows = _filter_visible_projections(rows, svc.store, resolved)
         if rows:
             channels["graph"] = rows
-    except Exception:
-        pass
+    except Exception as exc:
+        status["graph"] = {"ok": False, "status": "error", "degraded": True, "error_code": "graph_failed", "error": type(exc).__name__, "count": 0}
 
-    return channels
-
+    return channels, status
 
 def _hydrate_recall_selection(result: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
     """Hydrate drawer/closet references from selected recall evidence."""
@@ -453,15 +596,44 @@ def _hydrate_recall_selection(result: dict[str, Any], config_path: str | None = 
     return hydrate_closets(drawer_ids=drawer_ids[:10], closet_ids=closet_ids[:10], config_path=config_path)
 
 
-def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
-    """Recall memories via Recall Arbitration V4 across all channels."""
+def recall(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
+    """Recall memories via V4 with mandatory caller visibility."""
     query = sanitize_prompt(query)
     from .recall.arbitration_v4 import arbitrate_v4
-    channels = _build_recall_channels(query, limit, config_path=config_path)
+    resolved = _retrieval_context(
+        context=context, agent_id=agent_id, session_id=session_id,
+        project=project, scope=scope,
+    )
+    channels, channel_status = _build_recall_channels(query, limit, config_path=config_path, context=resolved)
     result = arbitrate_v4(query, channels, limit=limit)
     result.setdefault("selected", result.get("selected_memories", []))
     result.setdefault("excluded", result.get("excluded_memories", []))
     result["channels"] = {k: len(v) for k, v in channels.items()}
+    result["channel_status"] = channel_status
+    selected_count = len(result.get("selected") or [])
+    degraded = any(item.get("degraded") for item in channel_status.values())
+    hard_errors = [item for item in channel_status.values() if item.get("status") == "error"]
+    enabled = [item for item in channel_status.values() if item.get("status") != "disabled"]
+    result["degraded"] = degraded
+    if selected_count:
+        result["status"] = "degraded" if degraded else "ok"
+    elif enabled and len(hard_errors) == len(enabled):
+        result["status"] = "error"
+    elif degraded:
+        result["status"] = "degraded"
+    else:
+        result["status"] = "no_hit"
+    result["ok"] = result["status"] in {"ok", "no_hit", "degraded"}
     try:
         result["hydrated_evidence"] = _hydrate_recall_selection(result, config_path=config_path)
     except Exception as exc:
@@ -487,11 +659,25 @@ def recall(query: str, limit: int = 10, config_path: str | None = None) -> dict[
     return result
 
 
-def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
-    """Prefetch top memories through Recall Arbitration V4."""
+def prefetch(
+    query: str,
+    limit: int = 10,
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
+    """Prefetch top memories with mandatory caller visibility."""
     query = sanitize_prompt(query)
     from .recall.arbitration_v4 import arbitrate_v4
-    channels = _build_recall_channels(query, limit, config_path=config_path)
+    resolved = _retrieval_context(
+        context=context, agent_id=agent_id, session_id=session_id,
+        project=project, scope=scope,
+    )
+    channels, channel_status = _build_recall_channels(query, limit, config_path=config_path, context=resolved)
     result = arbitrate_v4(query, channels, limit=limit)
     result.setdefault("selected", result.get("selected_memories", []))
     result.setdefault("excluded", result.get("excluded_memories", []))
@@ -507,7 +693,8 @@ def prefetch(query: str, limit: int = 10, config_path: str | None = None) -> dic
             "channel": ev.get("channel"),
             "metadata": ev.get("metadata", {}),
         })
-    return {"records": records, "arbitration": result}
+    return {"records": records, "arbitration": result, "channel_status": channel_status,
+            "degraded": any(item.get("degraded") for item in channel_status.values())}
 
 def sync_turn(payload: dict[str, Any], config_path: str | None = None) -> dict[str, Any]:
     """Save compact turn event + auto-create perspective memory from metadata."""
@@ -621,6 +808,21 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
     record = store.get_memory(memory_id)
     if not record:
         return {"ok": False, "error": f"memory not found: {memory_id}"}
+    # Append the lifecycle decision to the immutable canonical log first.  If
+    # that fails, leave every mirror/projection untouched so callers can retry.
+    tombstone = MemoryRecord(
+        content=f"Tombstone for memory {memory_id}: {reason or 'forgotten'}",
+        type=MemoryType.CONTEXT, scope=record.scope, agent_id=record.agent_id,
+        session_id=record.session_id, project=record.project,
+        source="super-memory.lifecycle", tags=["tombstone"],
+        metadata={"lifecycle_event": "tombstone", "tombstone_for": memory_id,
+                  "hard_delete": hard, "deleted_reason": reason},
+    )
+    tombstone_results = SuperMemoryService(cfg).save(tombstone)
+    canonical_ok, _, _ = _canonical_outcome(tombstone_results)
+    if not canonical_ok:
+        return {"ok": False, "memory_id": memory_id, "error": "canonical tombstone failed",
+                "results": [r.model_dump(mode="json") for r in tombstone_results]}
     if not hard:
         with store.connect() as conn:
             for row in conn.execute("SELECT layer, metadata_json FROM memories WHERE id=?", (memory_id,)).fetchall():
@@ -638,7 +840,8 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
                 )
             conn.commit()
         _drop_embedding(cfg, memory_id)
-        return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete"}
+        return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete",
+                "tombstone_id": tombstone.id}
     # Hard delete: cascade cleanup
     with store.connect() as conn:
         esc_id = memory_id.replace("'", "''")
@@ -652,7 +855,8 @@ def forget(memory_id: str, hard: bool = False, reason: str = "", config_path: st
         """)
         conn.commit()
     _drop_embedding(cfg, memory_id)
-    return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete"}
+    return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete",
+            "tombstone_id": tombstone.id}
 
 
 def edit(memory_id: str, content: str | None = None, type: str | None = None, priority: int | None = None, tier: str | None = None, config_path: str | None = None) -> dict[str, Any]:
@@ -662,6 +866,27 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
     record = store.get_memory(memory_id)
     if not record:
         return {"ok": False, "error": f"memory not found: {memory_id}"}
+    if not any(value is not None for value in (content, type, priority, tier)):
+        return {"ok": False, "error": "no fields to update"}
+    # Canonical Markdown is append-only.  Persist a fully normalized correction
+    # before changing the SQLite pane of glass; the old id is then invalidated.
+    revised_content = content if content is not None else record.content
+    corrected_payload = apply_quality_gate({
+        "content": f"Correction for memory {memory_id}: {revised_content}",
+        "type": type if type is not None else record.type.value,
+        "scope": record.scope.value, "agent_id": record.agent_id,
+        "session_id": record.session_id, "project": record.project,
+        "source": "super-memory.lifecycle", "tags": list(record.tags) + ["correction"],
+        "trust_score": (max(0, min(10, priority)) / 10.0) if priority is not None else record.trust_score,
+        "metadata": {**dict(record.metadata or {}), "lifecycle_event": "correction",
+                     "corrects": memory_id, **({"tier": tier} if tier is not None else {})},
+    })
+    correction = MemoryRecord(**{k: v for k, v in corrected_payload.items() if k in MemoryRecord.model_fields})
+    correction_results = SuperMemoryService(cfg).save(correction)
+    canonical_ok, dedup, canonical_id = _canonical_outcome(correction_results)
+    if not canonical_ok:
+        return {"ok": False, "memory_id": memory_id, "error": "canonical correction failed",
+                "results": [r.model_dump(mode="json") for r in correction_results]}
     set_parts: list[str] = []
     if content is not None:
         esc = content.replace("'", "''")
@@ -677,13 +902,16 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
         meta["tier"] = tier
         esc = json.dumps(meta).replace("'", "''")
         set_parts.append(f"metadata_json = '{esc}'")
-    if not set_parts:
-        return {"ok": False, "error": "no fields to update"}
+    # Keep the historical row for auditability, but remove it from active recall
+    # and point consumers at the canonical correction id.
+    meta = dict(record.metadata or {})
+    meta.update({"soft_deleted": 1, "superseded_by": canonical_id or correction.id})
+    set_parts.append(f"metadata_json = '{json.dumps(meta).replace(chr(39), chr(39)*2)}'")
     set_clause = ", ".join(set_parts)
     with store.connect() as conn:
         esc_id = memory_id.replace("'", "''")
         # nosec-sql: esc_id is quote-escaped above; set_clause values are json.dumps(...)-escaped
-        sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}' AND layer = 'workspace_markdown';"
+        sql = f"UPDATE memories SET {set_clause} WHERE id = '{esc_id}';"
         conn.executescript(sql)
         conn.commit()
     # When content changed, the old embedding is now stale. Drop it so the next
@@ -693,7 +921,8 @@ def edit(memory_id: str, content: str | None = None, type: str | None = None, pr
     if content is not None:
         _drop_embedding(cfg, memory_id)
     updated = store.get_memory(memory_id)
-    return {"ok": True, "memory_id": memory_id, "updated": updated.model_dump(mode="json") if updated else None}
+    return {"ok": True, "memory_id": memory_id, "correction_id": canonical_id or correction.id,
+            "dedup": dedup, "updated": updated.model_dump(mode="json") if updated else None}
 
 
 def status(config_path: str | None = None) -> dict[str, Any]:
@@ -737,15 +966,67 @@ def status(config_path: str | None = None) -> dict[str, Any]:
     }
 
 
-def memory_search(query: str, max_results: int = 5, min_score: float = 0.0, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
+def memory_search(
+    query: str,
+    max_results: int = 5,
+    min_score: float = 0.0,
+    corpus: str = "all",
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
     query = sanitize_prompt(query)
     cfg = load_config(config_path)
-    return memory_search_compatible(query, max_results=max_results, min_score=min_score, corpus=corpus, config=cfg)
+    resolved = _retrieval_context(
+        context=context,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        scope=scope,
+    )
+    return memory_search_compatible(
+        query,
+        max_results=max_results,
+        min_score=min_score,
+        corpus=corpus,
+        config=cfg,
+        context=resolved,
+    )
 
 
-def memory_get(path: str, from_line: int = 1, lines: int = 20, corpus: str = "all", config_path: str | None = None) -> dict[str, Any]:
+def memory_get(
+    path: str,
+    from_line: int = 1,
+    lines: int = 20,
+    corpus: str = "all",
+    config_path: str | None = None,
+    *,
+    agent_id: str | None = None,
+    session_id: str | None = None,
+    project: str | None = None,
+    scope: str | None = None,
+    context: RetrievalContext | None = None,
+) -> dict[str, Any]:
     cfg = load_config(config_path)
-    return memory_get_compatible(path, from_line=from_line, lines=lines, corpus=corpus, config=cfg)
+    resolved = _retrieval_context(
+        context=context,
+        agent_id=agent_id,
+        session_id=session_id,
+        project=project,
+        scope=scope,
+    )
+    return memory_get_compatible(
+        path,
+        from_line=from_line,
+        lines=lines,
+        corpus=corpus,
+        config=cfg,
+        context=resolved,
+    )
 
 def working_memory_get(key: str = "default", config_path: str | None = None) -> dict[str, Any]:
     return cognitive.working_memory_get(key=key, config_path=config_path)
@@ -789,10 +1070,11 @@ def recall_arbitrate(query: str, limit: int = 10, config_path: str | None = None
         selected = []
         layer_votes: dict[str, int] = {}
         for idx, hit in enumerate(compat.get("results", [])[:limit]):
+            details = hit.get("citation_details") or {}
             rec = {
                 "id": hit.get("memory_id") or hit.get("id"),
                 "content": hit.get("snippet") or "",
-                "source": hit.get("path") or hit.get("source"),
+                "source": details.get("source") or hit.get("source") or hit.get("path"),
                 "metadata": {"compat_hit": hit},
             }
             layer = hit.get("layer")
@@ -1115,8 +1397,15 @@ def hypothesis_get(hypothesis_id: str, config_path: str | None = None) -> dict[s
 def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str | None = None) -> dict[str, Any]:
     return reasoning.hypothesis_list(status=status, limit=limit, config_path=config_path)
 
-def evidence_add(hypothesis_id: str, content: str, direction: str = "for", weight: float = 0.5, config_path: str | None = None) -> dict[str, Any]:
-    return reasoning.evidence_add(hypothesis_id, content, direction=direction, weight=weight, config_path=config_path)
+def evidence_add(hypothesis_id: str, content: str, direction: str = "for", weight: float = 0.5, config_path: str | None = None, source_id: str | None = None, source_type: str | None = None, source_hash: str | None = None, source_revision: str | None = None, source_trust: float | None = None) -> dict[str, Any]:
+    # Backward-compatible bridge calls still receive explicit provenance rather
+    # than silently writing source-less evidence. Public API/MCP schemas require
+    # source_id; direct reasoning.evidence_add fails closed if omitted.
+    if not source_id:
+        source_id = "super-memory.reasoning"
+        source_type = source_type or "legacy_bridge_call"
+        source_trust = 0.3 if source_trust is None else source_trust
+    return reasoning.evidence_add(hypothesis_id, content, direction=direction, weight=weight, config_path=config_path, source_id=source_id, source_type=source_type, source_hash=source_hash, source_revision=source_revision, source_trust=source_trust)
 
 def prediction_create(content: str, confidence: float = 0.7, hypothesis_id: str | None = None, deadline: str | None = None, config_path: str | None = None) -> dict[str, Any]:
     return reasoning.prediction_create(content, confidence=confidence, hypothesis_id=hypothesis_id, deadline=deadline, config_path=config_path)
@@ -2200,3 +2489,33 @@ def vector_coverage(config_path: str | None = None) -> dict[str, Any]:
 def graph_multihop_validation(query: str = "super memory project recall graph", limit: int = 10, config_path: str | None = None) -> dict[str, Any]:
     from .validation import graph_multihop_validation as _graph_multihop_validation
     return _graph_multihop_validation(query=query, limit=limit, config_path=config_path)
+
+# P1-P4 memory lifecycle quality APIs
+def memory_completeness(content: str, memory_type: str = "context", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return type-aware completeness without mutating canonical memory."""
+    from dataclasses import asdict
+    from .memory_quality import evaluate_completeness
+    return {"ok": True, **asdict(evaluate_completeness(content, memory_type, metadata))}
+
+def memory_trust_evolve(memory_id: str, config_path: str | None = None) -> dict[str, Any]:
+    """Evolve trust from versioned quality, evidence, conflict and usage signals."""
+    from .memory_quality import evolve_trust, ensure_quality_tables
+    cfg = load_config(config_path); store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        ensure_quality_tables(conn)
+        return evolve_trust(conn, memory_id)
+
+def memory_evidence_chain(memory_id: str, max_depth: int = 3, config_path: str | None = None) -> dict[str, Any]:
+    """Explain why a memory is trusted through cycle-safe evidence links."""
+    from .memory_quality import build_evidence_chain, ensure_quality_tables
+    cfg = load_config(config_path); store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        ensure_quality_tables(conn)
+        return build_evidence_chain(conn, memory_id, max_depth)
+
+def memory_temporal_query(start: str, end: str, entity: str | None = None, limit: int = 100, config_path: str | None = None) -> dict[str, Any]:
+    """Query memories valid during a temporal interval."""
+    from .memory_quality import temporal_query
+    cfg = load_config(config_path); store = SuperMemoryStore(cfg)
+    with store.connect() as conn:
+        return temporal_query(conn, start, end, entity, limit)

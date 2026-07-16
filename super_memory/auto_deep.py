@@ -275,6 +275,11 @@ class DeepQualifyResult:
 
     @property
     def grade(self) -> str:
+        # Integration and collected errors are authoritative gates.  A set of
+        # local boolean checks must never advertise Grade A when the assembled
+        # system is broken or qualification itself raised errors.
+        if not self.integration_ok or self.errors:
+            return "F"
         all_checks = list(self.smoke_tests.values()) + list(self.edge_cases.values())
         if not all_checks: return "F"
         rate = sum(1 for c in all_checks if c) / len(all_checks)
@@ -304,7 +309,11 @@ def run_qualify(audit: DeepAuditResult | None = None) -> DeepQualifyResult:
     result.edge_cases = _run_edge_cases()
 
     # ── Integration ──
-    result.integration_ok = _check_integration()
+    try:
+        result.integration_ok = _check_integration()
+    except Exception as exc:
+        result.errors.append(f"integration: {type(exc).__name__}: {exc}")
+        result.integration_ok = False
 
     result.duration_ms = (time.monotonic() - start) * 1000
     return result
@@ -744,3 +753,5 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     result = run_deep_engine()
     print("\n" + result.full_report())
+    if result.qualify.grade != "A":
+        raise SystemExit(1)

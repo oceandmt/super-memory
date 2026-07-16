@@ -322,3 +322,25 @@ GROUP BY s.id, s.agent_id, s.status, s.started_at, s.updated_at;
 -- graph operations in v2. All bridge functions (stats, forget, recall)
 -- support the legacy_graph_edges=False flag for clean operation without
 -- the deprecated table.
+
+-- Versioned memory-quality/evidence lifecycle (P1-P4 enhancements)
+CREATE TABLE IF NOT EXISTS memory_evidence (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memory_id TEXT NOT NULL,
+  evidence_memory_id TEXT NOT NULL,
+  relation TEXT NOT NULL DEFAULT 'supports',
+  quote TEXT,
+  confidence REAL NOT NULL DEFAULT 0.5,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(memory_id, evidence_memory_id, relation)
+);
+CREATE INDEX IF NOT EXISTS idx_memory_evidence_memory ON memory_evidence(memory_id);
+CREATE TABLE IF NOT EXISTS memory_quality_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  memory_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  score REAL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_quality_events_memory ON memory_quality_events(memory_id);

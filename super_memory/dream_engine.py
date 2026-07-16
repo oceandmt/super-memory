@@ -1,105 +1,87 @@
-"""Dream Consolidation Engine (P0 #2) — idle-time memory consolidation.
+"""Governed dream consolidation engine.
 
-Surprisal-based replay scheduler: during low-activity periods, replays recent
-memories, detects cross-session patterns, consolidates related memories into
-higher-level insights, and builds compressed representations.
-
-Three-phase pipeline:
-1. **Surprisal scoring** — rank memories by novelty (inverse frequency)
-2. **Pattern detection** — cluster related memories across sessions
-3. **Insight generation** — produce consolidated insight memories
-
-Safety: all operations are dry-run by default; non-destructive soft-delete only.
+Dream cycles are evidence readers and proposal generators. Generated insights
+never become canonical memories until an explicit approval call succeeds.
+Dry-run mode is read-only: it does not create schemas, queue rows, artifacts,
+or memories.
 """
-
 from __future__ import annotations
 
-import json
 import math
 import re
-import time
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import uuid4
 
 from .config import load_config
+from .dream_governance import (
+    MAX_PROPOSALS_PER_RUN,
+    build_proposal,
+    canonical_content_exists,
+    deterministic_run_key,
+    enqueue_proposal,
+    ensure_schema,
+    get_proposal,
+    list_proposals,
+    readonly_connection,
+    resolve_proposal,
+)
 from .models import MemoryRecord, MemoryScope, MemoryType
-from .storage import SuperMemoryStore, row_to_memory
+from .storage import SuperMemoryStore
+
+_MAX_SCAN = 500
+_GENERATED_FILTER = """
+ AND COALESCE(agent_id, '') NOT IN ('dream-engine', 'self-improvement-engine')
+ AND lower(COALESCE(source, '')) NOT LIKE 'super-memory.dream%'
+ AND lower(COALESCE(source, '')) NOT LIKE 'self-improvement%'
+ AND COALESCE(json_extract(metadata_json, '$.generated_by'), '') = ''
+ AND COALESCE(json_extract(metadata_json, '$.governance_proposal_id'), '') = ''
+"""
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _bounded_limit(value: int, maximum: int = _MAX_SCAN) -> int:
+    return max(1, min(int(value), maximum))
+
+
 def _jaccard_similarity(a: str, b: str) -> float:
-    tokens_a = set(re.split(r"\W+", a.lower()))
-    tokens_b = set(re.split(r"\W+", b.lower()))
-    tokens_a.discard("")
-    tokens_b.discard("")
+    tokens_a = {token for token in re.split(r"\W+", a.lower()) if token}
+    tokens_b = {token for token in re.split(r"\W+", b.lower()) if token}
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
-# ── Phase 1: Surprisal Scoring ──────────────────────────────────────────────
-
-def _token_frequencies(
-    store: SuperMemoryStore,
-    limit: int = 2000,
-) -> dict[str, float]:
-    """Build inverse token frequency over recent active memories.
-    
-    Uses larger corpus (2000 memories) and filters stopwords for accurate IDF.
-    """
-    # Common stopwords to exclude from IDF computation
-    stopwords = {
-        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-        'of', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has',
-        'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may',
-        'might', 'must', 'can', 'this', 'that', 'these', 'those', 'i', 'you',
-        'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
-        'my', 'your', 'his', 'her', 'its', 'our', 'their', 'with', 'from',
-        'by', 'as', 'if', 'when', 'where', 'what', 'which', 'who', 'whom'
-    }
-    
-    with store.connect() as conn:
+def _token_frequencies(store: SuperMemoryStore, limit: int = 1000) -> dict[str, float]:
+    """Build inverse token frequency over bounded, human-origin memories."""
+    with readonly_connection(store) as conn:
+        if conn is None:
+            return {}
         rows = conn.execute(
-            """SELECT content FROM memories 
-               WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
-               AND length(content) > 20
-               ORDER BY created_at DESC LIMIT ?""",
-            (limit,),
+            "SELECT content FROM memories WHERE "
+            "COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 "
+            + _GENERATED_FILTER
+            + " ORDER BY created_at DESC LIMIT ?",
+            (_bounded_limit(limit),),
         ).fetchall()
-    
     token_counts: Counter[str] = Counter()
-    total = 0
-    
-    for (content,) in rows:
-        tokens = set(re.split(r"\W+", content.lower()))
-        # Filter: non-empty, length >= 3, not stopword
-        tokens = {t for t in tokens if t and len(t) >= 3 and t not in stopwords}
-        for t in tokens:
-            token_counts[t] += 1
-        total += 1
-    
-    if total == 0:
-        return {}
-    
-    # IDF formula: log(N / df) where N = total docs, df = document frequency
-    return {t: math.log(total / max(1, c)) for t, c in token_counts.items()}
+    for row in rows:
+        content = row["content"] if hasattr(row, "keys") else row[0]
+        for token in {token for token in re.split(r"\W+", (content or "").lower()) if token}:
+            token_counts[token] += 1
+    total = len(rows)
+    return {token: math.log(total / max(1, count)) for token, count in token_counts.items()} if total else {}
 
 
-def _compute_surprisal(
-    content: str,
-    token_weights: dict[str, float],
-) -> float:
-    """Compute surprisal score: average inverse-frequency of tokens."""
-    tokens = re.split(r"\W+", content.lower())
-    tokens = [t for t in tokens if t]
+def _compute_surprisal(content: str, token_weights: dict[str, float]) -> float:
+    tokens = [token for token in re.split(r"\W+", (content or "").lower()) if token]
     if not tokens:
         return 0.0
-    scores = [token_weights.get(t, math.log(1000)) for t in tokens]
+    unseen = max(token_weights.values(), default=0.0) + math.log(2.0)
+    scores = [token_weights.get(token, unseen) for token in tokens]
     return sum(scores) / len(scores)
 
 
@@ -108,32 +90,34 @@ def rank_by_surprisal(
     limit: int = 200,
     dry_run: bool = True,
 ) -> list[dict[str, Any]]:
-    """Rank memories by surprisal (novelty)."""
-    token_weights = _token_frequencies(store, limit=limit)
-    with store.connect() as conn:
+    """Rank bounded source memories by novelty; this function is always read-only."""
+    bounded_limit = _bounded_limit(limit)
+    token_weights = _token_frequencies(store, limit=bounded_limit)
+    with readonly_connection(store) as conn:
+        if conn is None:
+            return []
         rows = conn.execute(
             """SELECT id, content, type, agent_id, session_id, created_at
                FROM memories
-               WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
-               ORDER BY created_at DESC LIMIT ?""",
-            (limit,),
+               WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"""
+            + _GENERATED_FILTER
+            + " ORDER BY created_at DESC LIMIT ?",
+            (bounded_limit,),
         ).fetchall()
-    scored: list[dict[str, Any]] = []
-    for row in rows:
-        s = _compute_surprisal(row["content"], token_weights)
-        scored.append({
+    scored = [
+        {
             "id": row["id"],
-            "content": row["content"][:200],
+            "content": (row["content"] or "")[:200],
             "type": row["type"],
             "agent_id": row["agent_id"],
             "session_id": row["session_id"],
-            "surprisal": round(s, 3),
-        })
-    scored.sort(key=lambda x: x["surprisal"], reverse=True)
+            "surprisal": round(_compute_surprisal(row["content"] or "", token_weights), 3),
+        }
+        for row in rows
+    ]
+    scored.sort(key=lambda item: (-item["surprisal"], item["id"]))
     return scored
 
-
-# ── Phase 2: Pattern Detection ──────────────────────────────────────────────
 
 def detect_patterns(
     store: SuperMemoryStore,
@@ -142,76 +126,102 @@ def detect_patterns(
     similarity_threshold: float = 0.4,
     dry_run: bool = True,
 ) -> list[dict[str, Any]]:
-    """Detect cross-session patterns by clustering related memories.
-
-    Groups similar memories across different sessions using Jaccard similarity,
-    then labels each cluster as a potential consolidated insight.
-    """
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=window_hours)).isoformat()
-    with store.connect() as conn:
+    """Detect bounded cross-session patterns without consuming generated output."""
+    bounded_hours = max(1, min(int(window_hours), 24 * 365))
+    bounded_cluster = max(2, min(int(min_cluster_size), 50))
+    bounded_threshold = max(0.0, min(float(similarity_threshold), 1.0))
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=bounded_hours)).isoformat()
+    with readonly_connection(store) as conn:
+        if conn is None:
+            return []
         rows = conn.execute(
             """SELECT id, content, type, agent_id, session_id, created_at
                FROM memories WHERE created_at > ?
-               AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0
-               ORDER BY created_at DESC LIMIT 500""",
-            (cutoff,),
+               AND COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"""
+            + _GENERATED_FILTER
+            + " ORDER BY created_at DESC, id LIMIT ?",
+            (cutoff, _MAX_SCAN),
         ).fetchall()
 
-    # Build clusters
+    # Similarity is an undirected graph; connected components make clustering
+    # transitive and independent of row/seed order.
+    items = [dict(row) for row in rows]
+    adjacency = {str(item["id"]): set() for item in items}
+    pair_similarity: dict[tuple[str, str], float] = {}
+    for index, first in enumerate(items):
+        for second in items[index + 1:]:
+            sim = _jaccard_similarity(first.get("content") or "", second.get("content") or "")
+            pair_similarity[(str(first["id"]), str(second["id"]))] = sim
+            if sim >= bounded_threshold:
+                adjacency[str(first["id"])].add(str(second["id"])); adjacency[str(second["id"])].add(str(first["id"]))
+    by_id = {str(item["id"]): item for item in items}
     clusters: list[dict[str, Any]] = []
     used: set[str] = set()
-    for i, a in enumerate(rows):
-        if a["id"] in used:
+    token_weights = _token_frequencies(store, limit=_MAX_SCAN)
+    for root in sorted(by_id):
+        if root in used: continue
+        stack=[root]; component=[]; used.add(root)
+        while stack:
+            node=stack.pop(); component.append(node)
+            for neighbor in sorted(adjacency[node]):
+                if neighbor not in used: used.add(neighbor); stack.append(neighbor)
+        group=[by_id[node] for node in sorted(component)]
+        if len(group) < bounded_cluster:
             continue
-        group = [dict(a)]
-        used.add(a["id"])
-        for b in rows[i + 1 :]:
-            if b["id"] in used:
-                continue
-            if _jaccard_similarity(a["content"], b["content"]) >= similarity_threshold:
-                group.append(dict(b))
-                used.add(b["id"])
-        if len(group) >= min_cluster_size:
-            # Check if cluster spans multiple sessions (genuine cross-session pattern)
-            sessions = set(m["session_id"] for m in group if m["session_id"])
-            clusters.append({
+        sessions = {item["session_id"] for item in group if item.get("session_id")}
+        memory_ids = sorted(str(item["id"]) for item in group)[:64]
+        clusters.append(
+            {
                 "size": len(group),
                 "sessions": len(sessions),
                 "cross_session": len(sessions) > 1,
-                "content_samples": [m["content"][:150] for m in group[:3]],
-                "agent_ids": list(set(m["agent_id"] for m in group if m["agent_id"])),
-                "memory_ids": [m["id"] for m in group],
-                "avg_surprisal": round(sum(
-                    _compute_surprisal(m["content"], {})
-                    for m in group
-                ) / len(group), 3),
-            })
-    clusters.sort(key=lambda x: x["size"], reverse=True)
+                "content_samples": [(item.get("content") or "")[:150] for item in group[:3]],
+                "agent_ids": sorted({item["agent_id"] for item in group if item.get("agent_id")})[:20],
+                "memory_ids": memory_ids,
+                "avg_surprisal": round(sum(_compute_surprisal(item.get("content") or "", token_weights) for item in group) / len(group), 3),
+                "avg_pairwise_similarity": round(sum(_jaccard_similarity(a.get("content") or "", b.get("content") or "") for i,a in enumerate(group) for b in group[i+1:]) / max(1, len(group)*(len(group)-1)/2), 3),
+            }
+        )
+    clusters.sort(key=lambda item: (-item["size"], item["memory_ids"]))
     return clusters
 
 
-# ── Phase 3: Insight Generation ─────────────────────────────────────────────
-
-def generate_insight(
-    cluster: dict[str, Any],
-) -> str:
-    """Generate a consolidated insight from a cluster of related memories.
-
-    Uses extractive summarization: picks the longest/highest-surprisal content
-    and prefixes with a session-span label.
-    """
-    samples = cluster.get("content_samples", [])
+def generate_insight(cluster: dict[str, Any]) -> str:
+    """Generate a bounded extractive candidate from a cluster."""
+    samples = [str(sample)[:150] for sample in cluster.get("content_samples", [])[:3] if sample]
     if not samples:
         return ""
-    # Pick the longest sample as the representative
-    best = max(samples, key=len)
+    best = max(samples, key=lambda sample: (len(sample), sample))
     cross = "Cross-session" if cluster.get("cross_session") else "Single-session"
-    insight = (
-        f"[Dream Consolidation] {cross} pattern — {cluster['size']} related memories"
-        f" across {cluster['sessions']} session(s). "
-        f"Key insight: {best}"
+    return (
+        f"[Dream Consolidation] {cross} pattern — {int(cluster.get('size', 0))} related memories "
+        f"across {int(cluster.get('sessions', 0))} session(s). Representative observation (extractive): {best}"
+    )[:4_000]
+
+
+def _quality_score(content: str) -> float:
+    try:
+        from .quality_scorer import score_memory
+
+        return float(score_memory(content, memory_type="insight").overall)
+    except Exception:
+        return 0.0
+
+
+def _dream_proposal(cluster: dict[str, Any], content: str, *, run_key: str, quality: float) -> dict[str, Any]:
+    return build_proposal(
+        kind="dream_insight",
+        content=content,
+        source_ids=cluster.get("memory_ids", []),
+        run_key=run_key,
+        evidence={
+            "cluster_size": cluster.get("size", 0),
+            "cross_session": bool(cluster.get("cross_session")),
+            "sessions": cluster.get("sessions", 0),
+            "quality_overall": round(quality, 4),
+        },
+        action={"type": "create_memory", "memory_type": "insight", "scope": "project"},
     )
-    return insight
 
 
 def run_dream_cycle(
@@ -225,286 +235,247 @@ def run_dream_cycle(
     require_review: bool = False,
     config_path: str | None = None,
 ) -> dict[str, Any]:
-    """Run the full dream consolidation cycle.
+    """Run the governed dream cycle.
 
-    Three-phase pipeline:
-    1. Surprisal scoring → rank memories by novelty
-    2. Pattern detection → cluster related memories across sessions
-    3. Insight generation → produce consolidated insights
-
-    In dry-run mode, reports candidates without saving.
-    In live mode, saves insights as MEMORY records.
+    ``require_review`` remains for call compatibility but direct-save behavior
+    has been retired. Both values route candidates to pending governance; a
+    separate explicit approval is the only canonical write path.
     """
-    report: dict[str, Any] = {
-        "ok": True,
-        "dry_run": dry_run,
-        "window_hours": window_hours,
-        "phases": {},
-    }
-
-    # Phase 1: Surprisal scoring
-    ranked = rank_by_surprisal(store, limit=200, dry_run=dry_run)
-    report["phases"]["surprisal"] = {
-        "memories_scored": len(ranked),
-        "top_surprisal": ranked[:5] if ranked else [],
-    }
-
-    # Phase 2: Pattern detection
+    bounded_max = max(0, min(int(max_insights), MAX_PROPOSALS_PER_RUN))
+    ranked = rank_by_surprisal(store, limit=200, dry_run=True)
     clusters = detect_patterns(
         store,
         window_hours=window_hours,
         min_cluster_size=min_cluster_size,
         similarity_threshold=similarity_threshold,
-        dry_run=dry_run,
+        dry_run=True,
     )
-    report["phases"]["patterns"] = {
-        "clusters_found": len(clusters),
-        "clusters": clusters[:max_insights],
-    }
+    source_ids = sorted({source_id for cluster in clusters[:bounded_max] for source_id in cluster["memory_ids"]})
+    run_key = deterministic_run_key(
+        "dream-cycle-v2",
+        inputs={
+            "window_hours": max(1, min(int(window_hours), 24 * 365)),
+            "min_cluster_size": max(2, min(int(min_cluster_size), 50)),
+            "similarity_threshold": max(0.0, min(float(similarity_threshold), 1.0)),
+            "max_insights": bounded_max,
+        },
+        source_ids=source_ids,
+    )
 
-    # Phase 3: Insight generation & save
-    insights_saved = 0
-    insights: list[dict[str, Any]] = []
-    for cluster in clusters[:max_insights]:
-        insight_text = generate_insight(cluster)
-        insights.append({
-            "content": insight_text[:500],
-            "cluster_size": cluster["size"],
-            "cross_session": cluster["cross_session"],
-            "source_memory_ids": cluster["memory_ids"],
-        })
-
-    report["phases"]["insights"] = {
-        "candidates": insights,
-        "would_save": len(insights) if dry_run else 0,
-    }
-
-    # Live mode: save insights (or, when require_review, enqueue for approval)
-    if not dry_run and insights:
-        from .config import load_config as _lc
-        from .service import SuperMemoryService
-        from .quality_scorer import score_memory
-        import hashlib as _hl
-        cfg = _lc(config_path)
-        svc = SuperMemoryService(cfg)
-        # E1 quality gate: threshold + dedup against existing dream insights
-        _MIN_OVERALL = 0.5
-        _seen_hashes: set[str] = set()
-        _gate_stats = {"skipped_low_quality": 0, "skipped_dup": 0}
+    candidates: list[dict[str, Any]] = []
+    queued = 0
+    deduplicated = 0
+    skipped_quality = 0
+    skipped_noise = 0
+    skipped_canonical = 0
+    for cluster in clusters[:bounded_max]:
+        content = generate_insight(cluster)
+        if not content:
+            continue
         try:
-            with store.connect() as _c:  # type: ignore
-                for _r in _c.execute(
-                    "SELECT content FROM memories WHERE type = 'insight' AND agent_id = 'dream-engine'"
-                ).fetchall():
-                    _txt = _r[0] if not hasattr(_r, "keys") else _r["content"]
-                    _seen_hashes.add(_hl.sha256((_txt or "").encode()).hexdigest())
+            from .dream import _is_dream_noise
+
+            if _is_dream_noise(content):
+                skipped_noise += 1
+                continue
         except Exception:
             pass
-        for ins in insights:
-            _content = ins["content"]
-            # E2: reject ambient-token noise and injection echoes before save.
-            try:
-                from .dream import _is_dream_noise as _dn
-                if _dn(_content):
-                    _gate_stats.setdefault("skipped_noise", 0)
-                    _gate_stats["skipped_noise"] += 1
-                    continue
-            except Exception:
-                pass
-            _h = _hl.sha256(_content.encode()).hexdigest()
-            if _h in _seen_hashes:
-                _gate_stats["skipped_dup"] += 1
-                continue
-            _qs = score_memory(_content, memory_type="insight")
-            if _qs.overall < _MIN_OVERALL:
-                _gate_stats["skipped_low_quality"] += 1
-                continue
-            record = MemoryRecord(
-                content=_content,
-                type=MemoryType.INSIGHT,
-                scope=MemoryScope.PROJECT,
-                agent_id="dream-engine",
-                tags=["dream-consolidation", "p0", "insight"],
-                metadata={
-                    "dream_cluster_size": ins["cluster_size"],
-                    "dream_cross_session": ins["cross_session"],
-                    "dream_source_ids": ins["source_memory_ids"],
-                    "dream_generated_at": _now(),
-                    "quality_overall": _qs.overall,
+        quality = _quality_score(content)
+        if quality < 0.5:
+            skipped_quality += 1
+            continue
+        proposal = _dream_proposal(cluster, content, run_key=run_key, quality=quality)
+        if canonical_content_exists(store, proposal["content_hash"]):
+            skipped_canonical += 1
+            continue
+        outcome = enqueue_proposal(store, proposal, dry_run=dry_run)
+        queued += int(bool(outcome.get("created")))
+        deduplicated += int(bool(outcome.get("deduplicated")))
+        candidates.append(outcome["proposal"])
+
+    return {
+        "ok": True,
+        "dry_run": dry_run,
+        "run_key": run_key,
+        "governance": {
+            "state": "preview" if dry_run else "pending_approval",
+            "review_required": True,
+            "legacy_require_review_argument": require_review,
+            "direct_save_disabled": True,
+        },
+        "window_hours": max(1, min(int(window_hours), 24 * 365)),
+        "phases": {
+            "surprisal": {"memories_scored": len(ranked), "top_surprisal": ranked[:5]},
+            "patterns": {"clusters_found": len(clusters), "clusters": clusters[:bounded_max]},
+            "insights": {
+                "candidates": candidates,
+                "would_enqueue": len(candidates) if dry_run else 0,
+                "queued": queued,
+                "deduplicated": deduplicated,
+                "quality_gate": {
+                    "skipped_low_quality": skipped_quality,
+                    "skipped_noise": skipped_noise,
+                    "skipped_canonical_duplicate": skipped_canonical,
                 },
-            )
-            try:
-                if require_review:
-                    # E11: don't persist as a live memory; enqueue for human/agent
-                    # approval. dream_approve_insight() later saves it verbatim.
-                    _enqueue_pending_insight(store, ins, quality_overall=_qs.overall)
-                    _seen_hashes.add(_h)
-                    _gate_stats.setdefault("queued_for_review", 0)
-                    _gate_stats["queued_for_review"] += 1
-                else:
-                    svc.save(record)
-                    _seen_hashes.add(_h)
-                    insights_saved += 1
-            except Exception:
-                pass
-        report["phases"]["insights"]["saved"] = insights_saved
-        report["phases"]["insights"]["quality_gate"] = _gate_stats
-        if require_review:
-            report["phases"]["insights"]["require_review"] = True
-            report["phases"]["insights"]["queued"] = _gate_stats.get("queued_for_review", 0)
+                "saved": 0,
+                "require_review": True,
+            },
+        },
+        "insights_saved": 0,
+    }
 
-    report["insights_saved"] = insights_saved
-    return report
 
-# ── E11: dream insight review-before-save queue ─────────────────────────────
-
+# Compatibility wrappers for the former dream_pending_insights API. The
+# additive generated_proposals table is now the single source of lifecycle
+# truth; no new rows are written to the legacy table.
 def _init_pending_insights(store: SuperMemoryStore) -> None:
-    with store.connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS dream_pending_insights (
-                id TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                cluster_size INTEGER NOT NULL DEFAULT 0,
-                cross_session INTEGER NOT NULL DEFAULT 0,
-                source_memory_ids TEXT,
-                quality_overall REAL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                created_at TEXT NOT NULL,
-                resolved_at TEXT
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_dream_pending_status ON dream_pending_insights(status)"
-        )
+    ensure_schema(store)
 
 
-def _enqueue_pending_insight(store: SuperMemoryStore, ins: dict[str, Any], *, quality_overall: float | None = None) -> str:
-    """Persist a candidate insight for later approval (idempotent by content hash)."""
-    import hashlib as _hl
-    _init_pending_insights(store)
-    content = ins["content"]
-    chash = _hl.sha256(content.encode()).hexdigest()
-    pid = str(uuid4())
-    with store.connect() as conn:
-        # dedup: skip if an unresolved copy already queued
-        existing = conn.execute(
-            "SELECT id FROM dream_pending_insights WHERE content_hash=? AND status='pending'",
-            (chash,),
-        ).fetchone()
-        if existing:
-            return existing[0] if not hasattr(existing, "keys") else existing["id"]
-        conn.execute(
-            "INSERT INTO dream_pending_insights "
-            "(id, content, content_hash, cluster_size, cross_session, source_memory_ids, quality_overall, status, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
-            (
-                pid, content, chash,
-                int(ins.get("cluster_size", 0)),
-                1 if ins.get("cross_session") else 0,
-                json.dumps(ins.get("source_memory_ids", [])),
-                quality_overall,
-                _now(),
-            ),
-        )
-    return pid
+def _enqueue_pending_insight(
+    store: SuperMemoryStore,
+    ins: dict[str, Any],
+    *,
+    quality_overall: float | None = None,
+) -> str:
+    source_ids = ins.get("source_memory_ids", [])
+    proposal = build_proposal(
+        kind="dream_insight",
+        content=str(ins.get("content", "")),
+        source_ids=source_ids,
+        evidence={
+            "cluster_size": int(ins.get("cluster_size", 0)),
+            "cross_session": bool(ins.get("cross_session")),
+            "quality_overall": quality_overall,
+        },
+        action={"type": "create_memory", "memory_type": "insight", "scope": "project"},
+    )
+    return enqueue_proposal(store, proposal, dry_run=False)["proposal"]["id"]
 
 
-def dream_list_pending_insights(store: SuperMemoryStore | None = None, *, limit: int = 50, config_path: str | None = None) -> dict[str, Any]:
-    """List insights awaiting review (E11)."""
+def dream_list_pending_insights(
+    store: SuperMemoryStore | None = None,
+    *,
+    limit: int = 50,
+    config_path: str | None = None,
+) -> dict[str, Any]:
     cfg = load_config(config_path)
-    store = store or SuperMemoryStore(cfg)
-    _init_pending_insights(store)
-    with store.connect() as conn:
-        rows = conn.execute(
-            "SELECT id, content, cluster_size, cross_session, source_memory_ids, quality_overall, created_at "
-            "FROM dream_pending_insights WHERE status='pending' ORDER BY created_at DESC LIMIT ?",
-            (max(1, min(limit, 500)),),
-        ).fetchall()
-    items = []
-    for r in rows:
-        d = dict(r) if hasattr(r, "keys") else {}
-        try:
-            d["source_memory_ids"] = json.loads(d.get("source_memory_ids") or "[]")
-        except Exception:
-            d["source_memory_ids"] = []
-        d["cross_session"] = bool(d.get("cross_session"))
-        items.append(d)
+    active_store = store or SuperMemoryStore(cfg)
+    proposals = list_proposals(active_store, kind="dream_insight", status="pending", limit=limit)
+    items = [
+        {
+            "id": proposal["id"],
+            "content": proposal["content"],
+            "cluster_size": int(proposal.get("evidence", {}).get("cluster_size", 0)),
+            "cross_session": bool(proposal.get("evidence", {}).get("cross_session")),
+            "source_memory_ids": proposal.get("source_ids", []),
+            "quality_overall": proposal.get("evidence", {}).get("quality_overall"),
+            "created_at": proposal.get("created_at"),
+            "run_key": proposal.get("run_key"),
+            "status": proposal.get("status"),
+        }
+        for proposal in proposals
+    ]
     return {"ok": True, "pending": items, "count": len(items)}
 
 
-def dream_approve_insight(insight_id: str, store: SuperMemoryStore | None = None, *, config_path: str | None = None) -> dict[str, Any]:
-    """Approve a pending insight and persist it as a canonical memory (E11)."""
-    from .service import SuperMemoryService
-    cfg = load_config(config_path)
-    store = store or SuperMemoryStore(cfg)
-    _init_pending_insights(store)
-    with store.connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM dream_pending_insights WHERE id=? AND status='pending'",
-            (insight_id,),
-        ).fetchone()
-    if not row:
-        return {"ok": False, "error": "not_found_or_already_resolved", "id": insight_id}
-    d = dict(row)
-    try:
-        src_ids = json.loads(d.get("source_memory_ids") or "[]")
-    except Exception:
-        src_ids = []
+def _save_approved_dream(proposal: dict[str, Any], cfg: Any, store: SuperMemoryStore) -> str:
+    existing = canonical_content_exists(store, proposal["content_hash"])
+    if existing:
+        return existing
+    memory_id = f"dream-insight:{proposal['content_hash'][:32]}"
+    evidence = proposal.get("evidence", {})
     record = MemoryRecord(
-        content=d["content"],
+        id=memory_id,
+        content=proposal["content"],
         type=MemoryType.INSIGHT,
         scope=MemoryScope.PROJECT,
         agent_id="dream-engine",
-        tags=["dream-consolidation", "p0", "insight", "reviewed"],
+        project="super-memory",
+        source="super-memory.dream.approved",
+        tags=["dream-consolidation", "insight", "reviewed"],
         metadata={
-            "dream_cluster_size": d.get("cluster_size"),
-            "dream_cross_session": bool(d.get("cross_session")),
-            "dream_source_ids": src_ids,
+            "dream_cluster_size": evidence.get("cluster_size"),
+            "dream_cross_session": bool(evidence.get("cross_session")),
+            "dream_source_ids": proposal.get("source_ids", []),
             "dream_generated_at": _now(),
-            "quality_overall": d.get("quality_overall"),
+            "quality_overall": evidence.get("quality_overall"),
             "review_status": "approved",
+            "generated_by": "dream_engine",
+            "governance_proposal_id": proposal["id"],
+            "governance_run_key": proposal["run_key"],
         },
     )
-    svc = SuperMemoryService(cfg)
-    saved = svc.save(record)
-    with store.connect() as conn:
-        conn.execute(
-            "UPDATE dream_pending_insights SET status='approved', resolved_at=? WHERE id=?",
-            (_now(), insight_id),
-        )
-    return {"ok": True, "id": insight_id, "saved": True, "result": getattr(saved, "__dict__", str(saved))}
+    from .service import SuperMemoryService
+
+    results = SuperMemoryService(cfg).save(record)
+    if not any(getattr(result, "ok", False) for result in results):
+        raise RuntimeError("canonical save returned no successful layer")
+    return memory_id
 
 
-def dream_reject_insight(insight_id: str, store: SuperMemoryStore | None = None, *, config_path: str | None = None) -> dict[str, Any]:
-    """Reject a pending insight so it is never persisted (E11)."""
+def dream_approve_insight(
+    insight_id: str,
+    store: SuperMemoryStore | None = None,
+    *,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Explicitly approve one pending proposal and save it canonically once."""
     cfg = load_config(config_path)
-    store = store or SuperMemoryStore(cfg)
-    _init_pending_insights(store)
-    with store.connect() as conn:
-        cur = conn.execute(
-            "UPDATE dream_pending_insights SET status='rejected', resolved_at=? WHERE id=? AND status='pending'",
-            (_now(), insight_id),
-        )
-        changed = cur.rowcount
-    if not changed:
-        return {"ok": False, "error": "not_found_or_already_resolved", "id": insight_id}
-    return {"ok": True, "id": insight_id, "rejected": True}
+    active_store = store or SuperMemoryStore(cfg)
+    proposal = get_proposal(active_store, insight_id)
+    if proposal and proposal.get("kind") != "dream_insight":
+        return {"ok": False, "error": "wrong_proposal_kind", "id": insight_id}
+    return resolve_proposal(
+        active_store,
+        insight_id,
+        decision="approved",
+        apply=lambda item: _save_approved_dream(item, cfg, active_store),
+    )
 
 
-# ── Wiring helper for maintenance_run() ─────────────────────────────────────
+def dream_reject_insight(
+    insight_id: str,
+    store: SuperMemoryStore | None = None,
+    *,
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Explicitly reject one pending proposal; terminal replay is a no-op."""
+    cfg = load_config(config_path)
+    active_store = store or SuperMemoryStore(cfg)
+    proposal = get_proposal(active_store, insight_id)
+    if proposal and proposal.get("kind") != "dream_insight":
+        return {"ok": False, "error": "wrong_proposal_kind", "id": insight_id}
+    result = resolve_proposal(active_store, insight_id, decision="rejected")
+    # Preserve the legacy wrapper's "already resolved" response while the
+    # shared resolver exposes the stronger idempotent-success contract.  The
+    # explicit flags let newer callers distinguish this safe no-op from a
+    # failed first transition.
+    if result.get("idempotent") and result.get("no_op"):
+        result["ok"] = False
+        result["error"] = "already_resolved"
+    if result.get("ok"):
+        result["rejected"] = True
+    return result
+
 
 def dream_engine_status(store: SuperMemoryStore | None = None) -> dict[str, Any]:
-    """Check dream engine infrastructure status."""
-    from .config import load_config as _lc
-    cfg = _lc()
-    store = store or SuperMemoryStore(cfg)
-    with store.connect() as conn:
+    cfg = load_config()
+    active_store = store or SuperMemoryStore(cfg)
+    with readonly_connection(active_store) as conn:
+        if conn is None:
+            return {
+                "ok": True,
+                "total_memories": 0,
+                "total_sessions": 0,
+                "total_agents": 0,
+                "memories_last_hour": 0,
+                "phase1_surprisal": "ready",
+                "phase2_patterns": "ready",
+                "phase3_insights": "approval_required",
+            }
         total = conn.execute(
-            "SELECT COUNT(*) FROM memories "
-            "WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+            "SELECT COUNT(*) FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
         ).fetchone()[0]
         sessions = conn.execute(
             "SELECT COUNT(DISTINCT session_id) FROM memories WHERE session_id IS NOT NULL "
@@ -526,5 +497,5 @@ def dream_engine_status(store: SuperMemoryStore | None = None) -> dict[str, Any]
         "memories_last_hour": last_hour,
         "phase1_surprisal": "ready",
         "phase2_patterns": "ready",
-        "phase3_insights": "ready",
+        "phase3_insights": "approval_required",
     }

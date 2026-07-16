@@ -106,6 +106,10 @@ def _run_cognitive_cycle(config_path: str | None = None, dry_run: bool = True) -
                                     direction="for",
                                     weight=0.3,
                                     config_path=config_path,
+                                    source_id=f"memory:{row['id']}",
+                                    source_type="memory_row",
+                                    source_revision=row["created_at"],
+                                    source_trust=0.5,
                                 )
                                 report["notes"].append(f"Auto-evidence for {hyp['id'][:24]}: '{row['content'][:60]}...'")
 

@@ -1,0 +1,11 @@
+[
+  {"id":"exact","category":"exact","query":"project codename lighthouse","relevance":{"m-exact":2},"citations":{"m-exact":"MEMORY.md#L10"}},
+  {"id":"paraphrase","category":"paraphrase","query":"what do we call the coastal beacon effort?","relevance":{"m-exact":2},"citations":{"m-exact":"MEMORY.md#L10"}},
+  {"id":"vi","category":"vietnamese","query":"mật khẩu dự án được lưu ở đâu?","relevance":{"m-vi":2},"citations":{"m-vi":"vi.md#L3"}},
+  {"id":"cjk","category":"cjk","query":"项目发布日期是什么时候？","relevance":{"m-cjk":2},"citations":{"m-cjk":"zh.md#L2"}},
+  {"id":"temporal","category":"temporal","query":"current deployment region","relevance":{"m-region-v2":2},"stale_ids":["m-region-v1"],"citations":{"m-region-v2":"decisions.md#L8"}},
+  {"id":"contradiction","category":"contradiction","query":"is telemetry enabled?","relevance":{"m-tel-new":2},"stale_ids":["m-tel-old"],"citations":{"m-tel-new":"settings.md#L9"}},
+  {"id":"deleted","category":"deleted","query":"retired api token","relevance":{"m-policy":1},"deleted_ids":["m-deleted"],"citations":{"m-policy":"policy.md#L4"}},
+  {"id":"scope","category":"scope_isolation","query":"alice private preference","relevance":{"m-alice":2},"unauthorized_ids":["m-bob"],"citations":{"m-alice":"agents/alice.md#L1"}},
+  {"id":"revision","category":"source_revision","query":"latest retention period","relevance":{"m-retention-v3":2},"stale_ids":["m-retention-v2"],"citations":{"m-retention-v3":"policy.md@rev3#L12"}}
+]

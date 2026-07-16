@@ -123,7 +123,7 @@ class SQLiteCoreStorage(CoreStorage):
             self._store.initialize()
 
     def close(self) -> None:
-        pass
+        self._store.close()
 
     def save_memory(self, record: MemoryRecord) -> Any:
         from .service import SuperMemoryService

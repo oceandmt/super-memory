@@ -45,20 +45,17 @@ def audit():
     except Exception as e:
         issues.append(f"tools count check: FAIL ({e})")
 
-    # 4. Quick integration test
+    # 4. Read-only integration test. Mutation smoke belongs in qualification
+    # against an explicitly disposable database, never in a cron audit.
     try:
         from super_memory.mempalace import (
             EntityRegistry, KnowledgeGraph, search_sqlite,
             deduplicate, build_hallways, fact_check,
             spellcheck_user_text,
         )
-        # Entity Registry smoke test
         r = EntityRegistry.load()
-        r.add("_audit_test_", kind="test", source="audit")
-        result = r.lookup("_audit_test_")
-        r.remove("_audit_test_")
-        if result["type"] != "test":
-            issues.append("EntityRegistry lookup: FAIL")
+        if not callable(getattr(r, "lookup", None)):
+            issues.append("EntityRegistry lookup surface: FAIL")
     except Exception as e:
         issues.append(f"integration test: FAIL ({e})")
 

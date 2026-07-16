@@ -402,14 +402,14 @@ class GraphMixin:
             synapses = conn.execute(
                 "SELECT COUNT(*) as c FROM cognitive_synapses"
             ).fetchone()["c"]
-            synapse_types = {
-                r["synapse_type"]: r["c"]
+            relations = {
+                r["relation"]: r["c"]
                 for r in conn.execute(
-                    "SELECT synapse_type, COUNT(*) as c FROM cognitive_synapses GROUP BY synapse_type"
+                    "SELECT relation, COUNT(*) as c FROM cognitive_synapses GROUP BY relation"
                 ).fetchall()
             }
         return {
             "neurons": neurons,
             "synapses": synapses,
-            "synapse_types": synapse_types,
+            "relations": relations,
         }

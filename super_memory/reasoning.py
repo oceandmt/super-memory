@@ -128,8 +128,7 @@ def hypothesis_create(content: str, confidence: float = 0.5, tags: list[str] | N
             "INSERT INTO cognitive_hypotheses (id, content, confidence, status, tags_json, metadata_json, confidence_history_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (hyp_id, content, _clamp(confidence), "active", json.dumps(tags, ensure_ascii=False), json.dumps({"canonical_first": True}, ensure_ascii=False), json.dumps([{"at": now, "confidence": _clamp(confidence), "event": "created"}], ensure_ascii=False), now, now),
         )
-    saved = bridge.remember({"content": f"Hypothesis: {content}", "type": MemoryType.INSIGHT.value, "scope": MemoryScope.PROJECT.value, "tags": ["hypothesis", *tags], "source": "super-memory.reasoning", "trust_score": _clamp(confidence), "metadata": {"hypothesis_id": hyp_id}}, config_path=config_path)
-    return {"ok": True, "hypothesis_id": hyp_id, "content": content, "confidence": _clamp(confidence), "status": "active", "memory": saved.get("record")}
+    return {"ok": True, "hypothesis_id": hyp_id, "content": content, "confidence": _clamp(confidence), "status": "active", "memory": None, "canonical_promoted": False, "truth_level": "hypothesis"}
 
 
 def hypothesis_get(hypothesis_id: str, config_path: str | None = None) -> dict[str, Any]:
@@ -156,25 +155,32 @@ def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str
     return {"ok": True, "hypotheses": [{"id": r["id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "tags": json.loads(r["tags_json"]), "updated_at": r["updated_at"]} for r in rows]}
 
 
-def evidence_add(hypothesis_id: str, content: str, direction: str = "for", weight: float = 0.5, config_path: str | None = None) -> dict[str, Any]:
+def evidence_add(hypothesis_id: str, content: str, direction: str = "for", weight: float = 0.5, config_path: str | None = None, *, source_id: str | None = None, source_type: str | None = None, source_hash: str | None = None, source_revision: str | None = None, source_trust: float | None = None) -> dict[str, Any]:
     if direction not in {"for", "against"}:
         raise ValueError("direction must be 'for' or 'against'")
+    if not source_id or not str(source_id).strip():
+        return {"ok": False, "error": "source_id_required", "required": ["source_id", "source_type", "source_hash", "source_revision", "source_trust"]}
+    provenance = {"source": str(source_id), "source_id": source_id, "source_type": source_type or "unknown", "source_hash": source_hash, "source_revision": source_revision, "source_trust": source_trust}
     store = _store(config_path)
-    ev_id = f"ev:{uuid4()}"
+    import hashlib
+    ev_digest = hashlib.sha256((hypothesis_id + "\0" + direction + "\0" + str(source_id) + "\0" + " ".join(content.split()).lower()).encode("utf-8")).hexdigest()
+    ev_id = f"ev:{ev_digest[:32]}"
     now = _now()
     with store.connect() as conn:
         hyp = conn.execute("SELECT * FROM cognitive_hypotheses WHERE id=?", (hypothesis_id,)).fetchone()
         if not hyp:
             return {"ok": False, "error": f"hypothesis not found: {hypothesis_id}"}
+        existing = conn.execute("SELECT * FROM cognitive_evidence WHERE id=?", (ev_id,)).fetchone()
+        if existing:
+            return {"ok": True, "deduplicated": True, "evidence_id": ev_id, "hypothesis_id": hypothesis_id, "confidence": float(hyp["confidence"]), "status": hyp["status"]}
         new_conf = _confidence_update(float(hyp["confidence"]), direction, weight)
         ev_count = conn.execute("SELECT COUNT(*) c FROM cognitive_evidence WHERE hypothesis_id=?", (hypothesis_id,)).fetchone()["c"] + 1
         status = _status(new_conf, ev_count)
-        conn.execute("INSERT INTO cognitive_evidence (id, hypothesis_id, content, direction, weight, metadata_json, provenance_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (ev_id, hypothesis_id, content, direction, max(0.0, min(1.0, weight)), json.dumps({}, ensure_ascii=False), json.dumps({"source": "super-memory.reasoning", "hypothesis_id": hypothesis_id}, ensure_ascii=False), now))
+        conn.execute("INSERT INTO cognitive_evidence (id, hypothesis_id, content, direction, weight, metadata_json, provenance_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (ev_id, hypothesis_id, content, direction, max(0.0, min(1.0, weight)), json.dumps({}, ensure_ascii=False), json.dumps(provenance, ensure_ascii=False), now))
         history = json.loads(hyp["confidence_history_json"] or "[]")
         history.append({"at": now, "confidence": new_conf, "event": f"evidence:{direction}", "evidence_id": ev_id, "weight": max(0.0, min(1.0, weight))})
         conn.execute("UPDATE cognitive_hypotheses SET confidence=?, status=?, confidence_history_json=?, updated_at=? WHERE id=?", (new_conf, status, json.dumps(history[-50:], ensure_ascii=False), now, hypothesis_id))
-    saved = bridge.remember({"content": f"Evidence {direction} {hypothesis_id}: {content}", "type": MemoryType.INSIGHT.value if direction == "for" else MemoryType.BLOCKER.value, "scope": MemoryScope.PROJECT.value, "tags": ["evidence", f"evidence:{direction}"], "source": "super-memory.reasoning", "trust_score": max(0.1, min(0.9, weight)), "metadata": {"hypothesis_id": hypothesis_id, "evidence_id": ev_id, "relation": "evidence_for" if direction == "for" else "evidence_against"}}, config_path=config_path)
-    return {"ok": True, "evidence_id": ev_id, "hypothesis_id": hypothesis_id, "confidence": new_conf, "status": status, "memory": saved.get("record")}
+    return {"ok": True, "deduplicated": False, "evidence_id": ev_id, "hypothesis_id": hypothesis_id, "confidence": new_conf, "status": status, "memory": None, "canonical_promoted": False, "provenance": provenance}
 
 
 def prediction_create(content: str, confidence: float = 0.7, hypothesis_id: str | None = None, deadline: str | None = None, config_path: str | None = None) -> dict[str, Any]:
@@ -218,7 +224,7 @@ def verify_prediction(prediction_id: str, outcome: str, content: str = "", confi
         hyp_id = pred["hypothesis_id"]
     ev_result = None
     if hyp_id:
-        ev_result = evidence_add(hyp_id, content or f"Prediction {prediction_id} was {outcome}", direction="for" if outcome == "correct" else "against", weight=0.8, config_path=config_path)
+        ev_result = evidence_add(hyp_id, content or f"Prediction {prediction_id} was {outcome}", direction="for" if outcome == "correct" else "against", weight=0.8, config_path=config_path, source_id=f"prediction:{prediction_id}", source_type="prediction_verification", source_revision=ver_id, source_trust=0.8)
     saved = bridge.remember({"content": f"Verification {outcome} for {prediction_id}: {content}", "type": MemoryType.INSIGHT.value if outcome == "correct" else MemoryType.BLOCKER.value, "scope": MemoryScope.PROJECT.value, "tags": ["verification", f"outcome:{outcome}"], "source": "super-memory.reasoning", "trust_score": 0.8, "metadata": {"prediction_id": prediction_id, "verification_id": ver_id, "relation": "verified_by" if outcome == "correct" else "falsified_by"}}, config_path=config_path)
     return {"ok": True, "verification_id": ver_id, "prediction_id": prediction_id, "status": status, "hypothesis_update": ev_result, "memory": saved.get("record")}
 

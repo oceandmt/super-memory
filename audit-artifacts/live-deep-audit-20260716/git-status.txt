@@ -1,0 +1,82 @@
+ M scripts/audit.py
+ M scripts/deploy-vps.sh
+ M scripts/deploy_reload.sh
+ M scripts/deploy_verify_vps.sh
+ M scripts/qualify.sh
+ M super_memory/api.py
+ M super_memory/auto_deep.py
+ M super_memory/autocomplete.py
+ M super_memory/bridge.py
+ M super_memory/capture_hook.py
+ M super_memory/compat.py
+ M super_memory/cross_agent.py
+ M super_memory/deep_auto.py
+ M super_memory/doctor.py
+ M super_memory/dream.py
+ M super_memory/dream_engine.py
+ M super_memory/hooks.py
+ M super_memory/maintenance.py
+ M super_memory/maintenance_jobs.py
+ M super_memory/mcp_server.py
+ M super_memory/migrations.py
+ M super_memory/phase8.py
+ M super_memory/projections/manifest.py
+ M super_memory/quality_gate.py
+ M super_memory/reasoning.py
+ M super_memory/recall/arbitration_v4.py
+ M super_memory/recall_benchmark.py
+ M super_memory/retrieval_backends.py
+ M super_memory/schema.sql
+ M super_memory/self_improve.py
+ M super_memory/self_improvement/orchestrator.py
+ M super_memory/semantic.py
+ M super_memory/service.py
+ M super_memory/session_index.py
+ M super_memory/spreading_activation.py
+ M super_memory/storage.py
+ M super_memory/storage_base.py
+ M super_memory/storage_mixins.py
+ M super_memory/telemetry.py
+ M super_memory/temporal_decay.py
+ M super_memory/vector.py
+ M super_memory/write_contract/__init__.py
+ M super_memory/write_contract/idempotency.py
+ M super_memory/write_contract/migrations.py
+ M super_memory/write_contract/outbox.py
+ M tests/test_injection_and_hydration_regression.py
+ M tests/test_memory_core_compat.py
+ M tests/test_phase8_contracts.py
+ M tests/test_tool_dispatch_smoke.py
+?? audit-artifacts/
+?? scripts/super_memory_release_gate.py
+?? super_memory/canonical_contract.py
+?? super_memory/dream_governance.py
+?? super_memory/hypothesis_engine.py
+?? super_memory/memory_quality.py
+?? super_memory/operational_slo.py
+?? super_memory/readiness.py
+?? super_memory/recall_ablation.py
+?? super_memory/semantic_calibration.py
+?? super_memory/semantic_classifier.py
+?? super_memory/semantic_quality_benchmark.py
+?? super_memory/semantic_quality_gate.py
+?? super_memory/trust_calibration.py
+?? tests/fixtures/
+?? tests/recall_cases/p1/
+?? tests/recall_cases/recall_cases/
+?? tests/test_canonical_vector_contract.py
+?? tests/test_dream_governance.py
+?? tests/test_layers_intelligence_correctness.py
+?? tests/test_memory_quality_phase2.py
+?? tests/test_operations_release_correctness.py
+?? tests/test_readiness.py
+?? tests/test_recall_benchmark_p1_p2.py
+?? tests/test_recall_security_quality.py
+?? tests/test_runtime_identity.py
+?? tests/test_semantic_p0_p1_hardening.py
+?? tests/test_semantic_quality_authority.py
+?? tests/test_semantic_quality_benchmark.py
+?? tests/test_sqlite_connection_lifecycle.py
+?? tests/test_transport_caller_context.py
+?? tests/test_trust_calibration_slo.py
+?? tests/test_write_intent_lifecycle.py

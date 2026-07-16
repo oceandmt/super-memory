@@ -1,39 +1,53 @@
-"""Dream Engine (P0) — consolidation dreaming for Super Memory.
+"""Legacy Dream Engine facade backed by unified proposal governance.
 
-Dreams are synthetic insight memories generated during off-peak consolidation.
-They find latent patterns, strengthen weak connections, and propose novel
-cross-domain associations without hallucinating false facts.
+All synthetic insights and weak-tie changes are proposals. Dry-run is read-only;
+non-dry runs may enqueue deterministic pending proposals but never write
+canonical memories or mutate synapse weights.
 """
-
 from __future__ import annotations
 
-import json
 import re
-from collections import defaultdict, Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
 from .config import load_config
-from .models import MemoryRecord, MemoryScope, MemoryType
-from .service import SuperMemoryService
+from .dream_governance import (
+    MAX_PROPOSALS_PER_RUN,
+    build_proposal,
+    canonical_content_exists,
+    deterministic_run_key,
+    enqueue_proposal,
+    readonly_connection,
+)
 from .storage import SuperMemoryStore, row_to_memory
 
 _DREAM_DRY_RUN_LIMIT = 200
+_MAX_SCAN = 500
+_SOURCE_FILTER = """
+ AND COALESCE(agent_id, '') NOT IN ('dream-engine', 'self-improvement-engine')
+ AND lower(COALESCE(source, '')) NOT LIKE 'super-memory.dream%'
+ AND lower(COALESCE(source, '')) NOT LIKE 'self-improvement%'
+ AND COALESCE(json_extract(metadata_json, '$.generated_by'), '') = ''
+ AND COALESCE(json_extract(metadata_json, '$.governance_proposal_id'), '') = ''
+"""
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _bounded_limit(value: int) -> int:
+    return max(1, min(int(value), _MAX_SCAN))
+
+
 def _store(config_path: str | None = None) -> SuperMemoryStore:
-    cfg = load_config(config_path)
-    SuperMemoryService(cfg)
-    store = SuperMemoryStore(cfg)
-    _init_tables(store)
-    return store
+    """Return a store without creating dream schemas (important for dry-run)."""
+    return SuperMemoryStore(load_config(config_path))
 
 
 def _init_tables(store: SuperMemoryStore) -> None:
+    """Legacy table initializer retained for compatibility, never used by runs."""
     with store.connect() as conn:
         conn.execute(
             """
@@ -53,77 +67,51 @@ def _init_tables(store: SuperMemoryStore) -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_dream_events_kind ON dream_events(kind)")
 
 
-def _remember_internal(content: str, mem_type: str, tags: list[str], config_path: str | None = None) -> dict[str, Any]:
-    """Save a dream-derived memory through the canonical save pipeline.
-
-    E1 quality gate: dream insights must pass a quality threshold and not
-    duplicate an existing dream insight before being persisted. Returns a
-    skip marker (no 'record') when gated out so callers treat it as no-save.
-    """
-    from . import bridge
-    from .quality_scorer import score_memory
-    import hashlib as _hl
-
-    _MIN_OVERALL = 0.5
-    _qs = score_memory(content, memory_type="insight")
-    if _qs.overall < _MIN_OVERALL:
-        return {"ok": False, "skipped": "low_quality", "quality_overall": _qs.overall}
-    # Dedup against existing dream insights by content hash
-    _h = _hl.sha256(content.encode()).hexdigest()
-    try:
-        store = _store(config_path)
-        with store.connect() as _c:
-            _dup = _c.execute(
-                "SELECT 1 FROM memories WHERE type = 'insight' AND agent_id = 'dream-engine' "
-                "AND json_extract(metadata_json,'$.dream_content_hash') = ? LIMIT 1",
-                (_h,),
-            ).fetchone()
-        if _dup:
-            return {"ok": False, "skipped": "duplicate"}
-    except Exception:
-        pass
-    return bridge.remember({
-        "content": content,
-        "type": mem_type,
-        "scope": MemoryScope.SHARED.value,
-        "agent_id": "dream-engine",
-        "project": "super-memory",
-        "tags": tags,
-        "source": "super-memory.dream",
-        "trust_score": round(0.45 + 0.2 * _qs.overall, 3),
-        "metadata": {
-            "generated_by": "dream_engine",
-            "dream_cycle": _now(),
-            "dream_content_hash": _h,
-            "quality_overall": _qs.overall,
-        },
-    }, config_path=config_path)
+def _remember_internal(
+    content: str,
+    mem_type: str,
+    tags: list[str],
+    config_path: str | None = None,
+) -> dict[str, Any]:
+    """Compatibility helper: enqueue a proposal instead of saving a memory."""
+    store = _store(config_path)
+    proposal = build_proposal(
+        kind="dream_insight",
+        content=content,
+        evidence={"tags": tags, "legacy_memory_type": mem_type},
+        action={"type": "create_memory", "memory_type": "insight", "scope": "project"},
+    )
+    if canonical_content_exists(store, proposal["content_hash"]):
+        return {"ok": False, "skipped": "duplicate_canonical", "proposal": proposal}
+    result = enqueue_proposal(store, proposal, dry_run=False)
+    return {
+        "ok": True,
+        "pending_approval": True,
+        "proposal": result["proposal"],
+        "deduplicated": result["deduplicated"],
+    }
 
 
 def _extract_keywords(text: str, top_n: int = 8) -> list[str]:
-    """Deterministic keyword extraction: short words + frequency."""
-    STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "for", "with", "on",
-            "is", "are", "was", "were", "be", "by", "as", "this", "that", "it",
-            "at", "from", "but", "not", "we", "they", "has", "have", "had", "do",
-            "does", "did", "will", "would", "can", "could", "should", "may", "might"}
-    tokens = [t.lower() for t in re.split(r"\W+", text) if len(t) > 3 and t.lower() not in STOP]
-    common = [t for t, _ in Counter(tokens).most_common(top_n)]
-    return common[:top_n]
+    """Deterministic bounded keyword extraction."""
+    stop = {
+        "the", "a", "an", "and", "or", "of", "to", "in", "for", "with", "on",
+        "is", "are", "was", "were", "be", "by", "as", "this", "that", "it",
+        "at", "from", "but", "not", "we", "they", "has", "have", "had", "do",
+        "does", "did", "will", "would", "can", "could", "should", "may", "might",
+    }
+    tokens = [token.lower() for token in re.split(r"\W+", (text or "")[:20_000]) if len(token) > 3 and token.lower() not in stop]
+    return [token for token, _ in Counter(tokens).most_common(max(1, min(int(top_n), 20)))]
 
 
 def _jaccard_similarity(a: str, b: str) -> float:
-    tokens_a = set(re.split(r"\W+", a.lower()))
-    tokens_b = set(re.split(r"\W+", b.lower()))
-    tokens_a.discard("")
-    tokens_b.discard("")
+    tokens_a = {token for token in re.split(r"\W+", (a or "").lower()) if token}
+    tokens_b = {token for token in re.split(r"\W+", (b or "").lower()) if token}
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
-# E2: dream noise + injection guard ─────────────────────────────────────────
-# Generic/ambient tokens that produced the 20 rubbish "X appears in N memories"
-# insights (license/copyright/software/...) and injection markers. Bridges or
-# patterns keyed only on these are noise and must not become insight memories.
+
 _DREAM_NOISE_TOKENS = {
     "license", "licence", "copyright", "software", "memory", "python", "code",
     "file", "files", "content", "data", "system", "protocol", "chunked",
@@ -136,207 +124,263 @@ _DREAM_INJECTION_MARKERS = (
     "server timeout", "mandatory", "absolute limits", "per single write",
 )
 
+
 def _is_dream_noise(text: str, keywords: list[str] | set[str] | None = None) -> bool:
-    """True when a candidate insight is ambient-token noise or injection echo.
-
-    Blocks two failure modes seen in production:
-    1. Insights keyed only on generic tokens (all shared keywords in blocklist).
-    2. Insights whose text echoes the prompt-injection block.
-    """
-    low = (text or "").lower()
-    if any(m in low for m in _DREAM_INJECTION_MARKERS):
+    """Reject ambient-token patterns and known instruction-injection echoes."""
+    lowered = (text or "").lower()
+    if any(marker in lowered for marker in _DREAM_INJECTION_MARKERS):
         return True
-    kws = {k.lower() for k in (keywords or []) if k}
-    if kws and kws <= _DREAM_NOISE_TOKENS:
-        # every shared keyword is a generic/ambient token → no real signal
-        return True
-    return False
+    clean_keywords = {keyword.lower() for keyword in (keywords or []) if keyword}
+    return bool(clean_keywords and clean_keywords <= _DREAM_NOISE_TOKENS)
 
 
-def dream_insight_generation(limit=200, dry_run=True, config_path=None):
-    """Dream Phase 1: Generate synthetic insights from latent patterns."""
+def _quality_score(content: str) -> float:
+    try:
+        from .quality_scorer import score_memory
+
+        return float(score_memory(content, memory_type="insight").overall)
+    except Exception:
+        return 0.0
+
+
+def dream_insight_generation(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Generate bounded bridge-insight proposals from non-generated memories."""
+    bounded_limit = _bounded_limit(limit)
     store = _store(config_path)
-    with store.connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+    with readonly_connection(store) as conn:
+        if conn is None:
+            rows = []
+        else:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+                + _SOURCE_FILTER
+                + " ORDER BY created_at DESC, id LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
 
-    clusters = defaultdict(list)
+    # Collapse layer replicas before candidate generation.
+    records: dict[str, dict[str, Any]] = {}
     for row in rows:
         rec = row_to_memory(row)
+        if rec.id in records:
+            continue
         keywords = tuple(_extract_keywords(rec.content, top_n=5))
         if keywords:
-            clusters[keywords].append({"id": rec.id, "content": rec.content, "type": rec.type.value, "layer": row["layer"], "keywords": keywords})
+            records[rec.id] = {
+                "id": rec.id,
+                "content": rec.content[:4_000],
+                "type": rec.type.value,
+                "keywords": keywords,
+            }
 
-    candidates = []
-    seen_pairs = set()
-    cluster_list = list(clusters.values())
-    for i, cluster_a in enumerate(cluster_list):
-        if len(cluster_a) < 1:
-            continue
-        for item_a in cluster_a:
-            for item_b in cluster_a[i+1:]:
-                if item_b["id"] == item_a["id"]:
-                    continue
-                pair = (item_a["id"], item_b["id"]) if item_a["id"] < item_b["id"] else (item_b["id"], item_a["id"])
-                if pair in seen_pairs:
-                    continue
-                seen_pairs.add(pair)
-                sim = _jaccard_similarity(item_a["content"], item_b["content"])
-                if 0.15 < sim < 0.75:
-                    shared_kw = set(item_a["keywords"]) & set(item_b["keywords"])
-                    # E2: skip bridges whose only shared signal is ambient
-                    # noise tokens or that echo injection content.
-                    if shared_kw and not _is_dream_noise(
-                        item_a["content"] + " " + item_b["content"], shared_kw
-                    ):
-                        candidates.append({
-                            "source_a": {"id": item_a["id"], "content": item_a["content"][:160], "type": item_a["type"]},
-                            "source_b": {"id": item_b["id"], "content": item_b["content"][:160], "type": item_b["type"]},
-                            "cross_similarity": round(sim, 3),
-                            "shared_keywords": list(shared_kw),
-                            "proposed_insight": f"Bridge insight: {' and '.join(sorted(shared_kw))} connects {item_a['type']}->{item_b['type']} knowledge",
-                        })
-
-    candidates.sort(key=lambda c: c["cross_similarity"], reverse=True)
-    insights = []
-    created = []
-    for cand in candidates[:10]:
-        insight_content = (
-            f"Dream insight: '{cand['proposed_insight']}' "
-            f"(similarity={cand['cross_similarity']}, "
-            f"from memories {cand['source_a']['id'][:12]} and {cand['source_b']['id'][:12]})"
-        )
-        insights.append(cand)
-        if not dry_run:
-            result = _remember_internal(
-                content=insight_content,
-                mem_type=MemoryType.INSIGHT.value,
-                tags=["dream", "insight", f"bridge:{'_'.join(cand['shared_keywords'][:3])}"],
-                config_path=config_path,
+    items = [records[key] for key in sorted(records)]
+    candidates: list[dict[str, Any]] = []
+    for index, first in enumerate(items):
+        for second in items[index + 1 :]:
+            similarity = _jaccard_similarity(first["content"], second["content"])
+            if not 0.15 < similarity < 0.75:
+                continue
+            shared = sorted(set(first["keywords"]) & set(second["keywords"]))
+            if not shared or _is_dream_noise(first["content"] + " " + second["content"], shared):
+                continue
+            source_ids = sorted([first["id"], second["id"]])
+            proposed = f"Bridge insight: {' and '.join(shared)} connects {first['type']}->{second['type']} knowledge"
+            content = (
+                f"Dream insight: '{proposed}' (similarity={similarity:.3f}, "
+                f"from memories {source_ids[0][:12]} and {source_ids[1][:12]})"
+            )[:4_000]
+            candidates.append(
+                {
+                    "source_a": {"id": first["id"], "content": first["content"][:160], "type": first["type"]},
+                    "source_b": {"id": second["id"], "content": second["content"][:160], "type": second["type"]},
+                    "cross_similarity": round(similarity, 3),
+                    "shared_keywords": shared[:10],
+                    "proposed_insight": proposed,
+                    "content": content,
+                    "source_ids": source_ids,
+                }
             )
-            memory_id = result.get("record", {}).get("id")
-            if memory_id:
-                created.append(memory_id)
+    candidates.sort(key=lambda item: (-item["cross_similarity"], item["source_ids"]))
+    candidates = candidates[: min(10, MAX_PROPOSALS_PER_RUN)]
+    run_key = deterministic_run_key(
+        "dream-legacy-insights-v2",
+        inputs={"limit": bounded_limit},
+        source_ids=[source_id for candidate in candidates for source_id in candidate["source_ids"]],
+    )
 
-    if not dry_run:
-        with store.connect() as conn:
-            for cand in insights:
-                conn.execute(
-                    "INSERT INTO dream_events (id, kind, content, pattern_type, strength, source_text, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        f"dream:insight:{abs(hash(cand['proposed_insight'])) % 10**12}",
-                        "insight",
-                        cand["proposed_insight"],
-                        "cross_domain_bridge",
-                        cand["cross_similarity"],
-                        json.dumps({"a": cand["source_a"]["id"], "b": cand["source_b"]["id"]}),
-                        json.dumps({"keywords": cand["shared_keywords"]}),
-                        _now(),
-                    ),
-                )
+    proposals: list[dict[str, Any]] = []
+    queued = deduplicated = skipped_quality = skipped_canonical = 0
+    for candidate in candidates:
+        quality = _quality_score(candidate["content"])
+        if quality < 0.5:
+            skipped_quality += 1
+            continue
+        proposal = build_proposal(
+            kind="dream_insight",
+            content=candidate["content"],
+            source_ids=candidate["source_ids"],
+            run_key=run_key,
+            evidence={
+                "cross_similarity": candidate["cross_similarity"],
+                "shared_keywords": candidate["shared_keywords"],
+                "quality_overall": round(quality, 4),
+            },
+            action={"type": "create_memory", "memory_type": "insight", "scope": "project"},
+        )
+        if canonical_content_exists(store, proposal["content_hash"]):
+            skipped_canonical += 1
+            continue
+        outcome = enqueue_proposal(store, proposal, dry_run=dry_run)
+        queued += int(bool(outcome["created"]))
+        deduplicated += int(bool(outcome["deduplicated"]))
+        proposals.append(outcome["proposal"])
 
     return {
-        "ok": True, "dry_run": dry_run, "clusters_found": len(clusters),
-        "candidate_bridges": len(candidates), "insights_generated": len(insights),
-        "memories_created": len(created), "insights": insights[:10],
+        "ok": True,
+        "dry_run": dry_run,
+        "run_key": run_key,
+        "governance_state": "preview" if dry_run else "pending_approval",
+        "clusters_found": len(records),
+        "candidate_bridges": len(candidates),
+        "insights_generated": len(proposals),
+        "memories_created": 0,
+        "proposals_queued": queued,
+        "deduplicated": deduplicated,
+        "skipped_low_quality": skipped_quality,
+        "skipped_canonical_duplicate": skipped_canonical,
+        "insights": candidates[:10],
+        "proposals": proposals,
     }
 
 
-def dream_weak_tie_reinforcement(limit=200, dry_run=True, config_path=None):
-    """Dream Phase 2: Strengthen weak but useful connections."""
+def dream_weak_tie_reinforcement(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Propose weak-tie reinforcement; never update synapses directly."""
+    bounded_limit = _bounded_limit(limit)
     store = _store(config_path)
-    with store.connect() as conn:
+    with readonly_connection(store) as conn:
         try:
+            if conn is None:
+                raise LookupError("database does not exist")
             weak_synapses = conn.execute(
-                "SELECT * FROM cognitive_synapses WHERE weight < 0.3 AND weight > 0.05 ORDER BY weight ASC LIMIT ?",
-                (limit // 2,),
+                "SELECT * FROM cognitive_synapses WHERE weight < 0.3 AND weight > 0.05 ORDER BY weight ASC, id LIMIT ?",
+                (min(bounded_limit // 2, MAX_PROPOSALS_PER_RUN),),
             ).fetchall()
         except Exception:
             weak_synapses = []
 
-    reinforced = []
-    if not dry_run and weak_synapses:
-        with store.connect() as conn:
-            for syn in weak_synapses:
-                new_weight = min(1.0, float(syn["weight"]) * 1.5)
-                conn.execute(
-                    "UPDATE cognitive_synapses SET weight=?, updated_at=? WHERE id=?",
-                    (new_weight, _now(), syn["id"]),
-                )
-                reinforced.append({
-                    "synapse_id": syn["id"],
-                    "old_weight": syn["weight"],
-                    "new_weight": new_weight,
-                })
+    source_ids = [str(synapse["id"]) for synapse in weak_synapses]
+    run_key = deterministic_run_key(
+        "dream-weak-ties-v2",
+        inputs={"limit": bounded_limit, "multiplier": 1.5},
+        source_ids=source_ids,
+    )
+    proposals: list[dict[str, Any]] = []
+    queued = deduplicated = 0
+    for synapse in weak_synapses:
+        old_weight = float(synapse["weight"])
+        new_weight = min(1.0, old_weight * 1.5)
+        proposal = build_proposal(
+            kind="dream_weak_tie",
+            content=f"Propose reinforcing synapse {synapse['id']} from {old_weight:.6f} to {new_weight:.6f}",
+            source_ids=[synapse["id"]],
+            run_key=run_key,
+            evidence={"old_weight": old_weight, "new_weight": new_weight},
+            action={"type": "update_synapse_weight", "synapse_id": synapse["id"], "new_weight": new_weight},
+        )
+        outcome = enqueue_proposal(store, proposal, dry_run=dry_run)
+        queued += int(bool(outcome["created"]))
+        deduplicated += int(bool(outcome["deduplicated"]))
+        proposals.append(outcome["proposal"])
 
     return {
-        "ok": True, "dry_run": dry_run,
+        "ok": True,
+        "dry_run": dry_run,
+        "run_key": run_key,
+        "governance_state": "preview" if dry_run else "pending_approval",
         "weak_synapses_found": len(weak_synapses),
-        "reinforced": reinforced[:50], "method": "weak_tie_boost_1.5x",
+        "reinforced": [],
+        "proposals": proposals,
+        "proposals_queued": queued,
+        "deduplicated": deduplicated,
+        "method": "weak_tie_boost_1.5x_proposal_only",
     }
 
 
-def dream_pattern_summary(limit=200, dry_run=True, config_path=None):
-    """Dream Phase 3: Generate summary patterns from repetitive content."""
+def dream_pattern_summary(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Report token-frequency patterns; statistics are never persisted."""
+    bounded_limit = _bounded_limit(limit)
     store = _store(config_path)
-    with store.connect() as conn:
-        rows = conn.execute(
-            "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 ORDER BY created_at DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+    with readonly_connection(store) as conn:
+        if conn is None:
+            rows = []
+        else:
+            rows = conn.execute(
+                "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+                + _SOURCE_FILTER
+                + " ORDER BY created_at DESC, id LIMIT ?",
+                (bounded_limit,),
+            ).fetchall()
 
-    kw_counter = Counter()
-    mem_by_kw = defaultdict(list)
+    keyword_counts: Counter[str] = Counter()
+    memory_ids_by_keyword: defaultdict[str, set[str]] = defaultdict(set)
+    seen_memories: set[str] = set()
     for row in rows:
         rec = row_to_memory(row)
-        keywords = _extract_keywords(rec.content, top_n=6)
-        seen_kw = set()
-        for kw in keywords:
-            kw_counter[kw] += 1
-            if kw not in seen_kw:
-                mem_by_kw[kw].append(rec.id)
-                seen_kw.add(kw)
-
-    patterns = []
-    for kw, count in kw_counter.most_common(50):
-        # E2: drop ambient/injection tokens — these produced the 20 rubbish
-        # "'license' appears in N memories" insights that were soft-deleted.
-        if kw.lower() in _DREAM_NOISE_TOKENS:
+        if rec.id in seen_memories:
             continue
-        if count >= 4 and len(set(mem_by_kw[kw])) >= 3:
-            patterns.append({
-                "keyword": kw, "frequency": count,
-                "unique_memories": len(set(mem_by_kw[kw])),
-                "sources": sorted(set(mem_by_kw[kw]))[:5],
-            })
+        seen_memories.add(rec.id)
+        for keyword in set(_extract_keywords(rec.content, top_n=6)):
+            keyword_counts[keyword] += 1
+            memory_ids_by_keyword[keyword].add(rec.id)
 
-    # E1: token-frequency counts are statistics, not insights. We no longer
-    # persist them as INSIGHT memories (they dominated recall with zero value
-    # and amplified injection tokens). The phase now only *reports* frequency
-    # patterns for observability; nothing is written to the canonical store.
-    created_ids: list[str] = []
-
+    patterns = [
+        {
+            "keyword": keyword,
+            "frequency": count,
+            "unique_memories": len(memory_ids_by_keyword[keyword]),
+            "sources": sorted(memory_ids_by_keyword[keyword])[:5],
+        }
+        for keyword, count in keyword_counts.most_common(50)
+        if keyword.lower() not in _DREAM_NOISE_TOKENS and count >= 4 and len(memory_ids_by_keyword[keyword]) >= 3
+    ]
     return {
-        "ok": True, "dry_run": dry_run,
-        "unique_keywords_found": len(kw_counter),
+        "ok": True,
+        "dry_run": dry_run,
+        "unique_keywords_found": len(keyword_counts),
         "patterns_detected": len(patterns),
         "patterns": patterns[:15],
-        "memories_created": len(created_ids),
-        "note": "token-frequency patterns are reported only, not persisted (E1)",
+        "memories_created": 0,
+        "note": "token-frequency patterns are reported only, not persisted",
     }
 
 
-def dream_full_cycle(limit=200, dry_run=True, config_path=None):
-    """Run full Dream Engine cycle."""
+def dream_full_cycle(limit: int = 200, dry_run: bool = True, config_path: str | None = None) -> dict[str, Any]:
+    """Run all governed legacy phases with deterministic proposal-only output."""
     phase1 = dream_insight_generation(limit=limit, dry_run=dry_run, config_path=config_path)
     phase2 = dream_weak_tie_reinforcement(limit=limit, dry_run=dry_run, config_path=config_path)
     phase3 = dream_pattern_summary(limit=limit, dry_run=dry_run, config_path=config_path)
+    run_key = deterministic_run_key(
+        "dream-full-cycle-v2",
+        inputs={"limit": _bounded_limit(limit)},
+        source_ids=[phase1["run_key"], phase2["run_key"]],
+    )
     return {
-        "ok": True, "dry_run": dry_run, "mode": "full_dream_cycle",
-        "phase1_insights": {"bridges_found": phase1["candidate_bridges"], "created": phase1["memories_created"]},
-        "phase2_reinforcement": {"weak_synapses_found": phase2["weak_synapses_found"], "reinforced": len(phase2["reinforced"])},
-        "phase3_patterns": {"patterns_detected": phase3["patterns_detected"], "created": phase3["memories_created"]},
-        "total_memories_created": phase1["memories_created"] + phase3["memories_created"],
+        "ok": True,
+        "dry_run": dry_run,
+        "mode": "full_dream_cycle",
+        "run_key": run_key,
+        "governance": {"review_required": True, "direct_mutation_disabled": True},
+        "phase1_insights": {
+            "bridges_found": phase1["candidate_bridges"],
+            "created": 0,
+            "proposals_queued": phase1["proposals_queued"],
+        },
+        "phase2_reinforcement": {
+            "weak_synapses_found": phase2["weak_synapses_found"],
+            "reinforced": 0,
+            "proposals_queued": phase2["proposals_queued"],
+        },
+        "phase3_patterns": {"patterns_detected": phase3["patterns_detected"], "created": 0},
+        "total_memories_created": 0,
+        "total_proposals_queued": phase1["proposals_queued"] + phase2["proposals_queued"],
     }

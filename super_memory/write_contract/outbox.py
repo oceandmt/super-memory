@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,14 +38,21 @@ def register_memory(conn, record: Any, layer: str, *, enqueue_embed: bool = True
     if source_event_key and layer == "workspace_markdown":
         conn.execute(
             """
-            INSERT OR IGNORE INTO memory_write_intents
-            (id, idempotency_key, source_adapter, source_event_id, agent_id, session_id, project, normalized_hash, simhash, status, created_at, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', ?, ?)
+            INSERT INTO memory_write_intents
+            (id, idempotency_key, source_adapter, source_event_id, agent_id,
+             session_id, project, normalized_hash, simhash, status, memory_id,
+             created_at, completed_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'saved', ?, ?, ?, ?)
+            ON CONFLICT(idempotency_key) DO UPDATE SET
+              status='saved', memory_id=excluded.memory_id,
+              completed_at=excluded.completed_at, updated_at=excluded.updated_at,
+              claim_token=NULL, lease_until=NULL, error=NULL
+            WHERE memory_write_intents.status != 'pending'
             """,
             (hashlib.sha256(source_event_key.encode()).hexdigest(), source_event_key, source,
              metadata.get("message_id") or metadata.get("event_id") or metadata.get("source_event_id"),
              getattr(record, "agent_id", None), getattr(record, "session_id", None), getattr(record, "project", None),
-             fp.normalized_hash, fp.simhash, now, now),
+             fp.normalized_hash, fp.simhash, mid, now, now, now),
         )
     if enqueue_embed:
         for job_type in ("embed",):

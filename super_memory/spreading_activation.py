@@ -244,10 +244,12 @@ class SpreadingActivation:
         else:
             conn = self._db
         try:
+            syn_cols = {row[1] for row in conn.execute("PRAGMA table_info(cognitive_synapses)").fetchall()}
+            relation_expr = "s.relation" if "relation" in syn_cols else "s.synapse_type" if "synapse_type" in syn_cols else "'structural'"
             # Query cognitive_synapses for outgoing edges
             rows = conn.execute(
                 "SELECT s.target_neuron_id as nid, s.source_neuron_id as sid, "
-                "s.synapse_type as stype, s.weight, "
+                f"{relation_expr} as stype, s.weight, "
                 "n.id, n.content, n.kind "
                 "FROM cognitive_synapses s "
                 "LEFT JOIN cognitive_neurons n ON n.id = s.target_neuron_id "
@@ -264,7 +266,8 @@ class SpreadingActivation:
 
             # Also incoming edges
             rows2 = conn.execute(
-                "SELECT s.source_neuron_id as nid, s.synapse_type as stype, s.weight, "
+                "SELECT s.source_neuron_id as nid, "
+                f"{relation_expr} as stype, s.weight, "
                 "n.id, n.content, n.kind "
                 "FROM cognitive_synapses s "
                 "LEFT JOIN cognitive_neurons n ON n.id = s.source_neuron_id "
@@ -281,7 +284,8 @@ class SpreadingActivation:
                     synapse = {"type": r.get("stype", "structural"), "weight": r.get("weight", _DEFAULT_SYNAPSE_WEIGHT)}
                     neighbors.append((neighbor, synapse))
         except Exception as e:
-            logger.warning("fetch_neighbors failed for %s: %s", neuron_id, e)
+            logger.error("fetch_neighbors failed for %s: %s", neuron_id, e)
+            raise RuntimeError(f"cognitive graph schema/query failure for {neuron_id}: {e}") from e
         return neighbors
 
     def activate_from_multiple(

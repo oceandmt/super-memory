@@ -1,0 +1,9 @@
+{
+  "query": "project inference backfill project metadata super-memory-github",
+  "expected_contains": [
+    "project"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.509767Z"
+}

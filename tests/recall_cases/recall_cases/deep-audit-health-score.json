@@ -1,0 +1,9 @@
+{
+  "query": "deep_audit grade health_score duplicate_clusters long_memories_over_2k",
+  "expected_contains": [
+    "audit"
+  ],
+  "expected_memory_ids": [],
+  "must_not_include": [],
+  "created_at": "2026-06-28T10:07:39.604388Z"
+}

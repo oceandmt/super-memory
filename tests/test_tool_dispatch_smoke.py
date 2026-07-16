@@ -30,6 +30,15 @@ SKIP_HARD = {
     "super_memory_import",
     # Only works with actual openclaw gateway — skip
     "super_memory_export_memory_graph",
+    # Explicit maintenance operations are intentionally destructive or
+    # corpus-sized. Dispatching them with empty args must not run against the
+    # live default database in a no-hard-crash smoke test. They have dedicated
+    # focused tests using disposable configs.
+    "super_memory_reindex_all",
+    "super_memory_reindex_fts_only",
+    "super_memory_graph_rebuild",
+    "super_memory_autocomplete_rebuild",
+    "super_memory_index_sessions",
 }
 
 

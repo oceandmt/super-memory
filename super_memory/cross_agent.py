@@ -173,6 +173,12 @@ class CrossAgentTools:
                 by[aid] = {"agent_id": aid, "memory_count": 0, "recent_activity": None, "honcho_event_count": e["honcho_event_count"]}
         return {"ok": True, "days": days, "agents": sorted(by.values(), key=lambda x: (x.get("recent_activity") or "", int(x.get("honcho_event_count") or 0)), reverse=True)}
 
+    def list_agents(self) -> dict[str, Any]:
+        """List known agents using the canonical cross-agent summary."""
+        summary = self.cross_agent_summary()
+        return {"ok": bool(summary.get("ok")), "agents": summary.get("agents", []),
+                "count": len(summary.get("agents", []))}
+
     def cross_agent_compare(self, agent_a: str = "lucas", agent_b: str = "alex", limit: int = 5) -> dict[str, Any]:
         """Compare two agents' memory overlap."""
         with sqlite3.connect(self.db_path, timeout=30) as conn:

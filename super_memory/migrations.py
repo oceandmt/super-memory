@@ -374,8 +374,15 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
         try:
             with sqlite3.connect(db_path, timeout=30) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=30000")
+                # journal_mode is database-wide and may require an exclusive
+                # lock. Best-effort it only during migration initialization;
+                # existing WAL databases must not fail startup under readers.
+                try:
+                    conn.execute("PRAGMA journal_mode=WAL")
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower():
+                        raise
                 # Phase 1: heal legacy missing columns (separate tx so indexes reference them)
                 changed = []
                 changed.extend(_migrate_memories(conn))
@@ -383,8 +390,15 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                 conn.commit()
             # Phase 2: full schema with clean columns
             with sqlite3.connect(db_path, timeout=30) as conn:
-                conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=30000")
+                # journal_mode is database-wide and may require an exclusive
+                # lock. Best-effort it only during migration initialization;
+                # existing WAL databases must not fail startup under readers.
+                try:
+                    conn.execute("PRAGMA journal_mode=WAL")
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower():
+                        raise
                 conn.executescript(schema_sql)
                 changed2 = []
                 changed2.extend(_migrate_memories(conn))
@@ -452,6 +466,12 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
                         metadata_json TEXT NOT NULL DEFAULT '{}'
                     );
                 """)
+                from .memory_quality import ensure_quality_tables
+                ensure_quality_tables(conn)
+                # Keep the migration runner and runtime registration on one
+                # additive projection-manifest schema contract.
+                from .projections.manifest import ensure_manifest
+                changed2.extend(ensure_manifest(conn))
                 try:
                     from .write_contract.migrations import ensure_schema as _wc_ensure_schema
                     _wc_ensure_schema(conn)
@@ -476,10 +496,11 @@ def run_migrations(config: SuperMemoryConfig | None = None) -> dict[str, object]
 
 
 def run_alembic_migrations(config: SuperMemoryConfig | None = None, revision: str = "head") -> dict[str, object]:
-    """Run versioned Alembic migrations against the configured SQLite DB.
+    """Run the compatibility Alembic representation.
 
-    This complements the legacy idempotent schema runner.  It is intended for
-    reproducible CI/dev schema creation and future non-idempotent changes.
+    ``run_migrations`` and ``schema.sql`` are the deployed migration authority.
+    Alembic is retained for external tooling/fixture compatibility only; every
+    Alembic run is converged through the authoritative runner before success.
     """
     if not _HAS_ALEMBIC:
         return {"ok": False, "error": "alembic is not installed"}
@@ -492,7 +513,8 @@ def run_alembic_migrations(config: SuperMemoryConfig | None = None, revision: st
     alembic_cfg = AlembicConfig(str(alembic_ini))
     alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
     command.upgrade(alembic_cfg, revision)
-    return {"ok": True, "db_path": str(db_path), "revision": revision, "runner": "alembic"}
+    convergence = run_migrations(config)
+    return {"ok": bool(convergence.get("ok")), "db_path": str(db_path), "revision": revision, "runner": "alembic_compatibility", "authority": "super_memory.migrations.run_migrations", "convergence": convergence}
 
 
 def main() -> None:

@@ -41,7 +41,11 @@ def test_remember_and_show():
     import uuid
     unique_content = f"Phase 8 contract memory {uuid.uuid4().hex[:12]}"
     # save
-    r = client.post("/remember", json={"content": unique_content, "type": "fact"})
+    caller = {"agent_id": "lucas", "session_id": f"phase8-{uuid.uuid4().hex}"}
+    r = client.post(
+        "/remember",
+        json={"content": unique_content, "type": "fact", **caller},
+    )
     assert r.status_code == 200
     data = r.json()
     # Accept either top-level ok or nested record
@@ -51,7 +55,7 @@ def test_remember_and_show():
     assert mem_id
 
     # show
-    r = client.post("/show", json={"memory_id": mem_id})
+    r = client.post("/show", json={"memory_id": mem_id, **caller})
     assert r.status_code == 200
     shown = r.json()
     assert shown.get("layers") or shown.get("record") or shown.get("ok")  # at least something returned

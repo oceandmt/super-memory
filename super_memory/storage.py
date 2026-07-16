@@ -10,8 +10,11 @@ Key services:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
+import weakref
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -23,8 +26,114 @@ def sqlite_path(config: SuperMemoryConfig) -> Path:
 
 
 # ── Thread-safe connection cache ──────────────────────────────────────────────
-_connection_cache: dict[str, sqlite3.Connection] = {}
+
+
+class _ThreadConnections:
+    """Connections owned by one thread.
+
+    The holder is stored in ``threading.local()``.  When a short-lived thread
+    exits, its holder is released and ``__del__`` closes the SQLite handles.
+    The process-wide registry is weak so it does not keep dead threads (and
+    their file descriptors) alive, while still allowing explicit shutdown and
+    path invalidation to close handles owned by live threads.
+    """
+
+    def __init__(self) -> None:
+        self._connections: dict[str, sqlite3.Connection] = {}
+        self._lock = threading.RLock()
+        self._owner_ref = weakref.ref(threading.current_thread())
+
+    def owner_alive(self) -> bool:
+        owner = self._owner_ref()
+        return bool(owner is not None and owner.is_alive())
+
+    def get(self, path: str) -> sqlite3.Connection | None:
+        with self._lock:
+            return self._connections.get(path)
+
+    def set(self, path: str, conn: sqlite3.Connection) -> None:
+        with self._lock:
+            self._connections[path] = conn
+
+    def pop(self, path: str) -> sqlite3.Connection | None:
+        with self._lock:
+            return self._connections.pop(path, None)
+
+    def close(self, path: str | None = None) -> None:
+        with self._lock:
+            if path is None:
+                connections = list(self._connections.values())
+                self._connections.clear()
+            else:
+                conn = self._connections.pop(path, None)
+                connections = [conn] if conn is not None else []
+        for conn in connections:
+            with suppress(Exception):
+                conn.close()
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._connections)
+
+    def reset_lock_after_fork(self) -> None:
+        """Replace a lock that may be owned by a vanished parent thread."""
+        self._lock = threading.RLock()
+
+    def __del__(self) -> None:
+        # Thread-local values are released when their owning thread exits.
+        # Keep finalization best-effort because interpreter shutdown may have
+        # already torn down parts of sqlite3.
+        with suppress(Exception):
+            self.close()
+
+
 _connection_lock = threading.RLock()
+_connection_local = threading.local()
+_connection_holders: weakref.WeakSet[_ThreadConnections] = weakref.WeakSet()
+_connection_pid = os.getpid()
+
+
+def _reset_in_child_after_fork() -> None:
+    """Make an inherited lock safe; handles are closed lazily on first use."""
+    global _connection_lock, _connection_pid
+    _connection_lock = threading.RLock()
+    _connection_pid = -1
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_in_child_after_fork)
+
+
+def _ensure_current_process() -> None:
+    """Discard SQLite handles inherited from a parent process."""
+    global _connection_lock, _connection_local, _connection_holders, _connection_pid
+    pid = os.getpid()
+    if pid == _connection_pid:
+        return
+
+    # A lock held by a vanished parent thread can never be released in the
+    # child.  Replacing it before acquisition is safe because a PID change only
+    # happens after fork, where the child has one surviving thread.
+    _connection_lock = threading.RLock()
+    with _connection_lock:
+        if pid == _connection_pid:
+            return
+        inherited_holders = list(_connection_holders)
+        for holder in inherited_holders:
+            holder.reset_lock_after_fork()
+            holder.close()
+        _connection_local = threading.local()
+        _connection_holders = weakref.WeakSet()
+        _connection_pid = pid
+
+
+def _current_thread_connections() -> _ThreadConnections:
+    holder = getattr(_connection_local, "connections", None)
+    if holder is None:
+        holder = _ThreadConnections()
+        _connection_local.connections = holder
+        _connection_holders.add(holder)
+    return holder
 
 
 # Micro-gap 6: Read-only recovery constants
@@ -42,30 +151,29 @@ def _get_cached_connection(db_path: Path) -> sqlite3.Connection:
 
     Micro-gap 6: Read-only recovery — auto-reconnect with backoff.
     """
-    from typing import Any as _Any
-    # E9: key the cache per (db_path, thread) so each thread gets its own
-    # connection. A single shared connection with check_same_thread=False
-    # risked interleaved transactions across threads. sqlite connections are
-    # cheap under WAL; per-thread isolation is the safe strategy.
-    key = f"{db_path.resolve()}::{threading.get_ident()}"
+    # E9: each thread gets its own connection. A single shared connection with
+    # check_same_thread=False risks interleaved transactions across threads.
+    # Thread-local holders preserve that isolation without retaining completed
+    # threads forever in a process-global dictionary.
+    _ensure_current_process()
+    key = str(db_path.resolve())
     with _connection_lock:
-        conn = _connection_cache.get(key)
+        holder = _current_thread_connections()
+        conn = holder.get(key)
         if conn is not None:
             try:
                 conn.execute("SELECT 1")
                 return conn
             except Exception:
-                try:
+                holder.pop(key)
+                with suppress(Exception):
                     conn.close()
-                except Exception:
-                    pass
-                del _connection_cache[key]
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
-        _connection_cache[key] = conn
+        holder.set(key, conn)
         return conn
 
 
@@ -147,29 +255,54 @@ def reset_recovery_state(db_path: str | None = None) -> dict:
     return {"ok": True, "reset": True}
 
 
-def clear_connection_cache() -> None:
-    """Close and clear all cached connections. Used by cleanup/VACUUM paths."""
-    global _connection_cache
+def close_current_thread_connections(db_path: str | Path | None = None) -> None:
+    """Close cached connections owned by the calling thread.
+
+    If ``db_path`` is supplied, only the connection for that database is
+    closed.  This is the normal per-store/request teardown hook.
+    """
+    _ensure_current_process()
+    path = str(Path(db_path).resolve()) if db_path is not None else None
     with _connection_lock:
-        for key, conn in _connection_cache.items():
-            try:
-                conn.close()
-            except Exception:
-                pass
-        _connection_cache = {}
+        holder = getattr(_connection_local, "connections", None)
+        if holder is not None:
+            holder.close(path)
+
+
+def close_all_connections() -> None:
+    """Close every cached connection in this process (shutdown/test hook)."""
+    _ensure_current_process()
+    with _connection_lock:
+        for holder in list(_connection_holders):
+            holder.close()
+
+
+def clear_connection_cache() -> None:
+    """Backward-compatible close-all hook used by cleanup/VACUUM paths."""
+    close_all_connections()
+
+
+def connection_cache_size() -> int:
+    """Return the number of live cached handles (primarily for diagnostics)."""
+    _ensure_current_process()
+    with _connection_lock:
+        holders = list(_connection_holders)
+        # Some Python runtimes retain a dead Thread object's local dictionary
+        # until later GC. Reap those holders deterministically for diagnostics
+        # and file-descriptor safety; connections use check_same_thread=False.
+        for holder in holders:
+            if not holder.owner_alive():
+                holder.close()
+        return sum(holder.count() for holder in list(_connection_holders))
 
 
 def invalidate_connection(db_path: Path) -> None:
     """Invalidate cached connections for a path across all threads (e.g. after VACUUM)."""
-    prefix = f"{db_path.resolve()}::"
+    _ensure_current_process()
+    path = str(db_path.resolve())
     with _connection_lock:
-        for key in [k for k in _connection_cache if k.startswith(prefix)]:
-            conn = _connection_cache.pop(key, None)
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+        for holder in list(_connection_holders):
+            holder.close(path)
 
 
 class SuperMemoryStore:
@@ -181,13 +314,25 @@ class SuperMemoryStore:
         """Get a cached SQLite connection with connection pooling."""
         return _get_cached_connection(self.path)
 
-    def get_memory(self, memory_id: str, layer: str | None = None) -> MemoryRecord | None:
+    def close(self) -> None:
+        """Close this store's connection in the calling thread."""
+        close_current_thread_connections(self.path)
+
+    @staticmethod
+    def close_all() -> None:
+        """Close all store connections in this process for shutdown/tests."""
+        close_all_connections()
+
+    def get_memory(self, memory_id: str, layer: str | None = None, include_deleted: bool = False) -> MemoryRecord | None:
         params: list[str] = [memory_id]
         sql = "SELECT * FROM memories WHERE id = ?"
         if layer:
             sql += " AND layer = ?"
             params.append(layer)
-        sql += " LIMIT 1"
+        if not include_deleted:
+            from .models import ALIVE_SQL
+            sql += " AND " + ALIVE_SQL
+        sql += " ORDER BY CASE WHEN layer = 'workspace_markdown' THEN 0 ELSE 1 END, created_at DESC LIMIT 1"
         with self.connect() as conn:
             row = conn.execute(sql, params).fetchone()
         if not row:

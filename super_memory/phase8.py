@@ -117,20 +117,36 @@ def memory_slot_contract(config_path: str | None = None) -> dict[str, Any]:
                 day_path = str(path)
         if day_path:
             canonical = {"layer": "workspace_markdown", "ok": True, "reference": day_path}
-    search = bridge.memory_search("Phase 8 contract memory", max_results=5, config_path=config_path)
-    get = bridge.memory_get(f"super-memory://workspace_markdown/{memory_id}", from_line=1, lines=5, config_path=config_path) if memory_id else {"ok": False}
+    caller = {"project": payload["project"], "scope": payload["scope"]}
+    search = bridge.memory_search(
+        "Phase 8 contract memory", max_results=5, config_path=config_path, **caller
+    )
+    get = (
+        bridge.memory_get(
+            f"super-memory://workspace_markdown/{memory_id}",
+            from_line=1,
+            lines=5,
+            config_path=config_path,
+            **caller,
+        )
+        if memory_id
+        else {"ok": False}
+    )
     if (not get.get("content")) and canonical and canonical.get("reference"):
-        get = bridge.memory_get(canonical["reference"], from_line=1, lines=5, config_path=config_path)
-    shown = bridge.show(memory_id, config_path=config_path)
-    with store.connect() as conn:
-        db_row_exists = bool(conn.execute("SELECT 1 FROM memories WHERE id=? LIMIT 1", (memory_id,)).fetchone()) if memory_id else False
+        get = bridge.memory_get(
+            canonical["reference"], from_line=1, lines=5, config_path=config_path, **caller
+        )
+    shown = bridge.show(memory_id, config_path=config_path, **caller) if memory_id else {"ok": False}
     graph = bridge.graph_recall("Phase 8 contract", config_path=config_path)
     assertions = {
         "canonical_save_ok": bool((canonical and canonical.get("ok")) or dedup_matched_id),
         "search_ok": bool(search.get("results")),
-        "memory_get_ok": bool((get.get("ok", True) and (get.get("content") or get.get("lines") or get.get("text") or get.get("results") is not None)) or dedup_matched_id or db_row_exists),
-        "show_ok": bool(shown.get("ok") or dedup_matched_id or db_row_exists),
-        "graph_projection_ok": bool(saved.get("graph_projection", {}).get("ok") or dedup_matched_id),
+        "memory_get_ok": bool(
+            get.get("ok", True)
+            and (get.get("content") or get.get("lines") or get.get("text") or get.get("results") is not None)
+        ),
+        "show_ok": bool(shown.get("ok")),
+        "graph_projection_ok": bool((saved.get("graph_projection") or {}).get("ok") or dedup_matched_id),
         "graph_recall_ok": bool(graph.get("ok") or dedup_matched_id),
     }
     return {

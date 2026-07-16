@@ -1,0 +1,29 @@
+{
+  "health": {
+    "ok": true,
+    "ready": true,
+    "degraded": true,
+    "warnings": [
+      "layer_projection_drift"
+    ],
+    "blocking": []
+  },
+  "status_counts": {
+    "total_memories": 11624,
+    "total_including_deleted": 14147,
+    "layers": {
+      "honcho": 2905,
+      "mempalace": 2905,
+      "neural_memory": 2904,
+      "workspace_markdown": 2910
+    }
+  },
+  "remember_ok": true,
+  "private_remember_ok": true,
+  "noctx_status": "ok",
+  "noctx_contains_private": false,
+  "ctx_status": "ok",
+  "ctx_contains_private": true,
+  "dream_rc": 0,
+  "dream_out": "{'ok': True, 'dry_run': True, 'mode': 'full_dream_cycle', 'run_key': 'run:dream-full-cycle-v2:b3f90b1ec088db1b92ad52beb56e4c88', 'governance': {'review_required': True, 'direct_mutation_disabled': True}, 'phase1_insights': {'bridges_found': 3, 'created': 0, 'proposals_queued': 0}, 'phase2_reinforcement': {'weak_synapses_found': 0, 'reinforced': 0, 'proposals_queued': 0}, 'phase3_patterns': {'patterns_detected': 1, 'created': 0}, 'total_memories_created': 0, 'total_proposals_queued': 0}\n"
+}

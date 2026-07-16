@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib, re
 from typing import Any
 from .semantic_taxonomy import normalize_relations
+from .semantic_classifier import classify_semantic_type
 
 TYPE_KEYWORDS = {
     "decision": ["decided", "decision", "chose", "will use", "quyết định"],
@@ -22,13 +23,10 @@ RELATION_PATTERNS = [
 ENTITY_RE = re.compile(r"(?:/[\w.\-]+)+|[A-Z][A-Za-z0-9_.-]{2,}|[\w.-]+/[\w.-]+|v?\d+\.\d+(?:\.\d+)?")
 
 def infer_type(content: str, current: str = "context") -> str:
+    """Compatibility view over the calibrated semantic classifier."""
     if current and current != "context":
         return current
-    low = content.lower()
-    for typ, words in TYPE_KEYWORDS.items():
-        if any(w in low for w in words):
-            return typ
-    return current or "context"
+    return classify_semantic_type(content).semantic_type
 
 def extract_entities(content: str) -> list[str]:
     seen, out = set(), []
@@ -66,14 +64,24 @@ def score_quality(payload: dict[str, Any]) -> dict[str, Any]:
 def apply_quality_gate(payload: dict[str, Any]) -> dict[str, Any]:
     out = dict(payload)
     out["content"] = (out.get("content") or "").strip()
-    out["type"] = infer_type(out["content"], str(out.get("type") or "context"))
+    supplied_type = str(out.get("type") or "context")
+    classification = classify_semantic_type(out["content"])
+    out["type"] = supplied_type if supplied_type != "context" else classification.semantic_type
     meta = dict(out.get("metadata") or {})
+    # Orthogonal dimensions: never overload semantic type with truth, storage,
+    # visibility or lifecycle semantics.
+    meta["semantic_classification"] = classification.as_dict()
+    meta.setdefault("truth_level", "asserted")
+    meta.setdefault("projection_type", "canonical_memory")
+    meta.setdefault("scope", out.get("scope", "session"))
     q = score_quality(out)
-    meta.setdefault("quality_gate", q)
-    meta.setdefault("quality_score", q["quality_score"])
-    meta.setdefault("entities", q["entities"])
-    meta.setdefault("relations", q["relations"])
-    meta.setdefault("content_hash", q["content_hash"])
+    # These fields describe server-observed content.  Never trust a caller's
+    # cached/forged copy: stale quality data is worse than no quality data.
+    meta["quality_gate"] = q
+    meta["quality_score"] = q["quality_score"]
+    meta["entities"] = q["entities"]
+    meta["relations"] = q["relations"]
+    meta["content_hash"] = q["content_hash"]
     meta.setdefault("lifecycle_state", "normalized")
     if out.get("trust_score") is None:
         out["trust_score"] = 0.7 if q["quality_score"] >= .7 else None
@@ -84,4 +92,15 @@ def apply_quality_gate(payload: dict[str, Any]) -> dict[str, Any]:
         if tag not in tags: tags.append(tag)
     if "quality-gated" not in tags: tags.append("quality-gated")
     out["tags"] = tags
+    try:
+        from .memory_quality import enrich_quality_metadata
+        out["metadata"] = enrich_quality_metadata(out["content"], out["type"], out["metadata"], out.get("source"))
+        # Keep the legacy gate view and the versioned quality contract on one
+        # authoritative score. Otherwise callers can observe two conflicting
+        # quality values for the same canonical content.
+        authoritative = out["metadata"].get("quality_score")
+        if authoritative is not None:
+            out["metadata"]["quality_gate"]["quality_score"] = authoritative
+    except Exception:
+        pass
     return out

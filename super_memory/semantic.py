@@ -134,9 +134,24 @@ def semantic_index(
         USING vec0(memory_id TEXT PRIMARY KEY, embedding FLOAT[{int(cfg.embedding_dimension)}])
         """
     )
+    # Ensure the authority metadata sidecar exists
+    from .vector import _ensure_vector_metadata, _VECTOR_METADATA_TABLE
+    _ensure_vector_metadata(conn)
     conn.commit()
-    existing = set(r[0] for r in conn.execute("SELECT memory_id FROM embeddings").fetchall())
-    pending = [(r["id"], r["content"] or "") for r in rows if rebuild or r["id"] not in existing]
+    # Determine already indexed by active metadata
+    source_ids = {r["id"] for r in rows}
+    if not rebuild:
+        cur = conn.execute(
+            f"SELECT memory_id FROM {_VECTOR_METADATA_TABLE} WHERE status='active'"
+        )
+        active_ids = {row[0] for row in cur.fetchall()}
+    else:
+        active_ids = set()
+    already_indexed = len(source_ids & active_ids)
+    pending = [(r["id"], r["content"] or "") for r in rows if rebuild or r["id"] not in active_ids]
+
+    from .vector import VectorStore
+    vector_store = VectorStore(cfg)
 
     indexed = 0
     failed: list[dict[str, str]] = []
@@ -147,29 +162,35 @@ def semantic_index(
         try:
             vectors = _ollama_embed_batch(texts, cfg)
             for mid, vector in zip(ids, vectors):
-                conn.execute("INSERT OR REPLACE INTO embeddings (memory_id, embedding) VALUES (?, ?)", (mid, json.dumps(vector)))
+                if vector_store.add_embedding(mid, vector):
+                    indexed += 1
+                else:
+                    failed.append({"memory_id": mid, "error": "add_embedding returned False"})
             conn.commit()
-            indexed += len(chunk)
         except Exception as exc:
             for mid, text in chunk:
                 try:
                     vector = _ollama_embed_batch([text], cfg)[0]
-                    conn.execute("INSERT OR REPLACE INTO embeddings (memory_id, embedding) VALUES (?, ?)", (mid, json.dumps(vector)))
-                    conn.commit()
-                    indexed += 1
+                    if vector_store.add_embedding(mid, vector):
+                        indexed += 1
+                    else:
+                        failed.append({"memory_id": mid, "error": "add_embedding returned False (single)"})
                 except Exception as item_exc:  # pragma: no cover - depends on local runtime
                     failed.append({"memory_id": mid, "error": str(item_exc or exc)})
 
-    total_vectors = conn.execute("SELECT COUNT(*) FROM embeddings").fetchone()[0]
+    # Get vector count from active metadata
+    total_active = conn.execute(
+        f"SELECT COUNT(*) FROM {_VECTOR_METADATA_TABLE} WHERE status='active'"
+    ).fetchone()[0]
     conn.close()
     return {
         "ok": len(failed) == 0,
         "source_rows": len(rows),
-        "already_indexed": len(existing) if not rebuild else 0,
+        "already_indexed": already_indexed,
         "pending": len(pending),
         "indexed": indexed,
         "failed": failed,
-        "vector_count": total_vectors,
+        "vector_count": total_active,
         "vector_db": str(vec_path),
     }
 

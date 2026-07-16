@@ -12,13 +12,13 @@ from pydantic import BaseModel, Field
 
 import structlog
 
-from . import bridge, mcp_server
+from . import __version__, bridge, mcp_server
 from .config import load_config
 from .observability import metrics as _metrics_snapshot, prometheus_metrics as _prometheus_metrics
 
 _logger = structlog.get_logger("super-memory.api")
 
-app = FastAPI(title="Super Memory API", version="2.3.4")
+app = FastAPI(title="Super Memory API", version=__version__)
 
 # ── In-memory rate limiter ──────────────────────────────────────────────────
 _RATE_LIMIT_WINDOW_S = 60
@@ -116,11 +116,25 @@ class RememberBatchRequest(BaseModel):
     memories: list[RememberRequest] = Field(max_length=20)
     config_path: str | None = None
 
-class ShowRequest(BaseModel):
-    memory_id: str
+class CallerContextRequest(BaseModel):
+    agent_id: str | None = None
+    session_id: str | None = None
+    project: str | None = None
+    scope: str | None = None
+
+    def caller_context(self) -> dict[str, str]:
+        return {
+            key: value
+            for key in ("agent_id", "session_id", "project", "scope")
+            if (value := getattr(self, key)) is not None
+        }
+
+class ShowRequest(CallerContextRequest):
+    memory_id: str | None = None
+    id: str | None = None
     config_path: str | None = None
 
-class ContextRequest(BaseModel):
+class ContextRequest(CallerContextRequest):
     query: str = ""
     limit: int = 10
     config_path: str | None = None
@@ -143,7 +157,7 @@ class NormalizeMemoryRequest(BaseModel):
     auto_capture: bool = False
 
 
-class RecallRequest(BaseModel):
+class RecallRequest(CallerContextRequest):
     query: str
     limit: int = 10
     config_path: str | None = None
@@ -164,7 +178,7 @@ class RecallRecordFeedbackRequest(BaseModel):
     notes: str = ""
     config_path: str | None = None
 
-class MemorySearchRequest(BaseModel):
+class MemorySearchRequest(CallerContextRequest):
     query: str
     max_results: int = 5
     min_score: float = 0.0
@@ -172,7 +186,7 @@ class MemorySearchRequest(BaseModel):
     config_path: str | None = None
 
 
-class MemoryGetRequest(BaseModel):
+class MemoryGetRequest(CallerContextRequest):
     path: str
     from_line: int = 1
     lines: int = 20
@@ -288,6 +302,11 @@ class EvidenceAddRequest(BaseModel):
     content: str
     direction: str = "for"
     weight: float = 0.5
+    source_id: str | None = None
+    source_type: str | None = None
+    source_hash: str | None = None
+    source_revision: str | None = None
+    source_trust: float | None = None
     config_path: str | None = None
 
 class PredictionCreateRequest(BaseModel):
@@ -344,8 +363,9 @@ class IndexRequest(BaseModel):
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
-    return {"ok": True, "service": "super-memory"}
+def health(config_path: str | None = None) -> dict[str, Any]:
+    """Liveness-compatible, read-only readiness evidence."""
+    return bridge.health(config_path=config_path)
 
 
 @app.get("/status")
@@ -392,15 +412,18 @@ def remember_batch(req: RememberBatchRequest) -> dict[str, Any]:
     return bridge.remember_batch(memories, config_path=config_path)
 
 @app.post("/show")
-def show(req: dict[str, Any]) -> dict[str, Any]:
-    memory_id = req.get("memory_id") or req.get("id")
+def show(req: ShowRequest) -> dict[str, Any]:
+    memory_id = req.memory_id or req.id
     if not memory_id:
         raise HTTPException(status_code=422, detail="memory_id or id is required")
-    return bridge.show(memory_id, config_path=req.get("config_path"))
+    return bridge.show(memory_id, config_path=req.config_path, **req.caller_context())
 
 @app.post("/context")
 def context(req: ContextRequest) -> dict[str, Any]:
-    return bridge.context(req.query, limit=req.limit, config_path=req.config_path)
+    return bridge.context(
+        req.query, limit=req.limit, config_path=req.config_path,
+        **req.caller_context(),
+    )
 
 @app.post("/todo")
 def todo(req: TodoRequest) -> dict[str, Any]:
@@ -425,7 +448,10 @@ def normalize_memory(req: NormalizeMemoryRequest) -> dict[str, Any]:
 
 @app.post("/recall")
 def recall(req: RecallRequest) -> dict[str, Any]:
-    return bridge.recall(req.query, limit=req.limit, config_path=req.config_path)
+    return bridge.recall(
+        req.query, limit=req.limit, config_path=req.config_path,
+        **req.caller_context(),
+    )
 
 
 @app.post("/recall-record-event")
@@ -457,6 +483,7 @@ def memory_search(req: MemorySearchRequest) -> dict[str, Any]:
         min_score=req.min_score,
         corpus=req.corpus,
         config_path=req.config_path,
+        **req.caller_context(),
     )
 
 
@@ -468,12 +495,16 @@ def memory_get(req: MemoryGetRequest) -> dict[str, Any]:
         lines=req.lines,
         corpus=req.corpus,
         config_path=req.config_path,
+        **req.caller_context(),
     )
 
 
 @app.post("/prefetch")
 def prefetch(req: RecallRequest) -> dict[str, Any]:
-    return bridge.prefetch(req.query, limit=req.limit, config_path=req.config_path)
+    return bridge.prefetch(
+        req.query, limit=req.limit, config_path=req.config_path,
+        **req.caller_context(),
+    )
 
 
 @app.post("/sync-turn")
@@ -715,7 +746,7 @@ def hypothesis_list(status: str | None = None, limit: int = 20, config_path: str
 
 @app.post("/evidence")
 def evidence_add(req: EvidenceAddRequest) -> dict[str, Any]:
-    return bridge.evidence_add(req.hypothesis_id, req.content, direction=req.direction, weight=req.weight, config_path=req.config_path)
+    return bridge.evidence_add(req.hypothesis_id, req.content, direction=req.direction, weight=req.weight, config_path=req.config_path, source_id=req.source_id, source_type=req.source_type, source_hash=req.source_hash, source_revision=req.source_revision, source_trust=req.source_trust)
 
 @app.post("/prediction")
 def prediction_create(req: PredictionCreateRequest) -> dict[str, Any]:

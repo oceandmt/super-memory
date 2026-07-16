@@ -164,11 +164,10 @@ def index_all_sessions(
     root = Path(cfg.workspace_root)
     sdir = Path(sessions_dir) if sessions_dir else root / "sessions"
 
-    # Fallback: if default sessions dir missing, try agents subdirs
-    if not sdir.exists():
-        agents_root = Path.home() / ".openclaw" / "agents"
-        if agents_root.exists():
-            sdir = agents_root
+    # Never escape the configured workspace implicitly: doing so makes a local
+    # tool call scan every live agent transcript and turns an empty-argument
+    # smoke into a destructive/long-running operation. Callers that want the
+    # global agent corpus must pass sessions_dir explicitly.
     
     if not sdir.exists():
         return {"ok": False, "error": f"sessions dir not found: {sdir}"}
@@ -198,6 +197,7 @@ def index_all_sessions(
     indexed = sum(1 for r in results if r.get("ok"))
     unchanged = sum(1 for r in results if r.get("unchanged"))
     total_chunks = conn.execute(f"SELECT COUNT(*) FROM {SESSION_FTS_TABLE}").fetchone()[0]  # nosec-sql: SESSION_FTS_TABLE is a fixed module-level constant
+    conn.close()
 
     return {
         "ok": True,

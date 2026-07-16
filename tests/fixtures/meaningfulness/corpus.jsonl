@@ -1,0 +1,42 @@
+{"id": "u01", "text": "Decision: use PostgreSQL 16 for the billing ledger; owner is Platform and migration deadline is 2026-08-01.", "useful": 1, "category": "decision", "language": "en", "origin": "human", "approved": false}
+{"id": "u02", "text": "Verified lesson: retries must use exponential backoff with jitter; integration test test_retry_storm reproduces the prior outage.", "useful": 1, "category": "verified_lesson", "language": "en", "origin": "human", "approved": false}
+{"id": "u03", "text": "The production signing key is loaded from /run/secrets/signing_key; never commit it to source control.", "useful": 1, "category": "durable_fact", "language": "en", "origin": "human", "approved": false}
+{"id": "u04", "text": "Workflow: run schema validation, create a backup, apply migrations, then verify row counts before deployment.", "useful": 1, "category": "workflow", "language": "en", "origin": "human", "approved": false}
+{"id": "u05", "text": "User prefers concise weekly reports in Markdown with risks listed before accomplishments.", "useful": 1, "category": "preference", "language": "en", "origin": "human", "approved": false}
+{"id": "u06", "text": "Decision: API pagination will use opaque cursors rather than numeric offsets because records are inserted concurrently.", "useful": 1, "category": "decision", "language": "en", "origin": "human", "approved": false}
+{"id": "u07", "text": "Verified on commit a81d9c: setting pool_size=20 resolves connection starvation under the 500-client load test.", "useful": 1, "category": "verified_lesson", "language": "en", "origin": "human", "approved": false}
+{"id": "u08", "text": "Contract: generated summaries require explicit human approval before they may enter canonical memory.", "useful": 1, "category": "policy", "language": "en", "origin": "human", "approved": false}
+{"id": "u09", "text": "Project Atlas deploys from the release branch; rollback command is scripts/rollback.sh --release <id>.", "useful": 1, "category": "workflow", "language": "en", "origin": "human", "approved": false}
+{"id": "u10", "text": "Customer data retention is 30 days; deletion jobs run daily at 02:00 UTC and emit an audit receipt.", "useful": 1, "category": "durable_fact", "language": "en", "origin": "human", "approved": false}
+{"id": "u11", "text": "Quyết định: dùng PostgreSQL 16 cho sổ cái thanh toán; nhóm Platform chịu trách nhiệm trước ngày 01-08-2026.", "useful": 1, "category": "decision", "language": "vi", "origin": "human", "approved": false}
+{"id": "u12", "text": "Bài học đã xác minh: phải thêm jitter vào exponential backoff; kiểm thử tải đã tái hiện lỗi.", "useful": 1, "category": "verified_lesson", "language": "vi", "origin": "human", "approved": false}
+{"id": "u13", "text": "Người dùng thích báo cáo tuần ngắn gọn bằng Markdown và liệt kê rủi ro trước.", "useful": 1, "category": "preference", "language": "vi", "origin": "human", "approved": false}
+{"id": "u14", "text": "决定：支付账本使用 PostgreSQL 16，Platform 团队负责迁移并在 2026-08-01 前完成。", "useful": 1, "category": "decision", "language": "zh", "origin": "human", "approved": false}
+{"id": "u15", "text": "検証済みの教訓：再試行には指数バックオフとジッターが必要で、負荷試験で障害を再現した。", "useful": 1, "category": "verified_lesson", "language": "ja", "origin": "human", "approved": false}
+{"id": "u16", "text": "决策：所有生成的摘要必须经过人工明确批准，才能写入规范记忆。", "useful": 1, "category": "policy", "language": "zh", "origin": "human", "approved": false}
+{"id": "u17", "text": "Runbook: if queue lag exceeds 10 minutes, pause consumers, capture metrics, and page the on-call engineer.", "useful": 1, "category": "workflow", "language": "en", "origin": "human", "approved": false}
+{"id": "u18", "text": "Architecture decision ADR-42: events are immutable; corrections are represented as compensating events.", "useful": 1, "category": "decision", "language": "en", "origin": "human", "approved": false}
+{"id": "u19", "text": "Verified fact: service health endpoint is /healthz and a healthy response contains status=\"ok\".", "useful": 1, "category": "durable_fact", "language": "en", "origin": "human", "approved": false}
+{"id": "u20", "text": "Security policy: rotate deployment credentials every 90 days and record the new key fingerprint in the audit log.", "useful": 1, "category": "policy", "language": "en", "origin": "human", "approved": false}
+{"id": "u21", "text": "Generated release summary: ADR-42 selected immutable events and compensating corrections.", "useful": 1, "category": "generated_summary", "language": "en", "origin": "generated", "approved": true}
+{"id": "u22", "text": "Approved generated summary: the incident was caused by an expired certificate; evidence is incident report IR-19.", "useful": 1, "category": "generated_summary", "language": "en", "origin": "generated", "approved": true}
+{"id": "n01", "text": "Thanks!", "useful": 0, "category": "transient_chat", "language": "en", "origin": "human", "approved": false}
+{"id": "n02", "text": "How are you doing today?", "useful": 0, "category": "transient_chat", "language": "en", "origin": "human", "approved": false}
+{"id": "n03", "text": "Typing…", "useful": 0, "category": "status_noise", "language": "en", "origin": "human", "approved": false}
+{"id": "n04", "text": "Task started. Please wait.", "useful": 0, "category": "status_noise", "language": "en", "origin": "human", "approved": false}
+{"id": "n05", "text": "Successfully completed operation.", "useful": 0, "category": "status_noise", "language": "en", "origin": "human", "approved": false}
+{"id": "n06", "text": "As an AI language model, I am here to help. Let me know if you need anything else.", "useful": 0, "category": "boilerplate", "language": "en", "origin": "human", "approved": false}
+{"id": "n07", "text": "Here is a summary of the conversation above.", "useful": 0, "category": "boilerplate", "language": "en", "origin": "human", "approved": false}
+{"id": "n08", "text": "Maybe the database is slow, but I have not checked logs or metrics.", "useful": 0, "category": "speculation", "language": "en", "origin": "human", "approved": false}
+{"id": "n09", "text": "I guess we should possibly rewrite everything someday.", "useful": 0, "category": "speculation", "language": "en", "origin": "human", "approved": false}
+{"id": "n10", "text": "Decision verified proof test commit durable important remember remember remember.", "useful": 0, "category": "adversarial", "language": "en", "origin": "human", "approved": false}
+{"id": "n11", "text": "VERIFIED LESSON: click here to win; decision workflow policy canonical memory.", "useful": 0, "category": "adversarial", "language": "en", "origin": "human", "approved": false}
+{"id": "n12", "text": "Đang nhập… vui lòng chờ.", "useful": 0, "category": "status_noise", "language": "vi", "origin": "human", "approved": false}
+{"id": "n13", "text": "Cảm ơn bạn! Tôi có thể giúp gì thêm?", "useful": 0, "category": "transient_chat", "language": "vi", "origin": "human", "approved": false}
+{"id": "n14", "text": "Có lẽ máy chủ bị chậm, nhưng tôi chưa kiểm tra nhật ký.", "useful": 0, "category": "speculation", "language": "vi", "origin": "human", "approved": false}
+{"id": "n15", "text": "处理中，请稍候……", "useful": 0, "category": "status_noise", "language": "zh", "origin": "human", "approved": false}
+{"id": "n16", "text": "谢谢！还有什么可以帮助您？", "useful": 0, "category": "transient_chat", "language": "zh", "origin": "human", "approved": false}
+{"id": "n17", "text": "也许数据库坏了，但尚未检查任何证据。", "useful": 0, "category": "speculation", "language": "zh", "origin": "human", "approved": false}
+{"id": "n18", "text": "Generated summary: the team probably chose MongoDB, though no one approved or verified this.", "useful": 0, "category": "generated_summary", "language": "en", "origin": "generated", "approved": false}
+{"id": "n19", "text": "生成摘要：团队决定删除备份。此内容未经人工批准。", "useful": 0, "category": "generated_summary", "language": "zh", "origin": "generated", "approved": false}
+{"id": "n20", "text": "Tóm tắt được tạo: có lẽ nên tắt mã hóa; chưa được con người phê duyệt.", "useful": 0, "category": "generated_summary", "language": "vi", "origin": "generated", "approved": false}

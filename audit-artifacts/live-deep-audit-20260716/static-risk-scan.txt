@@ -1,0 +1,1085 @@
+super_memory/db/postgres.py:124:        except Exception:
+super_memory/db/postgres.py:125:            pass
+super_memory/db/__init__.py:42:            pass
+super_memory/db/sqlite.py:25:        self.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/models.py:4:- MemoryType: FACT, DECISION, PREFERENCE, TODO, BLOCKER, WORKFLOW, INSIGHT, CONTEXT, DOCTRINE, LESSON, EVENT, BOUNDARY
+super_memory/models.py:47:    TODO = "todo"
+super_memory/entity_registry.py:52:    return {"ok": True, "id": entity_id, "kind": kind, "canonical_name": canonical_name}
+super_memory/entity_registry.py:64:            return {"ok": True, "id": row["id"], "kind": row["kind"], "canonical_name": row["canonical_name"], "aliases": aliases}
+super_memory/trust_calibration.py:72:    conn.executescript("""
+super_memory/trust_calibration.py:79:    init_schema(conn); conn.execute("INSERT OR REPLACE INTO trust_calibration_models VALUES(?,?,?,?)",(model.version,json.dumps(model.weights,sort_keys=True),model.intercept,datetime.now(timezone.utc).isoformat()))
+super_memory/peer_profile.py:22:        conn.execute('''INSERT OR REPLACE INTO peer_profiles VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',(peer_id,workspace,role,peer_id,json.dumps(merge('stable_facts_json',facts),ensure_ascii=False),json.dumps(merge('preferences_json',preferences),ensure_ascii=False),json.dumps(merge('goals_json',goals),ensure_ascii=False),json.dumps(merge('habits_json',habits),ensure_ascii=False),json.dumps(merge('constraints_json',constraints),ensure_ascii=False),confidence,now,json.dumps(metadata or {},ensure_ascii=False)))
+super_memory/peer_profile.py:24:    return {'ok':True,'peer_id':peer_id,'updated_at':now}
+super_memory/peer_profile.py:34:        return {'ok':True,'profile':d}
+super_memory/peer_profile.py:43:    return {'ok':True,'id':pid,'memory_id':memory_id}
+super_memory/agent_isolation.py:203:            "ok": True,
+super_memory/agent_isolation.py:207:    except Exception as exc:
+super_memory/lifecycle.py:26:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/lifecycle.py:56:            "INSERT OR REPLACE INTO lifecycle_state (key, payload_json, updated_at) VALUES (?, ?, ?)",
+super_memory/lifecycle.py:105:        "ok": True,
+super_memory/lifecycle.py:123:        return {"ok": True, "action": action, "cache": None}
+super_memory/lifecycle.py:126:        return {"ok": True, "action": action, "cache": _save_state(store, "activation_cache", payload)}
+super_memory/lifecycle.py:128:        return {"ok": True, "action": action, "cache": _load_state(store, "activation_cache")}
+super_memory/lifecycle.py:129:    return {"ok": True, "action": "status", "cache": _load_state(store, "activation_cache")}
+super_memory/lifecycle.py:154:                conn.executescript(f"UPDATE memories SET metadata_json='{esc_mj}' WHERE id='{esc_id}' AND layer='{esc_layer}';")
+super_memory/lifecycle.py:156:    return {"ok": True, "action": action, "dry_run": dry_run, "proposals": proposals[:100], "applied": applied}
+super_memory/lifecycle.py:176:                conn.executescript(f"UPDATE memories SET metadata_json='{esc_mj}' WHERE id='{esc_id}' AND layer='{esc_layer}';")
+super_memory/lifecycle.py:178:    return {"ok": True, "action": action, "dry_run": dry_run, "candidates": candidates, "applied": applied, "note": "No content is truncated; mark only annotates derived SQLite records."}
+super_memory/lifecycle.py:202:    return {"ok": True, "reflex_events": items, "missing_memory_refs": [i for i in items if not i["memory_exists"]], "hardening": "Reflex pins are audit events only; they do not bypass canonical-first save order."}
+super_memory/semantic.py:18:    except Exception:
+super_memory/semantic.py:68:    except Exception as exc:  # pragma: no cover - defensive
+super_memory/semantic.py:83:        except Exception as exc:
+super_memory/semantic.py:113:    vec_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/semantic.py:170:        except Exception as exc:
+super_memory/semantic.py:178:                except Exception as item_exc:  # pragma: no cover - depends on local runtime
+super_memory/affect.py:246:        "ok": True,
+super_memory/bridge.py:111:    """Execute UPDATE on memories table with executescript to work around
+super_memory/bridge.py:122:    conn.executescript(sql)
+super_memory/bridge.py:138:    except Exception:
+super_memory/bridge.py:180:        except Exception:
+super_memory/bridge.py:181:            pass
+super_memory/bridge.py:228:        except Exception as exc:
+super_memory/bridge.py:274:        except Exception:
+super_memory/bridge.py:275:            pass
+super_memory/bridge.py:285:                    "ok": True,
+super_memory/bridge.py:326:            except Exception as exc:
+super_memory/bridge.py:366:    return {"ok": True, "memory_id": memory_id, "layers": layers}
+super_memory/bridge.py:402:        "type": MemoryType.TODO,
+super_memory/bridge.py:421:            mem_type = MemoryType.TODO
+super_memory/bridge.py:514:        name: {"ok": True, "status": "ok" if rows else "no_hit", "degraded": False, "attempted_backend": "canonical", "count": len(rows)}
+super_memory/bridge.py:526:                status["vector"] = {"ok": False, "status": "unavailable", "degraded": True, "error_code": "vector_unavailable", "attempted_backend": "sqlite-vec", "count": 0}
+super_memory/bridge.py:543:                status["vector"] = {"ok": True, "status": "ok" if rows else "no_hit", "degraded": False, "attempted_backend": "sqlite-vec", "count": len(rows)}
+super_memory/bridge.py:544:        except Exception as exc:
+super_memory/bridge.py:545:            status["vector"] = {"ok": False, "status": "error", "degraded": True, "error_code": "vector_search_failed", "attempted_backend": "sqlite-vec", "error": type(exc).__name__, "count": 0}
+super_memory/bridge.py:565:    except Exception as exc:
+super_memory/bridge.py:566:        status["semantic_closet"] = {"ok": False, "status": "error", "degraded": True, "error_code": "semantic_closet_failed", "error": type(exc).__name__, "count": 0}
+super_memory/bridge.py:574:    except Exception as exc:
+super_memory/bridge.py:575:        status["graph"] = {"ok": False, "status": "error", "degraded": True, "error_code": "graph_failed", "error": type(exc).__name__, "count": 0}
+super_memory/bridge.py:595:        return {"ok": True, "results": [], "reason": "no drawer/closet refs"}
+super_memory/bridge.py:639:    except Exception as exc:
+super_memory/bridge.py:657:    except Exception:
+super_memory/bridge.py:658:        pass
+super_memory/bridge.py:768:        except Exception as exc:
+super_memory/bridge.py:784:    return {"ok": True, "memory_id": memory_id, "long_term_path": mem_path, "register_path": reg_path}
+super_memory/bridge.py:799:    except Exception:
+super_memory/bridge.py:800:        pass
+super_memory/bridge.py:838:                conn.executescript(
+super_memory/bridge.py:843:        return {"ok": True, "memory_id": memory_id, "hard": False, "action": "soft_delete",
+super_memory/bridge.py:848:        conn.executescript(f"""
+super_memory/bridge.py:858:    return {"ok": True, "memory_id": memory_id, "hard": True, "action": "hard_delete",
+super_memory/bridge.py:915:        conn.executescript(sql)
+super_memory/bridge.py:924:    return {"ok": True, "memory_id": memory_id, "correction_id": canonical_id or correction.id,
+super_memory/bridge.py:943:        except Exception:
+super_memory/bridge.py:947:        except Exception:
+super_memory/bridge.py:951:        except Exception:
+super_memory/bridge.py:1112:    except Exception:
+super_memory/bridge.py:1113:        pass
+super_memory/bridge.py:1170:    except Exception:
+super_memory/bridge.py:1171:        pass
+super_memory/bridge.py:1187:def feedback_outcome(memory_id: str | None = None, success: bool = True, outcome: str = "", config_path: str | None = None) -> dict[str, Any]:
+super_memory/bridge.py:1275:        lifecycle.compression(action="mark", dry_run=False, config_path=config_path, limit=limit)
+super_memory/bridge.py:1278:        "ok": True,
+super_memory/bridge.py:1457:def telemetry_record_event(kind: str, agent_id: str = "lucas", tool_name: str | None = None, duration_ms: float | None = None, success: bool = True, detail: dict | None = None, config_path: str | None = None) -> dict[str, Any]:
+super_memory/bridge.py:1526:def deep_improve(dry_run: bool = True, config_path: str | None = None, compact: bool = False, max_seconds: int | None = None, async_mode: bool = False) -> dict[str, Any]:
+super_memory/bridge.py:1533:        return {"ok": result.get("ok", True), "mode": "sync", "compact": True, "summary": result.get("summary"), "audit_grade": result.get("audit_grade"), "qualify_grade": result.get("qualify_grade"), "problems_found": result.get("problems_found"), "applied_count": len(result.get("applied", [])), "improvement_count": len(result.get("improvement_proposals", []))}
+super_memory/bridge.py:1613:    st = {"ok": True, "duplicates_count": 0}
+super_memory/bridge.py:1615:    out = {"ok": True, "pack_name": pack_name, "saved": {"ok": has_duplicates, "items": saved_items, "raw": saved}, "qualification": qual_results, "status": st}
+super_memory/bridge.py:1621:    return {"ok": True, "found_items": 6, "expected_items": 6, "duplicates_count": 0}
+super_memory/bridge.py:1624:    return {"ok": True, "before": {"duplicates_count": 0}, "after": {"duplicates_count": 0}, "cross_layer_after": {"total": 6, "unique": 6, "duplicates": 0}}
+super_memory/bridge.py:1650:    return {"ok": True, "active_cooldowns": mgr.active_count}
+super_memory/bridge.py:1657:    return {"ok": True, "cleared": True}
+super_memory/bridge.py:1719:        "ok": True,
+super_memory/bridge.py:1735:    return {"ok": True, "vector": vec, "dimensions": len(vec)}
+super_memory/bridge.py:1752:    return {"ok": True, "results": results, "count": len(results)}
+super_memory/bridge.py:1849:        except Exception as exc:
+super_memory/bridge.py:1852:            return {"ok": False, "mode": "fast", "error": f"{type(exc).__name__}: {exc}", "timeout_resilient": True}
+super_memory/bridge.py:2012:    return {"ok": True, "envelope": env.__dict__, "memory_record": env.to_memory_record()}
+super_memory/bridge.py:2081:        "ok": True,
+super_memory/bridge.py:2359:    return {"ok": True, "envelope": env.to_memory_record()["metadata"] | {"id": env.id, "content": env.content, "type": env.type.value, "scope": env.scope.value}}
+super_memory/bridge.py:2365:    return {"ok": True, "write_gate": evaluate_write(env).to_dict()}
+super_memory/bridge.py:2426:def scheduled_maintenance_report(config_path: str | None = None, dry_run: bool = False, profile: str = "daily") -> dict[str, Any]:
+super_memory/bridge.py:2474:def project_backfill(limit: int = 2000, dry_run: bool = True, config_path: str | None = None, rebuild_graph: bool = False) -> dict[str, Any]:
+super_memory/bridge.py:2497:    return {"ok": True, **asdict(evaluate_completeness(content, memory_type, metadata))}
+super_memory/eternal_context.py:34:        except Exception as e:
+super_memory/service.py:84:    except Exception as exc:
+super_memory/service.py:131:                except Exception:
+super_memory/service.py:183:        except Exception as exc:
+super_memory/service.py:214:            except Exception:
+super_memory/service.py:240:        except Exception as exc:
+super_memory/service.py:260:                ok=True,
+super_memory/service.py:290:            except Exception as exc:
+super_memory/service.py:299:            return [SaveResult(layer=MemoryLayer.WORKSPACE_MARKDOWN, ok=True,
+super_memory/service.py:309:        except Exception as exc:
+super_memory/service.py:319:        except Exception:
+super_memory/service.py:320:            pass
+super_memory/service.py:332:        except Exception as exc:
+super_memory/service.py:339:        except Exception:
+super_memory/service.py:340:            pass
+super_memory/service.py:373:                            except Exception as exc:
+super_memory/service.py:379:                except Exception as exc:
+super_memory/service.py:410:        except Exception as exc:
+super_memory/service.py:433:        except Exception:
+super_memory/service.py:434:            pass
+super_memory/service.py:463:        except Exception:
+super_memory/service.py:464:            pass
+super_memory/service.py:491:                INSERT OR REPLACE INTO memories
+super_memory/service.py:517:            except Exception as exc:
+super_memory/service.py:536:                except Exception:
+super_memory/service.py:537:                    pass
+super_memory/service.py:539:        except Exception as exc:
+super_memory/service.py:571:                except Exception as exc:
+super_memory/service.py:636:                except Exception as exc:
+super_memory/service.py:644:        except Exception as exc:
+super_memory/service.py:659:        except Exception as exc:
+super_memory/service.py:671:        except Exception as exc:
+super_memory/service.py:702:        except Exception:
+super_memory/extraction/relations.py:125:    except Exception:
+super_memory/extraction/structure_detector.py:57:        pass
+super_memory/extraction/structure_detector.py:106:        pass
+super_memory/extraction/structure_detector.py:111:        pass
+super_memory/self_improvement/orchestrator.py:50:        if not isinstance(result, dict) or result.get("ok", True):
+super_memory/self_improvement/orchestrator.py:193:            outcome = enqueue_proposal(store, proposal, dry_run=False)
+super_memory/self_improvement/orchestrator.py:201:        "ok": True,
+super_memory/reindex.py:258:    return {"ok": True, "state": bs.to_dict()}
+super_memory/reindex.py:288:        except Exception:
+super_memory/reindex.py:291:            pass
+super_memory/reindex.py:313:        except Exception as exc:
+super_memory/reindex.py:322:        except Exception as exc:
+super_memory/reindex.py:334:        except Exception as exc:
+super_memory/reindex.py:346:    in data/vectors.sqlite3) and returned ok=True regardless -- a silent no-op
+super_memory/reindex.py:353:    except Exception as exc:  # pragma: no cover - import guard
+super_memory/reindex.py:395:    except Exception as exc:
+super_memory/workflows.py:10:    path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/workflows.py:18:    return {"ok":True,"path":str(path)}
+super_memory/workflows.py:23:    path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/workflows.py:26:    return {"ok":True,"path":str(path)}
+super_memory/retrieval_pipeline.py:541:    except Exception as e:
+super_memory/execution_debug.py:23:        self.debug_log_file.parent.mkdir(parents=True, exist_ok=True)
+super_memory/execution_debug.py:36:            pass
+super_memory/execution_debug.py:143:        except Exception as e:
+super_memory/spaced_repetition.py:91:    success: bool = True
+super_memory/spaced_repetition.py:232:                except Exception:
+super_memory/spaced_repetition.py:247:                except Exception:
+super_memory/spaced_repetition.py:248:                    pass
+super_memory/spaced_repetition.py:344:                result.success = True
+super_memory/spaced_repetition.py:346:        except Exception as e:
+super_memory/spaced_repetition.py:405:        except Exception as e:
+super_memory/spaced_repetition.py:408:        return {"ok": True, "seeded": seeded}
+super_memory/brain_mode.py:40:        except Exception:
+super_memory/brain_mode.py:57:        except Exception as e:
+super_memory/confidence.py:184:    except Exception as e:
+super_memory/core/envelope.py:30:    TODO = "todo"
+super_memory/core/envelope.py:133:        except Exception:
+super_memory/consolidation.py:222:    except Exception:
+super_memory/consolidation.py:299:                    except Exception as exc:
+super_memory/consolidation.py:301:    except Exception as exc:
+super_memory/consolidation.py:353:                        except Exception as exc:
+super_memory/consolidation.py:355:    except Exception as exc:
+super_memory/consolidation.py:400:                except Exception as exc:
+super_memory/consolidation.py:402:    except Exception as exc:
+super_memory/consolidation.py:452:    semantic_links = auto_link_memories(store, config_path=config_path, dry_run=dry_run, limit=500, min_weight=0.25) if strategy in {"all", "semantic_discover"} else {"ok": True, "links_found": 0, "links_created": 0, "errors": []}
+super_memory/consolidation.py:474:            except Exception as exc:
+super_memory/consolidation.py:478:        "ok": True,
+super_memory/surface.py:59:    except Exception:
+super_memory/surface.py:60:        pass
+super_memory/surface.py:67:        cache_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/surface.py:70:    except Exception:
+super_memory/surface.py:71:        pass
+super_memory/surface.py:113:            except Exception:
+super_memory/surface.py:114:                pass
+super_memory/surface.py:170:            except Exception:
+super_memory/surface.py:171:                pass
+super_memory/surface.py:182:        "ok": True,
+super_memory/code_index.py:74:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/code_index.py:158:                "INSERT OR REPLACE INTO code_index_manifest (path, sha256, symbols_json, imports_json, indexed_at) VALUES (?, ?, ?, ?, ?)",
+super_memory/code_index.py:180:    return {"ok": True, "enabled": True, "mode": "local_code_index", "path": str(target), "files": indexed, "saved_records": saved_count, "skipped_records": skipped_count, "extensions": sorted(exts)}
+super_memory/code_index.py:190:    return {"ok": True, "enabled": True, "mode": "local_code_index", "indexed_files": count, "recent": [dict(r) for r in recent]}
+super_memory/promote.py:45:    path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/promote.py:80:    reg_dir.mkdir(parents=True, exist_ok=True)
+super_memory/promote.py:132:    except Exception:
+super_memory/mcp_execution_tools.py:42:            pass
+super_memory/mempalace/spellcheck.py:152:    except Exception:
+super_memory/mempalace/spellcheck.py:153:        pass
+super_memory/dream_governance.py:156:            str(row[1]) for row in conn.execute("PRAGMA table_info(generated_proposals)").fetchall()
+super_memory/dream_governance.py:244:    except Exception:
+super_memory/dream_governance.py:252:        return {"ok": True, "created": False, "deduplicated": True, "proposal": existing}
+super_memory/dream_governance.py:256:        return {"ok": True, "created": False, "deduplicated": False, "proposal": preview}
+super_memory/dream_governance.py:271:    return {"ok": True, "created": True, "deduplicated": False, "proposal": stored or proposal}
+super_memory/dream_governance.py:351:                "ok": True,
+super_memory/dream_governance.py:400:    except Exception as exc:
+super_memory/dream_governance.py:442:        "ok": True,
+super_memory/mempalace/entity_registry.py:88:            ws.mkdir(parents=True, exist_ok=True)
+super_memory/mempalace/entity_registry.py:98:                pass
+super_memory/mempalace/entity_registry.py:103:        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/token_budget.py:160:    assessed.sort(key=lambda x: x.value_per_token, reverse=True)
+super_memory/benchmarks.py:63:    db.parent.mkdir(parents=True, exist_ok=True)
+super_memory/capture_hook.py:95:        result: dict[str, Any] = {"ok": True, "event_id": event_id, "session_id": session_id, "captured": True}
+super_memory/capture_hook.py:107:        return {"ok": True, "peer_id": peer_id, "session_id": session_id, "signals": signals, "summary": content[:240]}
+super_memory/write_queue.py:160:                                ok=True,
+super_memory/write_queue.py:164:                    except Exception as exc:
+super_memory/write_queue.py:173:        except Exception as exc:
+super_memory/mempalace/knowledge_graph.py:105:            conn.executescript(KG_DDL)
+super_memory/mempalace/knowledge_graph.py:127:            return {"ok": True, "name": name, "kind": kind}
+super_memory/mempalace/knowledge_graph.py:229:            return {"ok": True, "source": source, "target": target, "rel_type": rel_type}
+super_memory/mempalace/knowledge_graph.py:345:            return {"ok": True, "subject": subject, "predicate": predicate, "object": obj}
+super_memory/reconstruct.py:116:            except Exception:
+super_memory/reconstruct.py:135:        "ok": True,
+super_memory/reconstruct.py:160:    except Exception:
+super_memory/reconstruct.py:231:        "ok": True,
+super_memory/reconstruct.py:307:            "ok": True,
+super_memory/reconstruct.py:361:        "ok": True,
+super_memory/mempalace/fact_checker.py:156:        except Exception:
+super_memory/mempalace/fact_checker.py:204:        except Exception:
+super_memory/mempalace/fact_checker.py:205:            pass
+super_memory/mempalace/hallways.py:134:                        """INSERT OR REPLACE INTO palace_hallways 
+super_memory/long_memory.py:25:    return {'ok':True,'threshold':threshold,'count':len(rows),'candidates':rows}
+super_memory/long_memory.py:40:            return {'ok':True,'dry_run':True,'memory_id':memory_id,'chunks':len(pieces),'summary':summary,'drawer_ids':[p['drawer_id'] for p in pieces]}
+super_memory/long_memory.py:45:            conn.execute('INSERT OR REPLACE INTO semantic_drawers VALUES (?,?,?,?,?,?,?)',(p['drawer_id'],memory_id,layer,p['start'],p['end'],p['content'],now))
+super_memory/long_memory.py:47:            conn.execute('INSERT OR REPLACE INTO semantic_closets VALUES (?,?,?,?,?)',(cid,p['drawer_id'],memory_id,p['closet'],now))
+super_memory/long_memory.py:52:    return {'ok':True,'dry_run':False,'memory_id':memory_id,'chunks':len(pieces),'summary':summary,'drawer_ids':[p['drawer_id'] for p in pieces]}
+super_memory/session_timeline.py:43:        return {"ok": True, "session_id": session_id, "events": events, "count": len(events)}
+super_memory/session_timeline.py:55:        return {"ok": True, "workspace": workspace, "sessions": rows, "count": len(rows)}
+super_memory/session_timeline.py:65:        except Exception:
+super_memory/session_timeline.py:73:        return {"ok": True, "peer_id": peer_id, "conclusions": conclusions, "sessions": sessions}
+super_memory/session_timeline.py:90:        return {"ok": True, "query": query, "session_id": session_id, "events": [_decode_meta(r) for r in rows], "count": len(rows)}
+super_memory/mempalace/tools.py:74:            "ok": True,
+super_memory/mempalace/tools.py:95:                "ok": True,
+super_memory/mempalace/tools.py:103:            return {"ok": True, "layer": 2, "name": "structured", **result}
+super_memory/mempalace/tools.py:106:            return {"ok": True, "layer": 3, "name": "spatial", **result}
+super_memory/mempalace/tools.py:111:            return {"ok": True, "layer": 4, "name": "compressed", **result}
+super_memory/mempalace/tools.py:118:        return {"ok": True, "wings": wings, "count": len(wings)}
+super_memory/mempalace/tools.py:123:        return {"ok": True, "wing": wing, "rooms": rooms, "count": len(rooms)}
+super_memory/mempalace/tools.py:128:        return {"ok": True, "wing": wing, "room": room, "halls": halls, "count": len(halls)}
+super_memory/mempalace/tools.py:141:            "ok": True,
+super_memory/mempalace/tools.py:151:            "ok": True, "summary": summary,
+super_memory/mempalace/tools.py:162:        return {"ok": True, "entities": entities, "count": len(entities)}
+super_memory/mempalace/tools.py:166:        return {"ok": True, "name": name, **result}
+super_memory/mempalace/tools.py:171:        return {"ok": True, "added": name, "kind": kind, "confidence": confidence}
+super_memory/mempalace/tools.py:175:        return {"ok": True, "removed": removed, "name": name}
+super_memory/mempalace/tools.py:178:        return {"ok": True, **self.entity_registry.stats()}
+super_memory/mempalace/tools.py:182:        return {"ok": True, **result}
+super_memory/mempalace/tools.py:187:        return {"ok": True, "corrected": corrected, "original": text, "changed": changed}
+super_memory/mempalace/tools.py:191:        return {"ok": True, **context}
+super_memory/mempalace/tools.py:195:        return {"ok": True, "text_length": len(text), **extracted}
+super_memory/mempalace/tools.py:200:        result: dict[str, Any] = {"ok": True, "compressed_count": len(index.compressed), "stats": stats}
+super_memory/mempalace/tools.py:216:        return {"ok": True, **_search_sqlite(str(self.db_path), query, wing=wing, room=room, limit=limit)}
+super_memory/mempalace/tools.py:220:        return {"ok": True, **_find_similar_drawers(str(self.db_path), drawer_id, wing=wing, limit=limit, threshold=threshold)}
+super_memory/mempalace/tools.py:226:        return {"ok": True, **deduplicate(str(self.db_path), wing=wing, threshold=threshold, dry_run=dry_run)}
+super_memory/mempalace/tools.py:232:        return {"ok": True, **_build_hallways(str(self.db_path), wing=wing, min_strength=min_strength)}
+super_memory/mempalace/tools.py:236:        return {"ok": True, **_list_hallways(str(self.db_path), wing=wing, entity=entity, min_strength=min_strength, limit=limit)}
+super_memory/mempalace/tools.py:240:        return {"ok": True, **_find_path(str(self.db_path), entity_a, entity_b, wing=wing, max_hops=max_hops)}
+super_memory/mempalace/tools.py:245:        return {"ok": True, **self.knowledge_graph.add_entity(name, kind)}
+super_memory/mempalace/tools.py:251:        return {"ok": True, **entity}
+super_memory/mempalace/tools.py:255:        return {"ok": True, "entities": entities, "count": len(entities)}
+super_memory/mempalace/tools.py:262:        return {"ok": True, **self.knowledge_graph.add_relationship(
+super_memory/mempalace/tools.py:271:        return {"ok": True, **self.knowledge_graph.query_entity(
+super_memory/mempalace/tools.py:279:        return {"ok": True, **self.knowledge_graph.add_fact(
+super_memory/mempalace/tools.py:292:        return {"ok": True, "facts": facts, "count": len(facts)}
+super_memory/mempalace/tools.py:295:        return {"ok": True, **self.knowledge_graph.stats()}
+super_memory/mempalace/tools.py:301:        return {"ok": True, **result}
+super_memory/mempalace/tools.py:307:        return {"ok": True, **_scan_existing(str(self.db_path), wing=wing, max_results=max_results)}
+super_memory/mempalace/tools.py:313:            return {"ok": True, "collisions": 0, "safe": True}
+super_memory/mempalace/tools.py:315:            return {"ok": True, "collisions": 1, "safe": False, "error": str(e)}
+super_memory/mempalace/tools.py:332:        return {"ok": True, **registry.stats()}
+super_memory/mempalace/tools.py:337:        self, file_path: str, wing: str = "conversations", dry_run: bool = False,
+super_memory/mempalace/tools.py:340:        return {"ok": True, **_mine_conversation(str(self.db_path), file_path, wing=wing, dry_run=dry_run)}
+super_memory/mempalace/tools.py:343:        self, directory: str, wing: str = "conversations", recursive: bool = True, dry_run: bool = False,
+super_memory/mempalace/tools.py:346:        return {"ok": True, **_mine_directory(str(self.db_path), directory, wing=wing, recursive=recursive, dry_run=dry_run)}
+super_memory/mempalace/tools.py:603:                "dry_run": {"type": "boolean", "default": False, "description": "Preview only, no write"},
+super_memory/mempalace/tools.py:617:                "dry_run": {"type": "boolean", "default": False},
+super_memory/readiness.py:43:        pass
+super_memory/readiness.py:90:            columns = {row["name"] for row in conn.execute("PRAGMA table_info(memories)")}
+super_memory/readiness.py:232:        "ok": True,
+super_memory/mempalace/dedup.py:211:        "ok": True,
+super_memory/execution_auto_detect.py:153:    except Exception as e:
+super_memory/query_expansion.py:109:        except Exception:
+super_memory/version.py:82:        except Exception:
+super_memory/version.py:83:            pass
+super_memory/version.py:123:    return {"ok": True, **snapshot}
+super_memory/version.py:130:        return {"ok": True, "snapshots": []}
+super_memory/version.py:134:        return {"ok": True, "snapshots": []}
+super_memory/version.py:135:    return {"ok": True, "snapshots": idx[:limit]}
+super_memory/version.py:144:        return {"ok": True, **json.loads(raw)}
+super_memory/version.py:184:        "ok": True,
+super_memory/version.py:218:        "ok": True,
+super_memory/mempalace/convo_miner.py:227:        pass
+super_memory/mempalace/convo_miner.py:292:    dry_run: bool = False,
+super_memory/mempalace/convo_miner.py:324:        except Exception as e:
+super_memory/mempalace/convo_miner.py:393:    except Exception as e:
+super_memory/mempalace/convo_miner.py:414:    dry_run: bool = False,
+super_memory/handoff.py:18:        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/handoff.py:91:        return {"ok": True, "bundle_id": bundle_id, "memory_count": len(memories), "handoff": payload}
+super_memory/handoff.py:105:        return {"ok": True, "bundle": row}
+super_memory/handoff.py:122:        return {"ok": True, "handoffs": rows, "count": len(rows)}
+super_memory/handoff.py:144:            except Exception as exc:
+super_memory/handoff.py:197:        return {"ok": True, "bundle_id": bundle_id, "memory_id": mem_id, "proof_status": proof_status}
+super_memory/priming.py:202:    except Exception as e:
+super_memory/health_cache.py:12:    conn.executescript(
+super_memory/health_cache.py:43:            "INSERT OR REPLACE INTO memory_health_cache(key,value_json,updated_at) VALUES(?,?,?)",
+super_memory/health_cache.py:46:    return {"ok": True, "key": key, "updated_at": now}
+super_memory/health_cache.py:59:    except Exception:
+super_memory/health_cache.py:73:            out = {"ok": True, "mode": "fast", "table_exists": False, "missing_vectors": 0}
+super_memory/health_cache.py:98:        "ok": True,
+super_memory/semantic_quality_benchmark.py:115:        path = Path(output_path); path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/_db_legacy.py:16:        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/embeddings/provider.py:49:        except Exception as e:
+super_memory/embeddings/provider.py:62:        except Exception as e:
+super_memory/embeddings/provider.py:75:        except Exception as e:
+super_memory/depth_prior.py:174:        except Exception:
+super_memory/depth_prior.py:184:    except Exception:
+super_memory/mcp_server.py:423:        "description": "Save a TODO memory through canonical-first layer order.",
+super_memory/mcp_server.py:720:        "inputSchema": _schema({"limit": {"type": "integer", "default": 2000}, "dry_run": {"type": "boolean", "default": True}, "rebuild_graph": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}),
+super_memory/mcp_server.py:875:    ("super_memory_feedback_outcome", "Record task/memory outcome feedback for learning.", {"memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "outcome": {"type": "string"}, "config_path": {"type": "string"}}),
+super_memory/mcp_server.py:900:    ("super_memory_leitner", "Leitner 5-box: queue|mark|schedule|stats|auto_seed.", {"action": {"type": "string", "default": "queue"}, "memory_id": {"type": "string"}, "success": {"type": "boolean", "default": True}, "box": {"type": "integer", "default": 0}, "limit": {"type": "integer", "default": 50}, "config_path": {"type": "string"}}, []),
+super_memory/mcp_server.py:920:    ("super_memory_telemetry_record_event", "Record a telemetry event for usage tracking.", {"kind": {"type": "string"}, "agent_id": {"type": "string", "default": "lucas"}, "tool_name": {"type": "string"}, "duration_ms": {"type": "number"}, "success": {"type": "boolean", "default": True}, "detail": {"type": "object"}, "config_path": {"type": "string"}}, ["kind"]),
+super_memory/mcp_server.py:964:    ("super_memory_scheduled_maintenance_report", "Run daily/weekly/release maintenance profile.", {"profile": {"type": "string", "default": "daily"}, "dry_run": {"type": "boolean", "default": False}, "config_path": {"type": "string"}}, []),
+super_memory/mcp_server.py:1191:        return bridge.project_backfill(limit=args.get("limit", 2000), dry_run=args.get("dry_run", True), rebuild_graph=args.get("rebuild_graph", False), config_path=args.get("config_path"))
+super_memory/mcp_server.py:1301:        return bridge.feedback_outcome(memory_id=args.get("memory_id"), success=args.get("success", True), outcome=args.get("outcome", ""), config_path=args.get("config_path"))
+super_memory/mcp_server.py:1354:            return bridge.leitner_mark(args["memory_id"], success=args.get("success", True), config_path=args.get("config_path"))
+super_memory/mcp_server.py:1468:        return bridge.telemetry_record_event(args["kind"], agent_id=args.get("agent_id", "lucas"), tool_name=args.get("tool_name"), duration_ms=args.get("duration_ms"), success=args.get("success", True), detail=args.get("detail"), config_path=args.get("config_path"))
+super_memory/mcp_server.py:1580:        return bridge.scheduled_maintenance_report(config_path=args.get("config_path"), dry_run=args.get("dry_run", False), profile=args.get("profile", "daily"))
+super_memory/mcp_server.py:1689:        except Exception as exc:  # keep MCP transport alive and report as JSON-RPC error
+super_memory/claim_extractor.py:36:        return {"ok": True, "memory_id": memory_id, "claims": claims, "count": len(claims)}
+super_memory/claim_extractor.py:86:        return {"ok": True, "topic": topic, "contradictions": pairs, "count": len(pairs)}
+super_memory/claim_extractor.py:102:        return {"ok": True, "claim_a_id": claim_a_id, "claim_b_id": claim_b_id, "resolution": resolution}
+super_memory/claim_extractor.py:109:        return {"ok": True, "agent_id": agent_id, "topic": topic, "claims": rows, "count": len(rows), "limit": limit, "offset": offset}
+super_memory/flush_plan.py:89:            except Exception as exc:
+super_memory/flush_plan.py:110:        except Exception:
+super_memory/quality_scorer.py:335:    except Exception as e:
+super_memory/honcho/insights.py:52:                INSERT OR REPLACE INTO honcho_conclusions
+super_memory/qmd/qmd_search.py:71:            return {"ok": True, "already_running": True}
+super_memory/qmd/qmd_search.py:74:        data_path.mkdir(parents=True, exist_ok=True)
+super_memory/qmd/qmd_search.py:83:            return {"ok": True, "pid": self._process.pid, "data_dir": str(data_path)}
+super_memory/qmd/qmd_search.py:94:            return {"ok": True, "stopped": True}
+super_memory/qmd/qmd_search.py:95:        return {"ok": True, "not_running": True}
+super_memory/qmd/qmd_search.py:119:            return {"ok": True, "result": result}
+super_memory/qmd/qmd_search.py:120:        except Exception as exc:
+super_memory/qmd/qmd_search.py:146:                "ok": True,
+super_memory/qmd/qmd_search.py:159:        except Exception as exc:
+super_memory/qmd/qmd_search.py:166:            "ok": True,
+super_memory/honcho/peer.py:152:                INSERT OR REPLACE INTO honcho_peers
+super_memory/honcho/tools.py:42:        return {"ok": True, "query": query, "about_peer": about_peer, "answer": answer, "sources": {"peer": peer is not None, "conclusions": len(conclusions), "messages": len(messages)}}
+super_memory/honcho/tools.py:46:        return {"ok": True, **self.context_builder.build(session_id=session_id, peer_id=peer_id, max_tokens=max_tokens)}
+super_memory/honcho/tools.py:59:        return {"ok": True, "peer": peer.to_dict()}
+super_memory/honcho/tools.py:67:            return {"ok": True, "conclusion": conclusion}
+super_memory/honcho/tools.py:68:        return {"ok": True, "conclusions": self.insights.list_conclusions(about_peer_id=about_peer, limit=limit)}
+super_memory/honcho/tools.py:74:        return {"ok": True, "query": query, "messages": messages, "conclusions": conclusions, "count": len(messages) + len(conclusions)}
+super_memory/honcho/tools.py:85:        return {"ok": True, "peer_id": peer_id, "session_id": session_id, "dialectic": result.to_dict(), "saved": save}
+super_memory/honcho/tools.py:105:        return {"ok": True, "workspace": workspace, "sessions": [dict(r) for r in rows]}
+super_memory/recall_benchmark.py:101:        path.mkdir(parents=True, exist_ok=True)
+super_memory/recall_benchmark.py:127:    return {"ok": True, "path": str(path), "case": case}
+super_memory/recall_benchmark.py:149:        "ok": True,
+super_memory/recall_benchmark.py:212:        except Exception as exc:
+super_memory/recall_benchmark.py:366:        except Exception as exc:
+super_memory/quality_gate.py:104:    except Exception:
+super_memory/quality_gate.py:105:        pass
+super_memory/intelligence.py:48:    return {"ok": True, **row}
+super_memory/intelligence.py:65:    return {"ok": True, "memory_id": memory_id, "record": rec.model_dump(mode="json"), "source": rec.source, "metadata": rec.metadata}
+super_memory/intelligence.py:74:    return {"ok": True, "has_conflicts": False, "conflict_count": 0, "candidates": candidates[:5], "note": "deterministic placeholder; no contradiction model enabled"}
+super_memory/intelligence.py:85:    return {"ok": True, "versions": [{"id": r["id"], "name": r["subject"], "payload": json.loads(r["payload_json"]), "created_at": r["created_at"]} for r in rows]}
+super_memory/intelligence.py:100:        return {"ok": True, "domain": domain, "results": [r.model_dump(mode="json") for r in saved]}
+super_memory/intelligence.py:102:    return {"ok": True, "domain": domain, "boundaries": [r.model_dump(mode="json") for r in records]}
+super_memory/intelligence.py:112:    return {"ok": True, "from": from_entity, "to": to_entity, "path": [r.model_dump(mode="json") for r in records]}
+super_memory/intelligence.py:122:    return {"ok": True, **status}
+super_memory/session_index.py:34:    conn.executescript(f"""
+super_memory/session_index.py:115:    except Exception as exc:
+super_memory/session_index.py:125:        return {"ok": True, "path": str(file_path), "unchanged": True}
+super_memory/session_index.py:143:        f"INSERT OR REPLACE INTO {SESSION_META_TABLE}(source_path, session_id, agent_id, file_hash, chunk_count, total_chars) VALUES (?, ?, ?, ?, ?, ?)",
+super_memory/session_index.py:149:        "ok": True,
+super_memory/session_index.py:203:        "ok": True,
+super_memory/session_index.py:273:    except Exception as exc:
+super_memory/session_index.py:376:    except Exception:
+super_memory/session_index.py:377:        return {"ok": True, "available": False, "error": "session tables not initialized"}
+super_memory/session_index.py:380:        "ok": True,
+super_memory/observability.py:46:    ok: bool = True,
+super_memory/observability.py:69:    ok = True
+super_memory/observability.py:72:    except Exception:
+super_memory/operational_slo.py:61:          except Exception: details.append({})
+super_memory/maintenance.py:20:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/maintenance.py:32:            except Exception:
+super_memory/maintenance.py:33:                pass
+super_memory/maintenance.py:44:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/maintenance.py:50:            "INSERT OR REPLACE INTO lifecycle_state (key, payload_json, updated_at) VALUES (?, ?, ?)",
+super_memory/maintenance.py:62:    report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "expired": 0, "active_hypotheses": 0, "notes": []}
+super_memory/maintenance.py:124:    except Exception as exc:
+super_memory/maintenance.py:142:        "ok": True, "dry_run": dry_run, "steps": {},
+super_memory/maintenance.py:152:    except Exception as exc:
+super_memory/maintenance.py:163:                report["steps"]["semantic_index"] = {"ok": True, "skipped": True, "reason": "existing vector index present", "vector_count": vector_count}
+super_memory/maintenance.py:165:    except Exception as exc:
+super_memory/maintenance.py:175:        report["steps"]["dreaming_run"] = {"ok": True, "skipped": True, "reason": "database lock contention; retry maintenance later"}
+super_memory/maintenance.py:182:    except Exception as exc:
+super_memory/maintenance.py:195:            report["steps"]["conversation_mining"] = {"ok": True, "skipped": True, "reason": "dry-run mode; enable with dry_run=False"}
+super_memory/maintenance.py:196:    except Exception as exc:
+super_memory/maintenance.py:207:    except Exception as exc:
+super_memory/maintenance.py:214:    except Exception as exc:
+super_memory/maintenance.py:228:            report["steps"]["schema_assimilation"] = {"ok": True, "skipped": True, "reason": "run within last 4 hours"}
+super_memory/maintenance.py:229:    except Exception as exc:
+super_memory/maintenance.py:252:            report["steps"]["hippocampal_replay"] = {"ok": True, "skipped": True, "reason": "run within last 2 hours"}
+super_memory/maintenance.py:253:    except Exception as exc:
+super_memory/maintenance.py:270:            report["steps"]["dream_engine"] = {"ok": True, "skipped": True, "reason": "run within last 4 hours"}
+super_memory/maintenance.py:271:    except Exception as exc:
+super_memory/maintenance.py:285:            report["steps"]["write_contract_reconcile"] = {"ok": True, "skipped": True, "reason": "run within last hour"}
+super_memory/maintenance.py:286:    except Exception as exc:
+super_memory/maintenance.py:305:            report["steps"]["stale_event_prune"] = {"ok": True, "skipped": True, "reason": "run within last 7 days"}
+super_memory/maintenance.py:306:    except Exception as exc:
+super_memory/maintenance.py:319:    except Exception as exc:
+super_memory/maintenance.py:327:    except Exception as exc:
+super_memory/maintenance.py:333:    report["ok"] = all(not isinstance(v, dict) or v.get("ok", True) for v in report["steps"].values())
+super_memory/maintenance.py:388:    report: dict[str, Any] = {"ok": True, "dry_run": dry_run, "child_deleted": {}}
+super_memory/maintenance.py:408:                except Exception:
+super_memory/maintenance.py:409:                    pass
+super_memory/maintenance.py:427:            except Exception as exc:
+super_memory/graph.py:69:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/graph.py:242:            INSERT OR REPLACE INTO cognitive_fibers
+super_memory/graph.py:263:    return {"ok": True, "memory_id": record.id, "fiber_id": fiber_id, "anchor_neuron_id": anchor, "neurons": len(neuron_ids), "synapses": len(synapse_ids)}
+super_memory/graph.py:272:    return {"ok": True, "neurons": {r["kind"]: r["c"] for r in neurons}, "synapses": {r["relation"]: r["c"] for r in synapses}, "fibers": fibers, "canonical_first": True}
+super_memory/graph.py:288:            return {"ok": True, "query": neuron_or_memory_id, "neighbors": []}
+super_memory/graph.py:294:    return {"ok": True, "query": neuron_or_memory_id, "node_id": node_id, "neighbors": [{"synapse_id": r["id"], "relation": r["relation"], "weight": r["weight"], "confidence": r["confidence"], "target_content": r["target_content"], "target_kind": r["target_kind"]} for r in rows]}
+super_memory/graph.py:308:        return {"ok": True, "original_query": query, "expansions": [], "exact_terms": [], "related_terms": []}
+super_memory/graph.py:317:        return {"ok": True, "original_query": query, "expansions": [], "exact_terms": [], "related_terms": []}
+super_memory/graph.py:334:    return {"ok": True, "original_query": query, "expansions": sorted_terms[:max_neighbors], "exact_terms": exact_terms, "related_terms": related_terms, "seed_count": len(seed_ids)}
+super_memory/graph.py:355:            except Exception:
+super_memory/graph.py:357:    return {"ok": True, "query": query, "fibers": [{"id": r["id"], "memory_id": json.loads(r["metadata_json"]).get("memory_id"), "anchor_neuron_id": r["anchor_neuron_id"], "summary": r["summary"], "salience": r["salience"], "coherence": r["coherence"], "frequency": r["frequency"] + 1, "tags": json.loads(r["tags_json"])} for r in rows]}
+super_memory/graph.py:372:    return {"ok": True, "projected": len(projected), "items": projected[:20], "truncated": len(projected) > 20}
+super_memory/graph.py:389:    return {"ok": True, "removed_neurons": before - after, "neurons_before": before, "neurons_after": after}
+super_memory/graph.py:408:    return {"ok": True, "projected": len(projected), "items": projected[:20], "truncated": len(projected) > 20}
+super_memory/graph.py:516:        return {"ok": True, "query": query, "depth": depth, "results": [], "elapsed_ms": 0, "method": "spreading_activation"}
+super_memory/graph.py:606:        "ok": True,
+super_memory/telemetry.py:63:def record_event(kind, agent_id="lucas", tool_name=None, duration_ms=None, success=True, detail=None, config_path=None):
+super_memory/telemetry.py:81:    return {"ok": True, "event_id": event_id}
+super_memory/telemetry.py:110:        return {"ok": True, "date": today, "events": 0}
+super_memory/telemetry.py:124:            "INSERT OR REPLACE INTO telemetry_daily (date, tool_calls, memories_saved, recalls, avg_duration_ms, errors, agents_active, detail_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+super_memory/telemetry.py:127:    return {"ok": True, "date": today, **detail, "avg_duration_ms": round(avg_dur, 2)}
+super_memory/telemetry.py:148:        "ok": True,
+super_memory/telemetry.py:191:        except Exception: d['detail']={}
+super_memory/telemetry.py:193:    return {'ok': True, 'events': events}
+super_memory/safety/freshness.py:66:    except Exception as e:
+super_memory/safety/freshness.py:135:    except Exception as e:
+super_memory/safety/firewall.py:113:    except Exception as e:
+super_memory/dream.py:86:    result = enqueue_proposal(store, proposal, dry_run=False)
+super_memory/dream.py:88:        "ok": True,
+super_memory/dream.py:142:    except Exception:
+super_memory/dream.py:239:        "ok": True,
+super_memory/dream.py:268:        except Exception:
+super_memory/dream.py:296:        "ok": True,
+super_memory/dream.py:347:        "ok": True,
+super_memory/dream.py:368:        "ok": True,
+super_memory/safety/encryption.py:34:        except Exception as e:
+super_memory/safety/encryption.py:46:        except Exception as e:
+super_memory/safety/encryption.py:55:        except Exception as e:
+super_memory/safety/encryption.py:66:        except Exception:
+super_memory/safety/encryption.py:75:        except Exception:
+super_memory/validation.py:23:    return {"ok": True, "active_canonical": active, "vectorized_memories": vectors, "coverage": round(coverage, 4), "has_memory_vectors_table": has_table}
+super_memory/semantic_discovery.py:62:            pass
+super_memory/semantic_discovery.py:110:                pass
+super_memory/semantic_discovery.py:120:                except Exception:
+super_memory/semantic_discovery.py:126:                except Exception:
+super_memory/semantic_discovery.py:200:        except Exception:
+super_memory/semantic_discovery.py:211:        return {"ok": True, "links_found": 0, "links_created": 0, "reason": "not enough memories"}
+super_memory/semantic_discovery.py:215:        return {"ok": True, "links_found": 0, "links_created": 0}
+super_memory/semantic_discovery.py:250:                except Exception as exc:
+super_memory/semantic_discovery.py:254:        "ok": True,
+super_memory/memory_quality.py:36: conn.executescript("""CREATE TABLE IF NOT EXISTS memory_evidence(id INTEGER PRIMARY KEY AUTOINCREMENT,memory_id TEXT NOT NULL,evidence_memory_id TEXT NOT NULL,relation TEXT NOT NULL DEFAULT 'supports',quote TEXT,confidence REAL NOT NULL DEFAULT .5,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(memory_id,evidence_memory_id,relation));CREATE INDEX IF NOT EXISTS idx_memory_evidence_memory ON memory_evidence(memory_id);CREATE TABLE IF NOT EXISTS memory_quality_events(id INTEGER PRIMARY KEY AUTOINCREMENT,memory_id TEXT NOT NULL,event_type TEXT NOT NULL,score REAL,payload_json TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);""")
+super_memory/memory_quality.py:42: quality=float(meta.get("quality_score",.5)); evidence=conn.execute("SELECT COUNT(*) FROM memory_evidence WHERE memory_id=? AND relation='supports'",(memory_id,)).fetchone()[0]; conflicts=conn.execute("SELECT COUNT(*) FROM memory_evidence WHERE memory_id=? AND relation='contradicts'",(memory_id,)).fetchone()[0]; score=round(max(.05,min(1,.25+quality*.5+min(evidence,5)*.03+(.08 if meta.get("canonical") else 0)-min(conflicts,5)*.08)),4); meta["trust"]={"version":"1","score":score,"evidence_count":evidence,"conflict_count":conflicts,"updated_at":datetime.now(timezone.utc).isoformat()}; conn.execute("UPDATE memories SET trust_score=?,metadata_json=? WHERE id=?",(score,json.dumps(meta),memory_id)); return {"ok":True,"memory_id":memory_id,"trust_score":score,**meta["trust"]}
+super_memory/memory_quality.py:55: support=sum(float(e["confidence"]) for e in edges if e["relation"]=="supports"); oppose=sum(float(e["confidence"]) for e in edges if e["relation"]=="contradicts"); confidence=round(max(0,min(1,(float(root["trust_score"] or .5)+support)/(1+support+oppose))),4); return {"ok":True,"memory_id":memory_id,"confidence":confidence,"nodes":list(nodes.values()),"edges":edges,"depth":max_depth}
+super_memory/memory_quality.py:62: memories=[dict(r) for r in rows]; return {"ok":True,"start":start,"end":end,"entity":entity,"count":len(memories),"memories":memories}
+super_memory/self_heal.py:53:                "ok": True,
+super_memory/self_heal.py:85:                    INSERT OR REPLACE INTO memory_vectors (memory_id, layer, vector, provider, dimensions)
+super_memory/self_heal.py:91:            except Exception as exc:
+super_memory/self_heal.py:114:                return {"ok": True, "total_memories": 0, "missing_vectors": 0, "table_exists": False}
+super_memory/self_heal.py:149:                "ok": True,
+super_memory/self_heal.py:157:    except Exception as exc:
+super_memory/rem_evidence.py:153:            except Exception as exc:
+super_memory/rem_evidence.py:190:        "ok": True,
+super_memory/execution_lifecycle.py:23:        self.plan_registry_file.parent.mkdir(parents=True, exist_ok=True)
+super_memory/execution_lifecycle.py:39:            pass
+super_memory/compat.py:135:            except Exception:
+super_memory/compat.py:284:    except Exception as exc:
+super_memory/compat.py:380:            except Exception:
+super_memory/compat.py:691:    except Exception:
+super_memory/preference_detector.py:177:        except Exception as e:
+super_memory/vector.py:89:    conn.executescript(
+super_memory/vector.py:183:        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/vector.py:211:        except Exception as exc:
+super_memory/vector.py:255:            # vec0 does not implement SQLite's INSERT OR REPLACE conflict
+super_memory/vector.py:301:        except Exception as exc:
+super_memory/vector.py:371:        except Exception as exc:
+super_memory/vector.py:396:            # sqlite3.executescript() may commit a pending transaction.
+super_memory/vector.py:409:        except Exception as exc:
+super_memory/vector.py:426:        "ok": True,
+super_memory/vector.py:497:    except Exception as exc:
+super_memory/vector.py:535:        return {"ok": bool(audit.get("ok")), "dry_run": True, "changed": 0, "audit": audit}
+super_memory/vector.py:538:        return {"ok": True, "dry_run": False, "changed": 0, "audit": audit}
+super_memory/vector.py:563:    return {"ok": True, "dry_run": False, "changed": changed, "audit": audit}
+super_memory/vector.py:607:    except Exception as exc:
+super_memory/vector.py:651:    except Exception as exc:
+super_memory/project_inference.py:17:def backfill_projects(limit: int = 2000, dry_run: bool = True, config_path: str | None = None, rebuild_graph: bool = False) -> dict[str, Any]:
+super_memory/project_inference.py:45:                    except Exception as exc:
+super_memory/data_improvement.py:162:def backfill_trust_scores(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+super_memory/data_improvement.py:192:            except Exception as exc:
+super_memory/data_improvement.py:199:        "ok": True,
+super_memory/data_improvement.py:207:def promote_events_to_durable(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+super_memory/data_improvement.py:247:            except Exception as exc:
+super_memory/data_improvement.py:259:                except Exception as exc:
+super_memory/data_improvement.py:265:        "ok": True,
+super_memory/data_improvement.py:272:def backfill_canonical_markdown(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+super_memory/data_improvement.py:278:    memory_dir.mkdir(parents=True, exist_ok=True)
+super_memory/data_improvement.py:331:        "ok": True,
+super_memory/data_improvement.py:340:def run_dedup(config_path: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+super_memory/data_improvement.py:346:    except Exception as exc:
+super_memory/data_improvement.py:351:        except Exception as exc2:
+super_memory/data_improvement.py:376:        "ok": True,
+super_memory/stabilize.py:47:        "ok": True,
+super_memory/stabilize.py:63:        except Exception as e:
+super_memory/stabilize.py:76:        except Exception as e:
+super_memory/stabilize.py:84:        except Exception as e:
+super_memory/stabilize.py:111:        except Exception as e:
+super_memory/stabilize.py:130:        except Exception as e:
+super_memory/stabilize.py:143:        except Exception as e:
+super_memory/stabilize.py:224:                "ok": True,
+super_memory/stabilize.py:241:            "ok": True,
+super_memory/stabilize.py:242:            "dry_run": False,
+super_memory/stabilize.py:294:                "ok": True,
+super_memory/stabilize.py:316:                except Exception:
+super_memory/stabilize.py:317:                    pass
+super_memory/stabilize.py:326:                except Exception:
+super_memory/stabilize.py:327:                    pass
+super_memory/stabilize.py:335:            "ok": True,
+super_memory/stabilize.py:336:            "dry_run": False,
+super_memory/stabilize.py:370:                "ok": True,
+super_memory/stabilize.py:390:            "ok": True,
+super_memory/stabilize.py:391:            "dry_run": False,
+super_memory/stabilize.py:418:        "ok": True,
+super_memory/trigger_engine.py:43:    (re.compile(r"(?:TODO|FIXME|HACK|XXX|BUG)\s*[:()]", re.IGNORECASE), "code_annotation", 0.75),
+super_memory/trigger_engine.py:63:    except Exception:
+super_memory/conflict.py:240:        "ok": True,
+super_memory/conflict.py:251:        except Exception:
+super_memory/conflict.py:252:            pass
+super_memory/conversation_miner.py:215:        "ok": True,
+super_memory/conversation_miner.py:239:            except Exception:
+super_memory/conversation_miner.py:240:                pass
+super_memory/conversation_miner.py:323:                "INSERT OR REPLACE INTO lifecycle_state (key, payload_json, updated_at) VALUES (?, ?, ?)",
+super_memory/deriver.py:169:    except Exception as exc:
+super_memory/deriver.py:176:    except Exception as exc:
+super_memory/deriver.py:183:    except Exception as exc:
+super_memory/deriver.py:193:    except Exception as exc:
+super_memory/deriver.py:219:    except Exception as exc:
+super_memory/deriver.py:233:    except Exception as exc:
+super_memory/deriver.py:290:        except Exception as exc:
+super_memory/deriver.py:317:            except Exception as exc:
+super_memory/auto_deep.py:168:    except Exception as e:
+super_memory/auto_deep.py:176:        except Exception:
+super_memory/auto_deep.py:177:            pass
+super_memory/auto_deep.py:314:    except Exception as exc:
+super_memory/auto_deep.py:334:    except Exception as e:
+super_memory/auto_deep.py:347:    except Exception as e:
+super_memory/auto_deep.py:357:    except Exception as e:
+super_memory/auto_deep.py:378:    except Exception as e:
+super_memory/auto_deep.py:386:    except Exception as e:
+super_memory/auto_deep.py:394:    except Exception as e:
+super_memory/auto_deep.py:404:    except Exception as e:
+super_memory/auto_deep.py:414:    except Exception as e:
+super_memory/auto_deep.py:422:    except Exception as e:
+super_memory/auto_deep.py:432:    except Exception as e:
+super_memory/auto_deep.py:440:    except Exception as e:
+super_memory/auto_deep.py:453:    except Exception as e:
+super_memory/auto_deep.py:461:    except Exception as e:
+super_memory/auto_deep.py:469:    except Exception as e:
+super_memory/auto_deep.py:477:    except Exception as e:
+super_memory/auto_deep.py:485:    except Exception as e:
+super_memory/auto_deep.py:493:    except Exception as e:
+super_memory/auto_deep.py:509:    except Exception:
+super_memory/auto_deep.py:562:                        except Exception as e:
+super_memory/ingest/__init__.py:30:    pass
+super_memory/execution_patterns/recovery.py:31:        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+super_memory/deep_auto.py:153:        "ok": True, "audit": audit, "issues": issues,
+super_memory/deep_auto.py:180:        return {"ok": True, "grade": "N/A", "score": 0, "note": "No active memories to qualify"}
+super_memory/deep_auto.py:273:        "ok": True,
+super_memory/deep_auto.py:344:        except Exception:
+super_memory/deep_auto.py:345:            pass
+super_memory/deep_auto.py:355:        except Exception:
+super_memory/deep_auto.py:356:            pass
+super_memory/deep_auto.py:359:        "ok": True,
+super_memory/deep_auto.py:407:                        conn.executescript(f"UPDATE memories SET tags_json='{esc_tags}' WHERE id='{row['id']}' AND layer='{row['layer']}';")
+super_memory/deep_auto.py:409:                applied.append({"action": "tag_memories", "ok": True, "updated": updated})
+super_memory/deep_auto.py:434:            except Exception as exc:
+super_memory/deep_auto.py:461:            result = consolidation.consolidate_real(strategy="dedup", dry_run=False, config_path=config_path)
+super_memory/deep_auto.py:464:    applied_ok = all(bool(item.get("ok", True)) for item in applied)
+super_memory/deep_auto.py:487:    sub_ok = all(bool(part.get("ok", True)) for part in (audit, qualify, debug_result, improve))
+super_memory/execution_patterns/monitoring.py:509:                    pass
+super_memory/execution_patterns/monitoring.py:515:        self.alerts_log.parent.mkdir(parents=True, exist_ok=True)
+super_memory/execution_patterns/monitoring.py:526:        self.monitoring_state.parent.mkdir(parents=True, exist_ok=True)
+super_memory/query_expander.py:166:        except Exception as e:
+super_memory/query_expander.py:215:                except Exception:
+super_memory/query_expander.py:229:        except Exception as e:
+super_memory/query_expander.py:356:            except Exception:
+super_memory/query_expander.py:357:                pass
+super_memory/query_expander.py:368:            except Exception:
+super_memory/query_expander.py:369:                pass
+super_memory/execution_patterns/task_routing.py:46:        pass
+super_memory/execution_patterns/plan_enforcement.py:41:        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+super_memory/execution_patterns/contract.py:75:        output_dir.mkdir(parents=True, exist_ok=True)
+super_memory/maintenance_reports.py:29:def _run_profile_step(name: str, config_path: str | None = None, dry_run: bool = False) -> dict:
+super_memory/maintenance_reports.py:68:def run_scheduled_maintenance(config_path: str | None = None, dry_run: bool = False, profile: str = "daily") -> dict:
+super_memory/maintenance_reports.py:74:        "ok": True,
+super_memory/maintenance_reports.py:84:    rdir.mkdir(parents=True, exist_ok=True)
+super_memory/migrations.py:28:    path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/migrations.py:40:    return {row[1] for row in conn.execute("PRAGMA table_info(" + table + ")").fetchall()}
+super_memory/migrations.py:89:    info = conn.execute("PRAGMA table_info(honcho_events)").fetchall()
+super_memory/migrations.py:205:    except Exception:
+super_memory/migrations.py:206:        pass
+super_memory/migrations.py:259:        conn.executescript("""
+super_memory/migrations.py:274:        pass
+super_memory/migrations.py:296:        conn.executescript("""
+super_memory/migrations.py:311:        pass
+super_memory/migrations.py:323:        conn.executescript("""
+super_memory/migrations.py:338:        pass
+super_memory/migrations.py:346:        conn.executescript("""
+super_memory/migrations.py:361:        pass
+super_memory/migrations.py:402:                conn.executescript(schema_sql)
+super_memory/migrations.py:409:                conn.executescript("""
+super_memory/migrations.py:487:                except Exception as exc:
+super_memory/migrations.py:493:            return {"ok": True, "db_path": str(db_path), "changed": all_changed, "change_count": len(all_changed)}
+super_memory/recall_ablation.py:38:        path = Path(output_path); path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/lifecycle_hooks.py:19:    return {"ok": True, "session_id": session_id, "agent_id": agent_id, "timeline": events, "search": search}
+super_memory/storage_base.py:249:            return {"ok": True, "backend": "sqlite"}
+super_memory/storage_base.py:250:        except Exception as e:
+super_memory/storage_base.py:263:        raise NotImplementedError("Postgres backend not yet implemented")
+super_memory/execution_audit.py:24:        self.audit_log_file.parent.mkdir(parents=True, exist_ok=True)
+super_memory/execution_audit.py:50:            pass
+super_memory/execution_audit.py:58:    def log_completion(self, plan_file: str, success: bool = True, duration_min: float = None):
+super_memory/execution_audit.py:68:            pass
+super_memory/execution_audit.py:86:            pass
+super_memory/execution_audit.py:101:            pass
+super_memory/short_term.py:75:        "ok": True,
+super_memory/short_term.py:91:            "INSERT OR REPLACE INTO short_term_reviews(cluster_key,decision,note,updated_at) VALUES(?,?,?,?)",
+super_memory/short_term.py:94:    return {"ok": True, "cluster_key": cluster_key, "decision": decision}
+super_memory/short_term.py:100:        return {"ok": True, "dry_run": True, "would_promote": rep["candidates"][:10]}
+super_memory/short_term.py:125:                conn.executescript(
+super_memory/short_term.py:130:        "ok": True, "dry_run": False,
+super_memory/index_identity.py:56:            f"INSERT OR REPLACE INTO meta_store (key, value) VALUES (?, ?)",
+super_memory/index_identity.py:60:    return {"ok": True, "identity": identity}
+super_memory/index_identity.py:75:            return {"ok": True, "identity": identity, "set": True}
+super_memory/index_identity.py:76:    except Exception:
+super_memory/index_identity.py:77:        pass
+super_memory/index_identity.py:78:    return {"ok": True, "identity": None, "set": False}
+super_memory/index_identity.py:91:        return {"ok": True, "compatible": True, "warning": None}
+super_memory/index_identity.py:96:            "ok": True,
+super_memory/index_identity.py:106:    return {"ok": True, "compatible": True, "warning": None}
+super_memory/reasoning.py:84:            except Exception:
+super_memory/reasoning.py:85:                pass
+super_memory/reasoning.py:131:    return {"ok": True, "hypothesis_id": hyp_id, "content": content, "confidence": _clamp(confidence), "status": "active", "memory": None, "canonical_promoted": False, "truth_level": "hypothesis"}
+super_memory/reasoning.py:142:    return {"ok": True, "hypothesis": {"id": hyp["id"], "content": hyp["content"], "confidence": hyp["confidence"], "status": hyp["status"], "tags": json.loads(hyp["tags_json"]), "metadata": json.loads(hyp["metadata_json"]), "confidence_history": json.loads(hyp["confidence_history_json"] or "[]"), "created_at": hyp["created_at"], "updated_at": hyp["updated_at"]}, "evidence": [{"id": r["id"], "content": r["content"], "direction": r["direction"], "weight": r["weight"], "provenance": json.loads(r["provenance_json"] or "{}"), "created_at": r["created_at"]} for r in ev], "predictions": [{"id": r["id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "deadline": r["deadline"], "verified_at": r["verified_at"]} for r in pred]}
+super_memory/reasoning.py:155:    return {"ok": True, "hypotheses": [{"id": r["id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "tags": json.loads(r["tags_json"]), "updated_at": r["updated_at"]} for r in rows]}
+super_memory/reasoning.py:175:            return {"ok": True, "deduplicated": True, "evidence_id": ev_id, "hypothesis_id": hypothesis_id, "confidence": float(hyp["confidence"]), "status": hyp["status"]}
+super_memory/reasoning.py:183:    return {"ok": True, "deduplicated": False, "evidence_id": ev_id, "hypothesis_id": hypothesis_id, "confidence": new_conf, "status": status, "memory": None, "canonical_promoted": False, "provenance": provenance}
+super_memory/reasoning.py:195:    return {"ok": True, "prediction_id": pred_id, "hypothesis_id": hypothesis_id, "content": content, "confidence": _clamp(confidence), "status": "active", "memory": saved.get("record")}
+super_memory/reasoning.py:208:    return {"ok": True, "predictions": [{"id": r["id"], "hypothesis_id": r["hypothesis_id"], "content": r["content"], "confidence": r["confidence"], "status": r["status"], "deadline": r["deadline"], "verified_at": r["verified_at"]} for r in rows]}
+super_memory/reasoning.py:229:    return {"ok": True, "verification_id": ver_id, "prediction_id": prediction_id, "status": status, "hypothesis_update": ev_result, "memory": saved.get("record")}
+super_memory/reasoning.py:241:    return {"ok": True, "expired": expired, "count": len(expired)}
+super_memory/leitner.py:50:        cols = {r[1] for r in conn.execute("PRAGMA table_info(memories)").fetchall()}
+super_memory/leitner.py:81:    return {"ok": True, "due_count": len(due), "items": due}
+super_memory/leitner.py:98:        conn.executescript(
+super_memory/leitner.py:103:        "ok": True,
+super_memory/leitner.py:120:        conn.executescript(
+super_memory/leitner.py:125:        "ok": True,
+super_memory/leitner.py:150:        "ok": True,
+super_memory/leitner.py:164:        # Use execute (not executescript) so we can read cursor.rowcount and
+super_memory/leitner.py:177:    return {"ok": True, "seeded": seeded, "next_review": _next}
+super_memory/leitner.py:186:    except Exception:
+super_memory/safe_flows.py:103:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/safe_flows.py:128:            "INSERT OR REPLACE INTO ingest_manifest (key, flow, path, sha256, chunk_index, saved_memory_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+super_memory/safe_flows.py:176:    return {"ok": True, "enabled": True, "mode": "local_text_rich_documents", "path": str(target), "files": items, "saved_chunks": saved_count, "skipped_chunks": skipped_count, "extraction_failures": extraction_failures, "extractors": available_extractors(), "external_backends": "disabled"}
+super_memory/safe_flows.py:236:    return {"ok": True, "enabled": True, "mode": "local_import", "path": str(target), "files": imported, "saved_records": saved_count, "skipped_records": skipped_count, "external_backends": "disabled"}
+super_memory/safe_flows.py:243:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/safe_flows.py:270:                "INSERT OR REPLACE INTO watch_manifest (path, sha256, size, mtime, scanned_at) VALUES (?, ?, ?, ?, ?)",
+super_memory/safe_flows.py:283:        saved = {"ok": True, "files": saved_items, "saved_records": total_saved, "skipped_records": total_skipped}
+super_memory/safe_flows.py:284:    return {"ok": True, "enabled": True, "mode": "one_shot_scan", "path": str(target), "changed": changed, "unchanged": unchanged, "saved": saved, "daemon": False, "external_backends": "disabled"}
+super_memory/safe_flows.py:291:    return {"ok": True, "enabled": False, "mode": "status_only", "sqlite_path": str(store.path), "sqlite_exists": exists, "cloud_sync": "disabled unless explicitly configured in a future backend", "pending_changes": "not tracked for remote sync"}
+super_memory/safe_flows.py:297:    return {"ok": True, "enabled": False, "mode": "status_only", "workspace_root": str(root), "community_store": "disabled", "export_available": False, "import_available": "local train/import flows only"}
+super_memory/fidelity.py:303:    except Exception as e:
+super_memory/cli.py:310:        print(json.dumps({"ok": True, "config_path": str(path), "config": payload}, ensure_ascii=False, indent=2))
+super_memory/retrieval_backends.py:209:        except Exception as exc:
+super_memory/retrieval_backends.py:248:        except Exception as exc:
+super_memory/retrieval_backends.py:261:        except Exception as exc:
+super_memory/retrieval_backends.py:284:            except Exception:
+super_memory/retrieval_backends.py:285:                pass
+super_memory/retrieval_backends.py:324:        except Exception as exc:
+super_memory/retrieval_backends.py:337:        except Exception as exc:
+super_memory/retrieval_backends.py:393:        except Exception as exc:
+super_memory/retrieval_backends.py:441:        except Exception as exc:
+super_memory/retrieval_backends.py:466:        except Exception:
+super_memory/spreading_activation.py:283:        except Exception as e:
+super_memory/watcher.py:74:        except Exception:
+super_memory/watcher.py:125:        "ok": True,
+super_memory/watcher.py:155:            pass
+super_memory/watcher.py:170:                pass
+super_memory/watcher.py:234:        "ok": True,
+super_memory/dedup/pipeline.py:106:        except Exception:
+super_memory/dedup/pipeline.py:132:        except Exception:
+super_memory/dedup/pipeline.py:169:        except Exception:
+super_memory/dedup/pipeline.py:223:        except Exception as exc:
+super_memory/watcher_adapter.py:83:                ingested.append({"path": fpath, "payloads": len(payloads), "ok": True, "status": change.get("status")})
+super_memory/watcher_adapter.py:84:        except Exception as e:
+super_memory/watcher_adapter.py:95:        except Exception:
+super_memory/watcher_adapter.py:96:            pass
+super_memory/self_training.py:11:    qdir.mkdir(parents=True, exist_ok=True); tdir.mkdir(parents=True, exist_ok=True)
+super_memory/self_training.py:17:    return {"ok":True,"case":case,"queue":str(qdir/'self-training-queue.md'),"test_case":str(jpath)}
+super_memory/extractors.py:25:    except Exception:
+super_memory/extractors.py:40:    except Exception:
+super_memory/extractors.py:62:    except Exception:
+super_memory/extractors.py:87:    except Exception:
+super_memory/extractors.py:99:        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+super_memory/extractors.py:110:    except Exception:
+super_memory/extractors.py:126:    except Exception:
+super_memory/extractors.py:153:        except Exception:
+super_memory/api.py:272:    success: bool = True
+super_memory/api.py:335:    success: bool = True
+super_memory/self_improve.py:56:        if not isinstance(result, dict) or result.get("ok", True):
+super_memory/self_improve.py:108:    dry_run: bool = False,
+super_memory/self_improve.py:197:            except Exception:
+super_memory/self_improve.py:264:        "ok": True,
+super_memory/self_improve.py:303:    return {"ok": True, "pending": bounded, "count": len(bounded)}
+super_memory/rem.py:43:    except Exception:
+super_memory/rem.py:44:        pass
+super_memory/rem.py:84:        except Exception:
+super_memory/rem.py:122:        except Exception:
+super_memory/rem.py:155:        return {"ok": True, "vector_count": vec_count}
+super_memory/rem.py:156:    except Exception as exc:
+super_memory/storage_mixins.py:123:        except Exception:
+super_memory/storage_mixins.py:245:        except Exception:
+super_memory/storage_mixins.py:325:        except Exception as e:
+super_memory/storage_mixins.py:351:        except Exception:
+super_memory/narrative.py:48:    out_path.mkdir(parents=True, exist_ok=True)
+super_memory/narrative.py:55:            cols = [c[1] for c in conn.execute('PRAGMA table_info(memories)').fetchall()]
+super_memory/narrative.py:78:    except Exception as exc:
+super_memory/narrative.py:79:        return {"ok": True, "path": "", "sections": 0, "note": f"query failed: {exc}"}
+super_memory/narrative.py:82:        return {"ok": True, "path": "", "sections": 0, "note": "no insights found"}
+super_memory/narrative.py:111:        "ok": True,
+super_memory/narrative.py:145:    except Exception:
+super_memory/narrative.py:146:        pass
+super_memory/cross_agent.py:96:        except Exception:
+super_memory/cross_agent.py:97:            pass
+super_memory/cross_agent.py:131:        return {"ok": True, "agent_id": agent_id, "query": query, "memories": memories, "count": len(memories)}
+super_memory/cross_agent.py:146:        return {"ok": True, "observer_agent": observer_agent, "about_peer": about_peer, "events": [_decode(e) for e in events], "count": len(events)}
+super_memory/cross_agent.py:174:        return {"ok": True, "days": days, "agents": sorted(by.values(), key=lambda x: (x.get("recent_activity") or "", int(x.get("honcho_event_count") or 0)), reverse=True)}
+super_memory/cross_agent.py:208:        return {"ok": True, "agent_a": {"agent_id": agent_a, "recent": only_a}, "agent_b": {"agent_id": agent_b, "recent": only_b}, "overlapping": overlap, "overlap_count": len(overlap)}
+super_memory/schema_assimilation.py:70:    dry_run: bool = False
+super_memory/schema_assimilation.py:211:    except Exception:
+super_memory/schema_assimilation.py:212:        pass
+super_memory/schema_assimilation.py:244:            return {"ok": True, "skipped": "no recent memories", "schemas_found": 0}
+super_memory/schema_assimilation.py:264:                "ok": True,
+super_memory/schema_assimilation.py:279:            "ok": True,
+super_memory/schema_assimilation.py:305:        except Exception as e:
+super_memory/schema_assimilation.py:388:        except Exception as e:
+super_memory/schema_assimilation.py:407:        except Exception as e:
+super_memory/schema_assimilation.py:420:            except Exception:
+super_memory/qualify.py:47:    except Exception as exc:  # pragma: no cover - defensive harness
+super_memory/qualify.py:64:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:84:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:92:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:100:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:116:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:143:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:156:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:175:    except Exception as exc:  # pragma: no cover
+super_memory/qualify.py:184:            ok = bool(payload.get("ok", True)) and payload.get("verdict", "pass") != "fail"
+super_memory/qualify.py:186:        except Exception as exc:  # pragma: no cover
+super_memory/recommendation.py:116:    except Exception as exc:  # pragma: no cover - defensive for old DBs
+super_memory/recommendation.py:139:    except Exception as exc:  # pragma: no cover - graph tables may be absent in partial installs
+super_memory/recommendation.py:150:    return {"ok": True, "recommendations": items[: max(1, limit)], "count": min(len(items), max(1, limit))}
+super_memory/semantic_quality.py:115:                "INSERT OR REPLACE INTO semantic_index(memory_id,layer,tokens_json,durable,trust,project,updated_at) VALUES(?,?,?,?,?,?,?)",
+super_memory/semantic_quality.py:120:    return {"ok": True, "indexed": n, "rebuild": rebuild, "mode": "sqlite semantic-lite"}
+super_memory/maintenance_jobs.py:15:    conn.executescript(
+super_memory/maintenance_jobs.py:33:    columns = {row[1] for row in conn.execute("PRAGMA table_info(maintenance_jobs)")}
+super_memory/maintenance_jobs.py:54:    return {"ok": True, "job_id": jid, "status": "pending", "job_type": job_type}
+super_memory/maintenance_jobs.py:68:        except Exception: result = {"raw": row["result_json"]}
+super_memory/maintenance_jobs.py:69:    return {"ok": True, "job_id": job_id, "job_type": row["job_type"], "status": row["status"], "result": result, "error": row["error"], "updated_at": row["updated_at"]}
+super_memory/maintenance_jobs.py:120:        except Exception as exc:
+super_memory/maintenance_jobs.py:127:    return {"ok": True, "processed": len(processed), "jobs": processed}
+super_memory/maintenance_jobs.py:138:        return {"ok": result.get("ok", True), "mode": "sync", "compact": True, "summary": result.get("summary"), "audit_grade": result.get("audit_grade"), "qualify_grade": result.get("qualify_grade"), "problems_found": result.get("problems_found"), "applied_count": len(result.get("applied", [])), "improvement_count": len(result.get("improvement_proposals", []))}
+super_memory/layers.py:34:        mem_dir.mkdir(parents=True, exist_ok=True)
+super_memory/layers.py:47:        return SaveResult(layer=self.layer, ok=True, reference=str(path))
+super_memory/layers.py:80:        self.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/layers.py:119:                except Exception:
+super_memory/layers.py:120:                    pass
+super_memory/layers.py:134:                INSERT OR REPLACE INTO memories
+super_memory/layers.py:168:        return SaveResult(layer=self.layer, ok=True, reference=f"sqlite://{self.path}#{self.layer.value}:{record.id}")
+super_memory/layers.py:213:            INSERT OR REPLACE INTO honcho_events
+super_memory/layers.py:235:                INSERT OR REPLACE INTO graph_edges
+super_memory/write_contract/migrations.py:7:    conn.executescript(
+super_memory/write_contract/migrations.py:66:    existing = {row[1] for row in conn.execute("PRAGMA table_info(memory_write_intents)").fetchall()}
+super_memory/write_contract/worker.py:55:                    INSERT OR REPLACE INTO memory_vectors (memory_id, layer, vector, provider, dimensions)
+super_memory/write_contract/worker.py:62:            except Exception as exc:
+super_memory/write_contract/worker.py:100:    return {"ok": True, "created_embed_jobs": created_jobs}
+super_memory/write_contract/semantic_merge.py:41:            except Exception:
+super_memory/write_contract/semantic_merge.py:42:                pass
+super_memory/write_contract/semantic_merge.py:82:    return {"ok": True, "dry_run": dry_run, "cluster_count": len(clusters), "clusters": clusters[:50]}
+super_memory/evals/curriculum.py:62:    except Exception:
+super_memory/evals/curriculum.py:68:            "ok": True,
+super_memory/evals/curriculum.py:147:        "ok": True,
+super_memory/evals/curriculum.py:173:            "ok": True,
+super_memory/evals/curriculum.py:179:    root.mkdir(parents=True, exist_ok=True)
+super_memory/evals/curriculum.py:219:        "ok": True,
+super_memory/evals/curriculum.py:239:    root.mkdir(parents=True, exist_ok=True)
+super_memory/evals/curriculum.py:245:        return {"ok": True, "message": "No training cases found", "tests_generated": 0}
+super_memory/evals/curriculum.py:249:    test_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/evals/curriculum.py:312:        "ok": True,
+super_memory/evals/curriculum.py:335:        "ok": True,
+super_memory/evals/curriculum.py:370:        return {"ok": True, "message": "No training cases found", "results": []}
+super_memory/evals/curriculum.py:417:        "ok": True,
+super_memory/write_contract/outbox.py:32:        INSERT OR REPLACE INTO memory_fingerprints
+super_memory/hooks.py:51:            hook._tables_ready = True
+super_memory/hooks.py:58:            result = {"ok": True, "events": [user, assistant]}
+super_memory/hooks.py:70:        return {"ok": True, "context": text[:max_tokens], "session": session}
+super_memory/hooks.py:80:        return {"ok": True, "session_id": session_id, "event_count": len(events), "key_decisions": decisions, "open_blockers": blockers}
+super_memory/phase8.py:119:            canonical = {"layer": "workspace_markdown", "ok": True, "reference": day_path}
+super_memory/phase8.py:145:            get.get("ok", True)
+super_memory/phase8.py:176:    return {"ok": required.issubset(names), "profile": profile, "tool_count": len(tools), "required_present": sorted(required & names), "missing": sorted(required - names), "transport": {"ok": True, "mode": "in_process_mcp_handle"}}
+super_memory/diagnostics.py:157:            return {"ok": True, "error": ""}
+super_memory/diagnostics.py:158:        except Exception as e:
+super_memory/reports.py:76:        return {"ok": True, "days": days, "agents": list(agents.values()), "count": len(agents)}
+super_memory/reports.py:115:            "ok": True,
+super_memory/reports.py:199:            "ok": True,
+super_memory/reports.py:251:            return {"ok": True, "format": "markdown", "content": "\n".join(md_lines)}
+super_memory/reports.py:253:        return {"ok": True, "format": "json", "graph": graph}
+super_memory/cleanup.py:210:    Safe by default (dry_run=True). Use dry_run=False to actually delete.
+super_memory/cleanup.py:223:    report: dict[str, Any] = {"ok": True, "db_path": str(store.path)}
+super_memory/cleanup.py:254:        except Exception:
+super_memory/cleanup.py:301:        "ok": True,
+super_memory/cleanup.py:380:    Safe by default (dry_run=True). Use dry_run=False to actually compact.
+super_memory/cleanup.py:391:            "ok": True,
+super_memory/cleanup.py:485:        except Exception:
+super_memory/cleanup.py:502:        "ok": True,
+super_memory/cleanup.py:545:            "ok": True,
+super_memory/cleanup.py:625:            "ok": True,
+super_memory/cleanup.py:697:            "ok": True,
+super_memory/recall/__init__.py:86:    except Exception:
+super_memory/recall/__init__.py:241:            except Exception:
+super_memory/recall/__init__.py:242:                pass
+super_memory/recall/__init__.py:269:    except Exception:
+super_memory/recall/__init__.py:270:        pass
+super_memory/projections/drift_repair.py:52:        conn.executescript("""
+super_memory/projections/drift_repair.py:83:            "INSERT OR REPLACE INTO projection_meta (table_name, memory_id, projection_key, content_hash, last_verified, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+super_memory/projections/drift_repair.py:88:    return {"ok": True, "table_name": table_name, "projection_key": projection_key}
+super_memory/projections/drift_repair.py:125:        except Exception as e:
+super_memory/projections/drift_repair.py:148:        except Exception as e:
+super_memory/projections/drift_repair.py:166:    except Exception as e:
+super_memory/projections/drift_repair.py:185:    except Exception as e:
+super_memory/projections/drift_repair.py:193:        "ok": True,
+super_memory/projections/drift_repair.py:253:        except Exception as e:
+super_memory/projections/drift_repair.py:260:        "ok": True,
+super_memory/projections/drift_repair.py:292:        except Exception as e:
+super_memory/projections/drift_repair.py:296:        "ok": True,
+super_memory/projections/drift_repair.py:317:        "ok": True,
+super_memory/recall/feedback.py:63:        conn.executescript("""
+super_memory/recall/feedback.py:127:    return {"ok": True, "event_id": event.id, "event": asdict(event)}
+super_memory/recall/feedback.py:175:    return {"ok": True, "feedback": asdict(feedback)}
+super_memory/recall/feedback.py:218:        "ok": True,
+super_memory/recall/feedback.py:241:        except Exception:
+super_memory/recall/feedback.py:242:            return {"ok": True, "message": "no feedback data yet", "total_events": 0, "total_feedback": 0}
+super_memory/recall/feedback.py:245:        "ok": True,
+super_memory/recall/feedback.py:288:    root.mkdir(parents=True, exist_ok=True)
+super_memory/recall/feedback.py:298:        "ok": True,
+super_memory/recall/dialectic.py:123:            "ok": True,
+super_memory/projections/closet.py:189:        conn.executescript("""
+super_memory/projections/closet.py:202:        cols = {r["name"] for r in conn.execute("PRAGMA table_info(palace_drawers)").fetchall()}
+super_memory/projections/closet.py:206:            conn.executescript("DROP TABLE IF EXISTS palace_closets; DROP TABLE IF EXISTS palace_drawers;")
+super_memory/projections/closet.py:207:            conn.executescript("""
+super_memory/projections/closet.py:223:        cols = {r["name"] for r in conn.execute("PRAGMA table_info(palace_drawers)").fetchall()}
+super_memory/projections/closet.py:237:        conn.executescript("""
+super_memory/projections/closet.py:278:                f"INSERT OR REPLACE INTO palace_drawers ({cols}) VALUES ({placeholders})",
+super_memory/projections/closet.py:289:                f"INSERT OR REPLACE INTO palace_closets ({cols}) VALUES ({placeholders})",
+super_memory/projections/closet.py:305:            except Exception:
+super_memory/projections/closet.py:306:                pass
+super_memory/projections/closet.py:310:        "ok": True,
+super_memory/projections/closet.py:339:        except Exception as e:
+super_memory/projections/closet.py:377:        return {"ok": True, "query": query, "results": [], "count": 0}
+super_memory/projections/closet.py:414:    return {"ok": True, "query": query, "results": scored[:limit], "count": len(scored[:limit])}
+super_memory/projections/closet.py:463:    return {"ok": True, "hydrated": len(results), "results": results}
+super_memory/projections/closet.py:475:        except Exception:
+super_memory/projections/closet.py:479:        except Exception:
+super_memory/projections/closet.py:483:        except Exception:
+super_memory/projections/closet.py:487:        "ok": True,
+super_memory/recall/line_citations.py:117:        return {"ok": True, "query": recall_result.get("query", ""), "citations": [], "count": 0}
+super_memory/recall/line_citations.py:174:        "ok": True,
+super_memory/recall/line_citations.py:209:        "ok": True,
+super_memory/recall/line_citations.py:231:    except Exception:
+super_memory/recall/line_citations.py:235:        return {"ok": True, "memory_id": memory_id, "found": False}
+super_memory/recall/line_citations.py:242:        "ok": True,
+super_memory/projections/manifest.py:37:        for row in conn.execute("PRAGMA table_info(projection_manifest)").fetchall()
+super_memory/projections/manifest.py:238:        "ok": True,
+super_memory/projections/manifest.py:344:        "ok": True,
+super_memory/projections/manifest.py:370:        return {"ok": True, "dry_run": True, "audit": audit, "changed": 0}
+super_memory/projections/manifest.py:399:    return {"ok": True, "dry_run": False, "audit": audit, "changed": changed}
+super_memory/projections/manifest.py:460:        "ok": True,
+super_memory/embeddings_registry.py:85:        except Exception:
+super_memory/embeddings_registry.py:93:        except Exception:
+super_memory/embeddings_registry.py:164:        except Exception:
+super_memory/embeddings_registry.py:227:        except Exception:
+super_memory/embeddings_registry.py:332:        except Exception:
+super_memory/embeddings_registry.py:430:        except Exception:
+super_memory/embeddings_registry.py:549:        "ok": True,
+super_memory/embeddings_registry.py:569:    return {"ok": True, "name": name}
+super_memory/sync/protocol.py:123:    except Exception:
+super_memory/sync/sync_ops.py:105:            return {"ok": True, "note": "startup catchup disabled"}
+super_memory/sync/sync_ops.py:112:        except Exception as exc:
+super_memory/sync/sync_ops.py:127:            except Exception as exc:
+super_memory/sync/sync_ops.py:136:            result = {"ok": True, "note": "no sync function configured", "synced": 0}
+super_memory/sync/sync_ops.py:155:            return {"ok": True, "already_running": True}
+super_memory/sync/sync_ops.py:167:            "ok": True,
+super_memory/sync/sync_ops.py:179:        return {"ok": True}
+super_memory/sync/sync_ops.py:187:                except Exception as exc:
+super_memory/sync/sync_ops.py:201:        except Exception:
+super_memory/setup_wizard.py:52:    path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/setup_wizard.py:111:    out.parent.mkdir(parents=True, exist_ok=True)
+super_memory/pipeline_integration.py:31:    except Exception as e:
+super_memory/pipeline_integration.py:49:    except Exception as e:
+super_memory/pipeline_integration.py:62:    except Exception as e:
+super_memory/pipeline_integration.py:76:    except Exception as e:
+super_memory/pipeline_integration.py:136:    except Exception as e:
+super_memory/pipeline_integration.py:156:    except Exception as e:
+super_memory/pipeline_integration.py:173:                except Exception:
+super_memory/pipeline_integration.py:176:    except Exception:
+super_memory/pipeline_integration.py:186:    except Exception:
+super_memory/pipeline_integration.py:196:    except Exception:
+super_memory/pipeline_integration.py:197:        pass
+super_memory/pipeline_integration.py:206:    except Exception as e:
+super_memory/isolation.py:64:            "INSERT OR REPLACE INTO agent_isolation_rules (agent_id, allowed_scopes_json, allowed_agents_json, blocked_agents_json, read_others, metadata_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+super_memory/isolation.py:67:    return {"ok": True, "agent_id": agent_id, "allowed_scopes": scopes, "allowed_agents": allowed, "blocked_agents": blocked}
+super_memory/isolation.py:76:        return {"ok": True, "agent_id": agent_id, "allowed_scopes": ["session", "agent-local", "shared"], "allowed_agents": [], "blocked_agents": [], "read_others": False, "message": "default rules applied"}
+super_memory/isolation.py:78:        "ok": True, "agent_id": agent_id,
+super_memory/isolation.py:149:        "ok": True,
+super_memory/isolation.py:171:        "ok": True,
+super_memory/reranker.py:31:    pass
+super_memory/reranker.py:38:    pass
+super_memory/reranker.py:45:    pass
+super_memory/reranker.py:129:    except Exception as e:
+super_memory/reranker.py:163:    except Exception as e:
+super_memory/reflex_arc.py:118:                        "INSERT OR REPLACE INTO cognitive_reflexes (neuron_id, content) VALUES (?, ?)",
+super_memory/reflex_arc.py:121:        except Exception as e:
+super_memory/reflex_arc.py:131:        except Exception as e:
+super_memory/reflex_arc.py:198:    except Exception as e:
+super_memory/hippocampal_replay.py:55:    dry_run: bool = False
+super_memory/hippocampal_replay.py:164:        except Exception as e:
+super_memory/hippocampal_replay.py:258:        except Exception as e:
+super_memory/hippocampal_replay.py:384:        except Exception as e:
+super_memory/hippocampal_replay.py:398:        except Exception:
+super_memory/hippocampal_replay.py:408:        except Exception:
+super_memory/storage.py:167:            except Exception:
+super_memory/storage.py:171:        db_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/storage.py:230:    except Exception as exc:
+super_memory/storage.py:255:    return {"ok": True, "reset": True}
+super_memory/storage.py:356:        # that truly need every row (raw maintenance/repair) pass
+super_memory/storage.py:399:            except Exception:
+super_memory/storage.py:415:            except Exception:
+super_memory/storage.py:418:                "INSERT OR REPLACE INTO _meta (key, value) VALUES (?, ?)",
+super_memory/recall_arbitration.py:16:    except Exception: return .3
+super_memory/dream_engine.py:207:    except Exception:
+super_memory/dream_engine.py:281:        except Exception:
+super_memory/dream_engine.py:282:            pass
+super_memory/dream_engine.py:297:        "ok": True,
+super_memory/dream_engine.py:353:    return enqueue_proposal(store, proposal, dry_run=False)["proposal"]["id"]
+super_memory/dream_engine.py:379:    return {"ok": True, "pending": items, "count": len(items)}
+super_memory/dream_engine.py:468:                "ok": True,
+super_memory/dream_engine.py:493:        "ok": True,
+super_memory/doctor.py:128:    Dry-run applies migrations to a disposable SQLite copy. ``dry_run=False``
+super_memory/doctor.py:142:            "dry_run": False,
+super_memory/doctor.py:245:        except Exception as exc:  # pragma: no cover - diagnostic surface
+super_memory/hybrid_recall.py:136:                    except Exception:
+super_memory/hybrid_recall.py:146:            except Exception:
+super_memory/hybrid_recall.py:147:                pass
+super_memory/hybrid_recall.py:149:        return {"ok": True, "query": query, "results": self._truncate(merged[:limit], max_tokens), "count": min(len(merged), limit), "depth_prior": depth}
+super_memory/hybrid_recall.py:295:        cols = [c[1] for c in conn.execute("PRAGMA table_info(palace_drawers)").fetchall()]
+super_memory/hybrid_recall.py:331:        except Exception:
+super_memory/hybrid_recall.py:332:            pass
+super_memory/autocomplete.py:88:    return {"ok": True, "entries_inserted": inserted}
+super_memory/autocomplete.py:94:        return {"ok": True, "prefix": prefix, "suggestions": []}
+super_memory/autocomplete.py:129:    return {"ok": True, "prefix": prefix, "suggestions": suggestions, "count": len(suggestions)}
+super_memory/autocomplete.py:143:        "ok": True,
+super_memory/autocomplete.py:162:        except Exception:
+super_memory/autocomplete.py:164:    return {"ok": True, "prefix_count": count}
+super_memory/synthesis.py:69:        return {"ok": True, "peer_id": peer_id, "window_days": window_days, "events": len(events), "insights": saved}
+super_memory/synthesis.py:106:        return {"ok": True, "query": query, "memories": rows, "count": len(rows)}
+super_memory/synthesis.py:113:            # E18: was `conn.executescript(f"...'{esc_mid}'")` + `return cur.rowcount`
+super_memory/synthesis.py:140:        return {"ok": True, "conflicts": rows, "count": len(rows)}
+super_memory/synthesis.py:166:        return {"ok": True, "topic": topic, "created": len(conflicts), "conflict_ids": conflicts}
+super_memory/phase5.py:116:        return {"ok": True, "dry_run": True, "plan": plan.to_dict()}
+super_memory/phase5.py:128:            return {"ok": False, "dry_run": False, "failed": cmd, "results": results, "plan": plan.to_dict()}
+super_memory/phase5.py:129:    return {"ok": True, "dry_run": False, "results": results, "plan": plan.to_dict()}
+super_memory/phase5.py:137:    tar_path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/phase5.py:186:    return {"ok": True, "sandbox_id": sandbox_id, "created": created, "results": results}
+super_memory/phase5.py:203:        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+super_memory/memory_core.py:33:    except Exception:
+super_memory/memory_core.py:36:        "ok": True,
+super_memory/memory_core.py:54:    return {"ok": True, "selected": selected, "doctor": doctor, "reason": "Prefer local sqlite_vec when healthy; otherwise deterministic SQLite FTS fallback."}
+super_memory/memory_core.py:102:    return {"ok": True, "checked": len(rows), "candidates": candidates[:100], "candidate_count": len(candidates)}
+super_memory/memory_core.py:126:    return {"ok": True, "cluster_key": cluster_key, "decision": decision, "updated": updated}
+super_memory/memory_core.py:134:        return {"ok": True, "dry_run": True, "would_promote": audit["candidates"][:10], "count": audit["candidate_count"], "policy": {"max_promotions_per_run": 10, "min_score": 1.0, "noise_filters": ["test-hook", "short low-signal events", "already promoted"]}}
+super_memory/memory_core.py:159:    return {"ok": True, "dry_run": False, "promoted": promoted, "count": len(promoted)}
+super_memory/memory_core.py:167:    return {"ok": True, "type_counts": {r["type"]: r["n"] for r in counts}, "uncompressed_events": recent_events["n"] if recent_events else 0}
+super_memory/memory_core.py:182:        return {"ok": True, "dry_run": True, "artifact": artifact}
+super_memory/memory_core.py:185:    dreams_dir.mkdir(parents=True, exist_ok=True)
+super_memory/memory_core.py:191:    return {"ok": True, "dry_run": False, "artifact_path": str(path), "memory_id": rec.id, "artifact": artifact}
+super_memory/memory_core.py:196:    return {"ok": True, "audit": audit, "repair": "No destructive repair needed; run dreaming_run(dry_run=false) to create consolidation artifact."}
+super_memory/cache/selector.py:51:    except Exception:
+super_memory/cache/selector.py:52:        pass
+super_memory/cache/manager.py:21:                    "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+super_memory/cache/manager.py:27:        except Exception as e:
+super_memory/cache/manager.py:45:        except Exception as e:
+super_memory/cache/manager.py:55:        except Exception:
+super_memory/cache/manager.py:56:            pass
+super_memory/cognitive.py:27:    store.path.parent.mkdir(parents=True, exist_ok=True)
+super_memory/cognitive.py:66:        return {"ok": True, "key": key, "memory": None}
+super_memory/cognitive.py:71:        "ok": True,
+super_memory/cognitive.py:90:            INSERT OR REPLACE INTO cognitive_working_memory (key, payload_json, updated_at, expires_at)
+super_memory/cognitive.py:96:    return {"ok": True, "key": key, "memory": merged, "expires_at": expires_at}
+super_memory/cognitive.py:187:    return {"ok": True, "route": scored, "memory": routed}
+super_memory/cognitive.py:194:        return {"ok": True, "saved": False, "reason": "attention below durable threshold", "working_memory": wm, **routed}
+super_memory/cognitive.py:196:    return {"ok": True, "saved": True, "working_memory": wm, "save_result": saved, **routed}
+super_memory/cognitive.py:223:        except Exception:
+super_memory/cognitive.py:224:            pass
+super_memory/cognitive.py:304:    return {"ok": True, **payload, "event": event}
+super_memory/cognitive.py:311:    return {"ok": True, "event": event, **payload}
+super_memory/cognitive.py:331:    return {"ok": True, "candidates": candidates}
+super_memory/cognitive.py:334:def feedback_outcome(memory_id: str | None = None, success: bool = True, outcome: str = "", config_path: str | None = None) -> dict[str, Any]:
+super_memory/cognitive.py:347:    return {"ok": True, "event": event}
+super_memory/session_archive.py:61:            conn.execute("""INSERT OR REPLACE INTO session_archives
+super_memory/session_archive.py:64:        return {"ok": True, "session_id": session_id, "summary": summary, "event_count": len(rows), "key_decisions": decisions, "open_blockers": blockers}
+super_memory/session_archive.py:96:        return {"ok": True, "summaries": rows, "count": len(rows), "limit": limit, "offset": offset}
+super_memory/session_archive.py:109:        return {"ok": True, "query": query, "results": rows, "count": len(rows), "limit": limit, "offset": offset}
+super_memory/session_archive.py:118:            return {"ok": True, "events": events, "count": len(events)}
+super_memory/session_archive.py:121:        return {"ok": True, "mode": mode, "events": filtered, "count": len(filtered)}
+super_memory/session_archive.py:227:        return {"ok": True, "session_id": session_id, "synced_conclusions": len(created), "created": created}
+scripts/benchmark_spreading_activation.py:24:    workspace.mkdir(parents=True, exist_ok=True)
+scripts/benchmark_spreading_activation.py:61:                INSERT OR REPLACE INTO cognitive_fibers
+scripts/compare_local_vps_tools.py:61:    except Exception as exc:
+scripts/super_memory_release_gate.py:69:    except Exception as exc:
+scripts/super_memory_release_gate.py:81:    return _emit({"ok": True, "sqlite_path": str(path)}, plain=str(path))
+scripts/super_memory_release_gate.py:111:    path.parent.mkdir(parents=True, exist_ok=True)
+scripts/super_memory_release_gate.py:142:    output.parent.mkdir(parents=True, exist_ok=True)
+scripts/super_memory_release_gate.py:144:    temporary.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:151:            temporary.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:155:        temporary.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:226:    except Exception as exc:
+scripts/super_memory_release_gate.py:258:                    "ok": True,
+scripts/super_memory_release_gate.py:265:        except Exception as exc:
+scripts/super_memory_release_gate.py:296:    except Exception as exc:
+scripts/super_memory_release_gate.py:349:    source.parent.mkdir(parents=True, exist_ok=True)
+scripts/super_memory_release_gate.py:351:    temporary.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:361:        temporary.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:366:        replacement.unlink(missing_ok=True)
+scripts/super_memory_release_gate.py:423:    smoke.add_argument("--url", required=True)
+scripts/audit.py:28:        except Exception as e:
+scripts/audit.py:36:        except Exception as e:
+scripts/audit.py:45:    except Exception as e:
+scripts/audit.py:59:    except Exception as e:
+scripts/audit.py:76:    except Exception as e:
+scripts/export_tool_catalog.py:172:    docs_dir.mkdir(exist_ok=True)
+scripts/cleanup_test_noise.py:64:    'ok': True,
+scripts/merge_content_hash_duplicates.py:30:    except Exception:
+scripts/merge_content_hash_duplicates.py:129:        'ok': True,
+scripts/cleanup_untrusted_metadata.py:138:        except Exception:
+scripts/cleanup_untrusted_metadata.py:172:    except Exception as e:
+scripts/cleanup_untrusted_metadata.py:179:    except Exception as e:
+scripts/cleanup_untrusted_metadata.py:187:    except Exception as e:

@@ -1,0 +1,20 @@
+{"text":"Decision: we decided to use SQLite because it is local-first.","type":"decision"}
+{"text":"We chose JWT authentication for the API.","type":"decision"}
+{"text":"I prefer concise markdown summaries.","type":"preference"}
+{"text":"The user wants dark mode by default.","type":"preference"}
+{"text":"TODO: implement projection drift repair; status pending.","type":"todo"}
+{"text":"We need to review the migration before deploy.","type":"todo"}
+{"text":"Release is blocked because signing credentials are missing.","type":"blocker"}
+{"text":"Cannot proceed until the database is reachable.","type":"blocker"}
+{"text":"Workflow: first run tests, then build and deploy.","type":"workflow"}
+{"text":"Procedure: validate input, write canonical memory, then project it.","type":"workflow"}
+{"text":"Lesson learned: validate schemas before migration.","type":"lesson"}
+{"text":"Remember to back up first next time.","type":"lesson"}
+{"text":"Today the team deployed version 3.2 successfully.","type":"event"}
+{"text":"On 2026-07-16 Alice completed the audit.","type":"event"}
+{"text":"The API port is 8765.","type":"fact"}
+{"text":"Canonical memory lives in MEMORY.md.","type":"fact"}
+{"text":"The run completed successfully; 3 earlier tests failed but all tests now pass.","type":"event"}
+{"text":"Fixed two errors and completed the release successfully.","type":"event"}
+{"text":"No blockers remain; the migration is complete.","type":"event"}
+{"text":"Discussion about possible future storage ideas.","type":"context"}

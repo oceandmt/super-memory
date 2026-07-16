@@ -2,7 +2,7 @@
 
 Matches OpenClaw memory-core temporal decay behaviour:
 - Recent results get higher scores
-- Decay follows exponential curve: score *= exp(-age_days / half_life)
+- Decay follows exponential curve: score *= 2 ** (-age_days / half_life)
 - Session-scoped results have slower decay
 - Configurable half-life per corpus
 """
@@ -51,7 +51,10 @@ def apply_temporal_decay(
     if not items:
         return items
 
-    hl = half_life or DEFAULT_HALF_LIVES.get(corpus, 60.0)
+    hl = DEFAULT_HALF_LIVES.get(corpus, 60.0) if half_life is None else half_life
+    if isinstance(hl, bool) or not isinstance(hl, (int, float)) or not math.isfinite(float(hl)) or hl <= 0:
+        raise ValueError("half_life must be a finite positive number of days")
+    hl = float(hl)
     ref = now or datetime.now(timezone.utc)
 
     for item in items:
@@ -60,7 +63,7 @@ def apply_temporal_decay(
             continue  # No timestamp = no decay adjustment
 
         age_days = max(0.0, (ref - ts).total_seconds() / 86400.0)
-        decay_factor = math.exp(-age_days / hl)
+        decay_factor = math.exp(-math.log(2.0) * age_days / hl)
 
         original_score = max(0.0, min(1.0, item.get(score_key, 0.0)))
         item[score_key] = original_score * decay_factor
@@ -80,6 +83,9 @@ def _extract_timestamp(item: dict[str, Any], key: str) -> datetime | None:
     raw = item.get(key)
     if raw is None:
         return None
+
+    if isinstance(raw, datetime):
+        return raw.replace(tzinfo=timezone.utc) if raw.tzinfo is None else raw.astimezone(timezone.utc)
 
     # Unix timestamp (float/int)
     if isinstance(raw, (int, float)):

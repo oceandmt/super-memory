@@ -33,3 +33,36 @@ def test_memory_search_and_get_compatible_shapes(tmp_path: Path):
 
     file_payload = memory_get_compatible("memory/2099-01-01.md", config=cfg)
     assert file_payload["error"] == "file not found"
+
+def test_cjk_search_respects_requested_corpus_and_actual_layer(tmp_path: Path):
+    cfg = SuperMemoryConfig(workspace_root=tmp_path, sqlite_path="data/sm.sqlite3")
+    svc = SuperMemoryService(cfg)
+    record = MemoryRecord(
+        id="compat-cjk-1",
+        content="持久記憶需要保留正確的語料範圍以確保檢索準確性和一致性，這是測試目的",
+        type=MemoryType.FACT,
+        scope=MemoryScope.SHARED,
+        agent_id="lucas",
+        project="super-memory",
+        tags=["cjk", "corpus"],
+    )
+    assert all(result.ok for result in svc.save(record))
+
+    memory = memory_search_compatible(
+        "持久記憶", max_results=10, corpus="memory", config=cfg
+    )
+    assert memory["results"]
+    assert {hit["corpus"] for hit in memory["results"]} == {"memory"}
+    assert {hit["layer"] for hit in memory["results"]} == {"workspace_markdown"}
+
+    derived = memory_search_compatible(
+        "持久記憶", max_results=10, corpus="super-memory", config=cfg
+    )
+    assert derived["results"]
+    assert {hit["corpus"] for hit in derived["results"]} == {"super-memory"}
+    assert all(hit["layer"] != "workspace_markdown" for hit in derived["results"])
+
+    sessions = memory_search_compatible(
+        "持久記憶", max_results=10, corpus="sessions", config=cfg
+    )
+    assert sessions["results"] == []

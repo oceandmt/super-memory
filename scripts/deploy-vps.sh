@@ -1,177 +1,138 @@
 #!/usr/bin/env bash
+# Guarded in-place VPS upgrade from a reviewed local checkout/artifact.
+# This script never clones, installs dependencies, commits, or pushes branches.
 set -euo pipefail
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Super Memory — VPS One-Shot Deploy Script
-# Repo: https://github.com/oceandmt/super-memory
-#
-# Usage (on VPS):
-#   curl -sL https://raw.githubusercontent.com/oceandmt/super-memory/master/scripts/deploy-vps.sh | bash
-#
-# Or manually:
-#   git clone https://github.com/oceandmt/super-memory.git /tmp/super-memory
-#   cd /tmp/super-memory && bash scripts/deploy-vps.sh
-# ═══════════════════════════════════════════════════════════════════════════════
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INSTALL_ROOT="${SUPER_MEMORY_INSTALL_ROOT:-/opt/super-memory}"
+CURRENT_LINK="${SUPER_MEMORY_CURRENT_LINK:-$INSTALL_ROOT/current}"
+RELEASES_DIR="${SUPER_MEMORY_RELEASES_DIR:-$INSTALL_ROOT/releases}"
+BACKUP_DIR="${SUPER_MEMORY_BACKUP_DIR:-$INSTALL_ROOT/backups}"
+PYBIN="${PYBIN:-$INSTALL_ROOT/.venv/bin/python}"
+CONFIG="${SUPER_MEMORY_CONFIG:-}"
+CASES="${SUPER_MEMORY_RECALL_CASES:-}"
+SERVICE="${SUPER_MEMORY_SERVICE:-super-memory.service}"
+HEALTH_URL="${SUPER_MEMORY_HEALTH_URL:-http://127.0.0.1:8765/health}"
+SMOKE_URL="${SUPER_MEMORY_SMOKE_URL:-$HEALTH_URL}"
+MIN_CASES="${SUPER_MEMORY_MIN_RECALL_CASES:-5}"
+RELEASE_ID="${SUPER_MEMORY_RELEASE_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+EXECUTE=0
 
-GREEN='\033[32m'
-RED='\033[31m'
-YELLOW='\033[33m'
-NC='\033[0m'
+usage() {
+  cat <<'EOF'
+Usage: deploy-vps.sh [--execute] --config PATH --cases DIR [options]
 
-say()  { echo -e "${GREEN}▶${NC} $1"; }
-warn() { echo -e "${YELLOW}⚠${NC}  $1"; }
-die()  { echo -e "${RED}✘${NC}  $1"; exit 1; }
+This is an upgrade tool, not an initial provisioner. Without --execute it only
+prints a plan. Execution requires an existing current release and database so a
+verified rollback can be prepared before cutover.
 
-# ── Auto-detect repo root ───────────────────────────────────────────────────
-if [ -f "$(dirname "$0")/../pyproject.toml" ]; then
-    REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-elif [ -f "./pyproject.toml" ]; then
-    REPO_ROOT="$(pwd)"
-else
-    die "pyproject.toml not found. Run from super-memory repo root."
+Options:
+  --execute              perform the guarded upgrade
+  --config PATH          live Super Memory config
+  --cases DIR            independent recall oracle
+  --install-root DIR     release/current/backups root
+  --python PATH          pre-existing Python environment (no installs occur)
+  --service NAME         systemd service name
+  --health-url URL       endpoint whose JSON must contain ready=true
+  --smoke-url URL        bounded smoke endpoint
+  --release-id ID        immutable release directory name
+  --min-cases N          minimum recall cases (default: 5)
+EOF
+}
+
+while (($#)); do
+  case "$1" in
+    --execute) EXECUTE=1; shift ;;
+    --config) CONFIG="${2:?missing --config value}"; shift 2 ;;
+    --cases) CASES="${2:?missing --cases value}"; shift 2 ;;
+    --install-root)
+      INSTALL_ROOT="${2:?missing --install-root value}"
+      CURRENT_LINK="$INSTALL_ROOT/current"; RELEASES_DIR="$INSTALL_ROOT/releases"; BACKUP_DIR="$INSTALL_ROOT/backups"
+      shift 2 ;;
+    --python) PYBIN="${2:?missing --python value}"; shift 2 ;;
+    --service) SERVICE="${2:?missing --service value}"; shift 2 ;;
+    --health-url) HEALTH_URL="${2:?missing --health-url value}"; shift 2 ;;
+    --smoke-url) SMOKE_URL="${2:?missing --smoke-url value}"; shift 2 ;;
+    --release-id) RELEASE_ID="${2:?missing --release-id value}"; shift 2 ;;
+    --min-cases) MIN_CASES="${2:?missing --min-cases value}"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+new_release="$RELEASES_DIR/$RELEASE_ID"
+cat <<EOF
+[deploy-vps] mode=$([[ "$EXECUTE" == 1 ]] && echo execute || echo dry-run)
+[deploy-vps] source=$REPO_ROOT new_release=$new_release current=$CURRENT_LINK
+[deploy-vps] guarded order: compile -> migration-copy -> recall evidence -> verified backup -> immutable copy -> cutover -> restart -> ready=true -> smoke
+[deploy-vps] no package install, git commit, or git push is performed
+EOF
+if [[ "$EXECUTE" != 1 ]]; then
+  echo "[deploy-vps] DRY RUN ONLY; pass --execute with --config and --cases to mutate"
+  exit 0
 fi
 
-WORKSPACE_ROOT="${SUPER_MEMORY_WORKSPACE_ROOT:-$HOME/.openclaw/workspace}"
-INSTALL_DIR="/opt/super-memory"
+[[ -x "$PYBIN" ]] || { echo "pre-existing Python is required: $PYBIN" >&2; exit 2; }
+[[ -n "$CONFIG" && -f "$CONFIG" ]] || { echo "--config must name an existing live config" >&2; exit 2; }
+[[ -n "$CASES" && -d "$CASES" ]] || { echo "--cases must name an independent oracle directory" >&2; exit 2; }
+[[ "$MIN_CASES" =~ ^[1-9][0-9]*$ ]] || { echo "--min-cases must be positive" >&2; exit 2; }
+[[ "$RELEASE_ID" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "unsafe release id" >&2; exit 2; }
+[[ -L "$CURRENT_LINK" ]] || { echo "existing current release symlink required for rollback: $CURRENT_LINK" >&2; exit 2; }
+previous_release="$(readlink -f "$CURRENT_LINK")"
+[[ -d "$previous_release" ]] || { echo "previous release missing: $previous_release" >&2; exit 2; }
+[[ ! -e "$new_release" ]] || { echo "immutable release already exists: $new_release" >&2; exit 2; }
+command -v systemctl >/dev/null || { echo "systemctl is required" >&2; exit 2; }
 
-echo ""
-echo "══════════════════════════════════════════════"
-echo "   Super Memory — VPS Deploy"
-echo "   $(date '+%Y-%m-%d %H:%M:%S')"
-echo "══════════════════════════════════════════════"
-echo ""
+source_gate="$REPO_ROOT/scripts/super_memory_release_gate.py"
+"$PYBIN" -m compileall -q "$REPO_ROOT/super_memory" "$source_gate"
+"$PYBIN" "$source_gate" migration-dry-run --config "$CONFIG"
+"$PYBIN" "$source_gate" recall --config "$CONFIG" --cases "$CASES" --min-cases "$MIN_CASES"
 
-# ── Step 0: Check pre-reqs ──────────────────────────────────────────────────
-say "Checking prerequisites..."
-command -v python3 &>/dev/null || die "python3 not found"
-command -v pip &>/dev/null || die "pip not found"
-PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-[ "$(echo "$PY_VER" | cut -d. -f1)" -ge 3 ] && [ "$(echo "$PY_VER" | cut -d. -f2)" -ge 11 ] || die "Python 3.11+ required, found $PY_VER"
-command -v systemctl &>/dev/null || warn "systemctl not found — skipping systemd install"
-echo "  ✓ Python $PY_VER"
-echo ""
+mkdir -p "$BACKUP_DIR" "$RELEASES_DIR"
+backup="$BACKUP_DIR/super-memory-$RELEASE_ID.sqlite3"
+manifest="$BACKUP_DIR/super-memory-$RELEASE_ID.rollback.json"
+installed_gate="$new_release/scripts/super_memory_release_gate.py"
+printf -v rollback_command '%q %q rollback --manifest %q --execute' "$PYBIN" "$installed_gate" "$manifest"
+"$PYBIN" "$source_gate" backup \
+  --config "$CONFIG" \
+  --output "$backup" \
+  --manifest "$manifest" \
+  --current-link "$CURRENT_LINK" \
+  --previous-release "$previous_release" \
+  --new-release "$new_release" \
+  --service "$SERVICE" \
+  --rollback-command "$rollback_command"
+"$PYBIN" "$source_gate" verify-backup --manifest "$manifest"
 
-# ── Step 1: Copy to install dir ─────────────────────────────────────────────
-say "Installing to $INSTALL_DIR..."
-sudo mkdir -p "$INSTALL_DIR"
-sudo cp -r "$REPO_ROOT"/* "$INSTALL_DIR/"
-sudo chown -R "$(whoami):$(whoami)" "$INSTALL_DIR"
-echo "  ✓ Copied"
-echo ""
+rollback_required=0
+rollback_on_error() {
+  status=$?
+  trap - ERR
+  if [[ "$rollback_required" == 1 ]]; then
+    echo "[deploy-vps] rollout failed; executing verified rollback" >&2
+    gate="$source_gate"
+    [[ -f "$installed_gate" ]] && gate="$installed_gate"
+    "$PYBIN" "$gate" rollback --manifest "$manifest" --execute || true
+    systemctl restart "$SERVICE" || true
+  fi
+  exit "$status"
+}
+trap rollback_on_error ERR
+rollback_required=1
 
-# ── Step 2: Create venv + install ───────────────────────────────────────────
-say "Setting up Python venv..."
-cd "$INSTALL_DIR"
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -q --upgrade pip
-pip install -q -e '.[dev]'
-echo "  ✓ Installed"
-echo ""
+mkdir "$new_release"
+# Copy the reviewed artifact without VCS state, caches, local venvs, or release backups.
+tar -C "$REPO_ROOT" \
+  --exclude=.git --exclude=.venv --exclude='__pycache__' --exclude='.release-backups' \
+  -cf - . | tar -C "$new_release" -xf -
+"$PYBIN" -m compileall -q "$new_release/super_memory" "$installed_gate"
+ln -s "$new_release" "$CURRENT_LINK.next-$RELEASE_ID"
+mv -Tf "$CURRENT_LINK.next-$RELEASE_ID" "$CURRENT_LINK"
+systemctl restart "$SERVICE"
+"$PYBIN" "$installed_gate" readiness --url "$HEALTH_URL" --attempts 20 --timeout 2 --interval 1
+"$PYBIN" "$installed_gate" smoke --url "$SMOKE_URL" --timeout 3 --require-json-key ready
+rollback_required=0
+trap - ERR
 
-# ── Step 3: Configure .env ──────────────────────────────────────────────────
-say "Configuring environment..."
-if [ ! -f "$INSTALL_DIR/.env" ]; then
-    cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
-    # Auto-fill workspace root
-    sed -i "s|SUPER_MEMORY_WORKSPACE_ROOT=.*|SUPER_MEMORY_WORKSPACE_ROOT=$WORKSPACE_ROOT|" "$INSTALL_DIR/.env"
-fi
-echo "  ✓ .env configured (workspace_root=$WORKSPACE_ROOT)"
-echo ""
-
-# ── Step 4: Install systemd service ─────────────────────────────────────────
-if command -v systemctl &>/dev/null; then
-    say "Installing systemd service..."
-    # Update paths in unit file to match INSTALL_DIR
-    sed "s|/home/oceandmt/.openclaw/workspace/projects/super-memory-github|$INSTALL_DIR|g" \
-        "$INSTALL_DIR/deploy/super-memory.service" | \
-    sed "s|/home/oceandmt/Documents/super-memory-github|$INSTALL_DIR|g" | \
-    sudo tee /etc/systemd/system/super-memory.service > /dev/null
-
-    sudo systemctl daemon-reload
-    sudo systemctl enable super-memory
-    sudo systemctl restart super-memory
-    sleep 2
-    if sudo systemctl is-active --quiet super-memory; then
-        echo "  ✓ Service running"
-    else
-        warn "Service failed to start — check: sudo journalctl -u super-memory -n 30"
-    fi
-    echo ""
-fi
-
-# ── Step 5: Verify API health ───────────────────────────────────────────────
-say "Verifying API health..."
-sleep 1
-if curl -sf http://127.0.0.1:8765/health >/dev/null 2>&1; then
-    echo "  ✓ API healthy at http://127.0.0.1:8765"
-    curl -s http://127.0.0.1:8765/health | python3 -m json.tool 2>/dev/null || true
-else
-    warn "API health check failed — trying manual start..."
-    cd "$INSTALL_DIR"
-    . .venv/bin/activate
-    nohup super-memory-api > /tmp/super-memory.log 2>&1 &
-    sleep 2
-    if curl -sf http://127.0.0.1:8765/health >/dev/null 2>&1; then
-        echo "  ✓ API started manually"
-    else
-        warn "API still not reachable — check /tmp/super-memory.log"
-    fi
-fi
-echo ""
-
-# ── Step 6: Install OpenClaw plugin ─────────────────────────────────────────
-if command -v openclaw &>/dev/null; then
-    say "Installing OpenClaw plugin..."
-    bash "$INSTALL_DIR/scripts/install-openclaw-plugin.sh"
-    echo ""
-else
-    warn "openclaw CLI not found on this machine — skipping plugin install"
-    warn "Run this on the machine where OpenClaw Gateway is running"
-    echo ""
-fi
-
-# ── Step 7: Run qualification ───────────────────────────────────────────────
-say "Running auto-qualify..."
-bash "$INSTALL_DIR/scripts/qualify.sh" || warn "Some qualification checks failed — review above"
-echo ""
-
-# ── Done ────────────────────────────────────────────────────────────────────
-echo "══════════════════════════════════════════════"
-echo "  ✅ DEPLOY COMPLETE"
-echo "══════════════════════════════════════════════"
-echo ""
-echo "  Install dir:  $INSTALL_DIR"
-echo "  API:          http://127.0.0.1:8765"
-echo "  Health:       http://127.0.0.1:8765/health"
-echo "  Docs:         http://127.0.0.1:8765/docs"
-echo "  Service:      sudo systemctl status super-memory"
-echo "  Logs:         sudo journalctl -u super-memory -f"
-echo ""
-echo "  Plugin (on OpenClaw Gateway host):"
-echo "    bash $INSTALL_DIR/scripts/install-openclaw-plugin.sh"
-echo "    openclaw gateway restart"
-echo ""
-
-# ── Key reminder for Luffy integration ──────────────────────────────────────
-echo "===== LUFFY INTEGRATION ====="
-echo ""
-echo "Super Memory is now running as a systemd service on this VPS."
-echo "Tools are exposed via MCP (stdio) and REST (127.0.0.1:8765)."
-echo ""
-echo "For OpenClaw Luffy to use super-memory tools:"
-echo ""
-echo "  1. Run the plugin installer on the OpenClaw Gateway host:"
-echo "     bash $INSTALL_DIR/scripts/install-openclaw-plugin.sh"
-echo ""
-echo "  2. Choose activation mode when prompted:"
-echo "     MODE A (recommended): additive tools alongside existing memory"
-echo "     MODE B: exclusive memory slot (replaces memory-core)"
-echo ""
-echo "  3. Restart gateway:"
-echo "     openclaw gateway restart"
-echo ""
-echo "  4. Verify:"
-echo "     openclaw plugins list | grep super"
-echo "     openclaw status | grep super_memory"
-echo ""
+echo "[deploy-vps] RELEASE_OK release=$new_release manifest=$manifest"
+echo "[deploy-vps] rollback: $rollback_command && systemctl restart $(printf %q "$SERVICE")"

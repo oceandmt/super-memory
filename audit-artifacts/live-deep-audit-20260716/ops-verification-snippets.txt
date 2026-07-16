@@ -1,0 +1,319 @@
+## Ops finding verification snippets
+### mcp tools/call handling
+  1610	    # ── P2: Self-Education Curriculum ────────────────────────
+  1611	    if name == "super_memory_analyze_recall_failures":
+  1612	        return bridge.analyze_recall_failures(config_path=args.get("config_path"))
+  1613	    if name == "super_memory_generate_curriculum":
+  1614	        return bridge.generate_curriculum(config_path=args.get("config_path"))
+  1615	    if name == "super_memory_run_benchmark_tests":
+  1616	        return bridge.run_benchmark_tests(config_path=args.get("config_path"))
+  1617	    # ── P0/P2 fixes: forget + edit ──────────────────────────
+  1618	    if name == "super_memory_forget":
+  1619	        return bridge.forget(args.get("memory_id"), hard=args.get("hard", False), reason=args.get("reason", ""), config_path=args.get("config_path"))
+  1620	    if name == "super_memory_edit":
+  1621	        return bridge.edit(args.get("memory_id"), content=args.get("content"), type=args.get("type"), priority=args.get("priority"), tier=args.get("tier"), config_path=args.get("config_path"))
+  1622	
+  1623	    raise ValueError(f"unknown tool: {name}")
+  1624	
+  1625	
+  1626	def _response(request_id: Any, result: Any) -> JSON:
+  1627	    return {"jsonrpc": "2.0", "id": request_id, "result": result}
+  1628	
+  1629	
+  1630	def _error(request_id: Any, code: int, message: str, data: Any | None = None) -> JSON:
+  1631	    payload: JSON = {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+  1632	    if data is not None:
+  1633	        payload["error"]["data"] = data
+  1634	    return payload
+  1635	
+  1636	
+  1637	def handle(request: JSON) -> JSON | None:
+  1638	    method = request.get("method")
+  1639	    request_id = request.get("id")
+  1640	    params = request.get("params") or {}
+  1641	
+  1642	    if method == "initialize":
+  1643	        return _response(
+  1644	            request_id,
+  1645	            {
+  1646	                "protocolVersion": params.get("protocolVersion", PROTOCOL_VERSION),
+  1647	                "capabilities": {"tools": {}, "resources": {}},
+  1648	                "serverInfo": SERVER_INFO,
+  1649	                "instructions": (
+  1650	                    "Super Memory MCP is a project-local memory server. Workspace Markdown remains canonical; "
+  1651	                    "MCP tools are derived/programmatic access. Do not apply/register into this machine's OpenClaw config unless explicitly instructed. "
+  1652	                    f"Active MCP profile: {MCP_PROFILE}."
+  1653	                ),
+  1654	            },
+  1655	        )
+  1656	    if method == "notifications/initialized":
+  1657	        return None
+  1658	    if method == "ping":
+  1659	        return _response(request_id, {})
+  1660	    if method == "tools/list":
+  1661	        return _response(request_id, {"tools": _tool_descriptors()})
+  1662	    if method == "tools/call":
+  1663	        name = params.get("name")
+  1664	        args = dict(params.get("arguments") or {})
+  1665	        try:
+  1666	            result = _call_tool(name, args)
+  1667	        except PermissionError as exc:
+  1668	            return _error(request_id, -32000, str(exc))
+  1669	        return _response(request_id, {"content": _text(result), "isError": False})
+  1670	    if method == "resources/list":
+  1671	        return _response(request_id, {"resources": [{"uri": "super-memory://status", "name": "Super Memory status", "mimeType": "application/json"}]})
+  1672	    if method == "resources/read":
+  1673	        uri = params.get("uri")
+  1674	        if uri != "super-memory://status":
+  1675	            return _error(request_id, -32602, f"unknown resource: {uri}")
+  1676	        return _response(request_id, {"contents": [{"uri": uri, "mimeType": "application/json", "text": json.dumps(bridge.status(), ensure_ascii=False, indent=2)}]})
+  1677	    return _error(request_id, -32601, f"method not found: {method}")
+  1678	
+  1679	
+  1680	def serve() -> None:
+  1681	    DEBUG = os.environ.get("SUPER_MEMORY_MCP_DEBUG", "0") in ("1", "true", "yes")
+  1682	    for line in sys.stdin:
+  1683	        line = line.strip()
+  1684	        if not line:
+  1685	            continue
+  1686	        try:
+  1687	            request = json.loads(line)
+  1688	            response = handle(request)
+  1689	        except Exception as exc:  # keep MCP transport alive and report as JSON-RPC error
+  1690	            data = traceback.format_exc() if DEBUG else f"{type(exc).__name__}: {exc}"
+  1691	            response = _error(None, -32000, str(exc), data)
+  1692	        if response is not None:
+  1693	            sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+  1694	            sys.stdout.flush()
+  1695	
+### api health
+   350	    source_name: str = "local-import"
+   351	    recursive: bool = True
+   352	    limit: int = 200
+   353	    save: bool = True
+   354	    config_path: str | None = None
+   355	
+   356	class IndexRequest(BaseModel):
+   357	    path: str
+   358	    extensions: list[str] | None = None
+   359	    recursive: bool = True
+   360	    limit: int = 500
+   361	    save: bool = True
+   362	    config_path: str | None = None
+   363	
+   364	
+   365	@app.get("/health")
+   366	def health(config_path: str | None = None) -> dict[str, Any]:
+   367	    """Liveness-compatible, read-only readiness evidence."""
+   368	    return bridge.health(config_path=config_path)
+   369	
+   370	
+   371	@app.get("/status")
+   372	def status(config_path: str | None = None) -> dict[str, Any]:
+   373	    return bridge.status(config_path=config_path)
+   374	
+   375	@app.get("/mcp-tools")
+   376	def mcp_tools() -> dict[str, Any]:
+   377	    return {"tools": mcp_server._tool_descriptors()}
+   378	
+   379	@app.get("/stats")
+   380	def stats(config_path: str | None = None) -> dict[str, Any]:
+### deploy service
+     1	[Unit]
+     2	Description=Super Memory API Server (OpenClaw Memory Engine)
+     3	Documentation=https://github.com/oceandmt/super-memory
+     4	After=network-online.target
+     5	Wants=network-online.target
+     6	
+     7	[Service]
+     8	Type=simple
+     9	User=oceandmt
+    10	Group=oceandmt
+    11	WorkingDirectory=/home/oceandmt/.openclaw/workspace/projects/super-memory-github
+    12	
+    13	# ─── Environment ────────────────────────────────────────────────────────────
+    14	EnvironmentFile=-/home/oceandmt/.openclaw/workspace/projects/super-memory-github/.env
+    15	Environment=PATH=/home/oceandmt/.local/bin:/usr/local/bin:/usr/bin:/bin
+    16	
+    17	# ─── Exec ───────────────────────────────────────────────────────────────────
+    18	#
+    19	# Choose ONE of the following ExecStart lines:
+    20	#
+    21	#   A) API server only (REST → OpenClaw plugin bridges via HTTP):
+    22	ExecStart=/home/oceandmt/Documents/super-memory-github/.venv_test/bin/super-memory-api
+    23	
+    24	#   B) MCP server (stdio → OpenClaw MCP proxy):
+    25	# ExecStart=/home/oceandmt/Documents/super-memory-github/.venv_test/bin/super-memory-mcp --stdio --profile normal
+    26	
+    27	# ─── Lifecycle ──────────────────────────────────────────────────────────────
+    28	Restart=on-failure
+    29	RestartSec=5
+    30	TimeoutStartSec=30
+    31	TimeoutStopSec=10
+    32	
+    33	# Prevent restart loops
+    34	StartLimitBurst=5
+    35	StartLimitIntervalSec=60
+    36	
+    37	# ─── Logging ────────────────────────────────────────────────────────────────
+    38	StandardOutput=journal
+    39	StandardError=journal
+    40	SyslogIdentifier=super-memory
+    41	
+    42	[Install]
+    43	WantedBy=multi-user.target
+### alembic files
+alembic/versions/2026_06_17_0826-d3dd86dec2be_initial_super_memory_schema.py
+--- alembic/versions/2026_06_17_0826-d3dd86dec2be_initial_super_memory_schema.py
+     1	"""initial_super_memory_schema
+     2	
+     3	Revision ID: d3dd86dec2be
+     4	Revises:
+     5	Create Date: 2026-06-17 08:26:10.950668
+     6	"""
+     7	from __future__ import annotations
+     8	
+     9	from pathlib import Path
+    10	from typing import Sequence, Union
+    11	
+    12	from alembic import op
+    13	
+    14	# revision identifiers, used by Alembic.
+    15	revision: str = "d3dd86dec2be"
+    16	down_revision: Union[str, Sequence[str], None] = None
+    17	branch_labels: Union[str, Sequence[str], None] = None
+    18	depends_on: Union[str, Sequence[str], None] = None
+    19	
+    20	
+    21	def upgrade() -> None:
+    22	    """Create the SuperMemory v1 schema from the canonical schema.sql file."""
+    23	    schema_path = Path(__file__).resolve().parents[2] / "super_memory" / "schema.sql"
+    24	    bind = op.get_bind()
+    25	    # schema.sql is SQLite-specific and contains comments with semicolons, so
+    26	    # execute it via the DB-API executescript path instead of naïve splitting.
+    27	    raw_conn = bind.connection.driver_connection
+    28	    raw_conn.executescript(schema_path.read_text(encoding="utf-8"))
+    29	
+    30	
+    31	def downgrade() -> None:
+    32	    """Best-effort downgrade for test/dev databases.
+    33	
+    34	    Production users should prefer backups over downgrade for memory data.
+    35	    """
+    36	    bind = op.get_bind()
+    37	    tables = [
+    38	        "alembic_version",
+    39	        "memories_fts",
+    40	        "memory_fts",
+    41	        "cognitive_synapses",
+    42	        "graph_edges",
+    43	        "palace_drawers",
+    44	        "cross_agent_conflicts",
+    45	        "cross_agent_claims",
+    46	        "handoff_bundles",
+    47	        "session_archives",
+    48	        "sessions",
+    49	        "honcho_peers",
+    50	        "honcho_conclusions",
+    51	        "honcho_events",
+    52	        "memories",
+    53	    ]
+    54	    for table in tables:
+    55	        bind.exec_driver_sql(f"DROP TABLE IF EXISTS {table}")
+alembic/README
+--- alembic/README
+     1	Generic single-database configuration.
+alembic/env.py
+--- alembic/env.py
+     1	from logging.config import fileConfig
+     2	from pathlib import Path
+     3	import sys
+     4	
+     5	from sqlalchemy import engine_from_config, pool
+     6	from alembic import context
+     7	
+     8	# Allow running from project root without installing the package
+     9	sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    10	
+    11	config = context.config
+    12	
+    13	if config.config_file_name is not None:
+    14	    fileConfig(config.config_file_name)
+    15	
+    16	target_metadata = None
+    17	
+    18	
+    19	def get_sqlite_url() -> str:
+    20	    """Derive the SQLite URL, preferring the programmatic config option."""
+    21	    url = config.get_main_option("sqlalchemy.url", "")
+    22	    if url and url != "sqlite:///data/sm.sqlite3":
+    23	        return url
+    24	    try:
+    25	        from super_memory.config import load_config
+    26	        from super_memory.migrations import sqlite_path as _sqlite_path
+    27	        cfg = load_config(None)
+    28	        db_path = _sqlite_path(cfg)
+    29	        return f"sqlite:///{db_path}"
+    30	    except Exception:
+    31	        return "sqlite:///data/sm.sqlite3"
+    32	
+    33	
+    34	def run_migrations_offline() -> None:
+    35	    url = get_sqlite_url()
+    36	    context.configure(
+    37	        url=url,
+    38	        target_metadata=target_metadata,
+    39	        literal_binds=True,
+    40	        dialect_opts={"paramstyle": "named"},
+    41	    )
+    42	    with context.begin_transaction():
+    43	        context.run_migrations()
+    44	
+    45	
+    46	def run_migrations_online() -> None:
+    47	    url = get_sqlite_url()
+    48	    connectable = engine_from_config(
+    49	        {"sqlalchemy.url": url},
+    50	        prefix="sqlalchemy.",
+    51	        poolclass=pool.NullPool,
+    52	    )
+    53	    with connectable.connect() as connection:
+    54	        context.configure(connection=connection, target_metadata=target_metadata)
+    55	        with context.begin_transaction():
+    56	            context.run_migrations()
+    57	
+    58	
+    59	if context.is_offline_mode():
+    60	    run_migrations_offline()
+    61	else:
+    62	    run_migrations_online()
+alembic/script.py.mako
+--- alembic/script.py.mako
+     1	"""${message}
+     2	
+     3	Revision ID: ${up_revision}
+     4	Revises: ${down_revision | comma,n}
+     5	Create Date: ${create_date}
+     6	
+     7	"""
+     8	from typing import Sequence, Union
+     9	
+    10	from alembic import op
+    11	import sqlalchemy as sa
+    12	${imports if imports else ""}
+    13	
+    14	# revision identifiers, used by Alembic.
+    15	revision: str = ${repr(up_revision)}
+    16	down_revision: Union[str, Sequence[str], None] = ${repr(down_revision)}
+    17	branch_labels: Union[str, Sequence[str], None] = ${repr(branch_labels)}
+    18	depends_on: Union[str, Sequence[str], None] = ${repr(depends_on)}
+    19	
+    20	
+    21	def upgrade() -> None:
+    22	    """Upgrade schema."""
+    23	    ${upgrades if upgrades else "pass"}
+    24	
+    25	
+    26	def downgrade() -> None:
+    27	    """Downgrade schema."""
+    28	    ${downgrades if downgrades else "pass"}

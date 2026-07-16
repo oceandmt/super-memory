@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .config import load_config
-from .service import SuperMemoryService
 from .storage import SuperMemoryStore, row_to_memory
 
 
@@ -22,9 +21,9 @@ def _now():
 
 
 def _store(config_path=None):
-    cfg = load_config(config_path)
-    SuperMemoryService(cfg)
-    store = SuperMemoryStore(cfg)
+    # Core schema is migrated by the service/runtime. Re-instantiating the full
+    # service here reruns migrations and amplifies lock contention in tool smoke.
+    store = SuperMemoryStore(load_config(config_path))
     _init_tables(store)
     return store
 
@@ -44,13 +43,15 @@ def _init_tables(store):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_ac_prefix ON autocomplete_index(prefix)")
 
 
-def _rebuild_prefixes(config_path=None):
-    """Rebuild autocomplete prefix index from active memories."""
+def _rebuild_prefixes(config_path=None, max_memories: int = 5000):
+    """Rebuild autocomplete prefixes from a bounded recent active corpus."""
     store = _store(config_path)
     with store.connect() as conn:
         conn.execute("DELETE FROM autocomplete_index")
         rows = conn.execute(
-            "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0"
+            "SELECT * FROM memories WHERE COALESCE(json_extract(metadata_json,'$.soft_deleted'),0)=0 "
+            "ORDER BY created_at DESC LIMIT ?",
+            (max(1, int(max_memories)),),
         ).fetchall()
         inserted = 0
         for row in rows:

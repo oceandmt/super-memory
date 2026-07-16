@@ -13,6 +13,13 @@
 from __future__ import annotations
 
 from super_memory.sanitize import is_injection_content
+def _isolated_db_path():
+    import os, pytest
+    value = os.environ.get("SUPER_MEMORY_TEST_DB") or os.environ.get("SUPER_MEMORY_DB_PATH")
+    if not value:
+        pytest.skip("live-data regression requires an explicit disposable SUPER_MEMORY_TEST_DB")
+    return value
+
 
 
 CHUNKED_WRITE_BLOCK = (
@@ -123,7 +130,7 @@ class TestWriteIntentsTableRegression:
     def test_write_intents_table_exists(self):
         import sqlite3
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         tables = {r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
@@ -134,7 +141,7 @@ class TestWriteIntentsTableRegression:
         import subprocess
         out = subprocess.run(
             ["grep", "-n", "_wc_register_memory",
-             "/home/oceandmt/.openclaw/workspace/super-memory/super_memory/service.py"],
+             str(__import__("pathlib").Path(__file__).resolve().parents[1] / "super_memory/service.py")],
             capture_output=True, text=True,
         )
         assert out.stdout.strip() != "", "write_contract.register_memory no longer called from service.save"
@@ -173,7 +180,7 @@ class TestHandoffContentHashRegression:
     def test_no_alive_null_content_hash_rows(self):
         import sqlite3
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         n = conn.execute(
             "SELECT COUNT(*) FROM memories WHERE (content_hash IS NULL OR content_hash='') "
@@ -219,7 +226,7 @@ class TestFileAdapterIgnorePathRegression:
         import sqlite3, json
         from super_memory.ingest import is_ignored_source_path
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
@@ -274,7 +281,7 @@ class TestDreamEngineSoftDeleteRegression:
         import sqlite3
         from super_memory.dream_engine import dream_engine_status
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         raw = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         alive = conn.execute(
@@ -811,7 +818,7 @@ class TestStatsAliveCountRegression:
         assert "total_including_deleted" in st
         assert st["total_memories"] <= st["total_including_deleted"]
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         alive = conn.execute(
             "SELECT COUNT(*) FROM memories WHERE "
@@ -838,7 +845,7 @@ class TestPalaceDrawersConflictRegression:
     def test_palace_drawers_have_no_null_primary_key(self):
         import sqlite3
         conn = sqlite3.connect(
-            "/home/oceandmt/.openclaw/workspace/data/super-memory.sqlite3"
+            _isolated_db_path()
         )
         n = conn.execute(
             "SELECT COUNT(*) FROM palace_drawers WHERE drawer_id IS NULL"
