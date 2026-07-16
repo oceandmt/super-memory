@@ -284,6 +284,8 @@ ADVANCED_TOOLS = {
     "super_memory_repair_orphans",
     "super_memory_full_drift_repair",
     "super_memory_register_projection",
+    "super_memory_layer_parity_audit",
+    "super_memory_layer_parity_repair",
     # P2: Adapter-driven Watcher
     "super_memory_adapter_scan_once",
     "super_memory_adapter_settle_scan",
@@ -967,6 +969,8 @@ for _name, _desc, _props, _required in [
     ("super_memory_repair_orphans", "Repair orphaned projection entries.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     ("super_memory_full_drift_repair", "Full drift repair: audit + orphans + missing closets.", {"dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     ("super_memory_register_projection", "Register a derived projection for drift tracking.", {"table_name": {"type": "string"}, "memory_id": {"type": "string"}, "projection_key": {"type": "string"}, "config_path": {"type": "string"}}, ["table_name", "memory_id", "projection_key"]),
+    ("super_memory_layer_parity_audit", "Audit bounded canonical-to-derived layer row parity with exact missing IDs.", {"limit": {"type": "integer", "default": 100}, "config_path": {"type": "string"}}, []),
+    ("super_memory_layer_parity_repair", "Backfill bounded missing derived layer rows from canonical rows (dry-run by default).", {"limit": {"type": "integer", "default": 100}, "dry_run": {"type": "boolean", "default": True}, "config_path": {"type": "string"}}, []),
     # P2: Adapter-driven Watcher
     ("super_memory_adapter_scan_once", "One-shot scan using SourceAdapters (detect changes + ingest through adapters).", {"directories": {"type": "array", "items": {"type": "string"}}, "exclude": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, []),
     ("super_memory_adapter_settle_scan", "Debounced adapter-driven scan with settle detection.", {"directories": {"type": "array", "items": {"type": "string"}}, "exclude": {"type": "array", "items": {"type": "string"}}, "config_path": {"type": "string"}}, []),
@@ -1590,6 +1594,10 @@ def _call_tool(name: str, args: JSON) -> Any:
             if not args.get(required):
                 raise ValueError(f"{required} is required")
         return bridge.register_projection(table_name=args.get("table_name"), memory_id=args.get("memory_id"), projection_key=args.get("projection_key"), config_path=args.get("config_path"))
+    if name == "super_memory_layer_parity_audit":
+        return bridge.layer_parity_audit(config_path=args.get("config_path"), limit=args.get("limit", 100))
+    if name == "super_memory_layer_parity_repair":
+        return bridge.layer_parity_repair(config_path=args.get("config_path"), limit=args.get("limit", 100), dry_run=args.get("dry_run", True))
     # ── P2: Adapter-driven Watcher ───────────────────────────
     if name == "super_memory_adapter_scan_once":
         return bridge.adapter_scan_once(directories=args.get("directories"), exclude=args.get("exclude"), config_path=args.get("config_path"))

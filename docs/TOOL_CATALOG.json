@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 237,
+  "total_tools": 239,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -5803,6 +5803,52 @@
           "memory_id",
           "projection_key"
         ]
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_layer_parity_audit",
+      "category": "other",
+      "description": "Audit bounded canonical-to-derived layer row parity with exact missing IDs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 100
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_layer_parity_repair",
+      "category": "other",
+      "description": "Backfill bounded missing derived layer rows from canonical rows (dry-run by default).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "default": 100
+          },
+          "dry_run": {
+            "type": "boolean",
+            "default": true
+          },
+          "config_path": {
+            "type": "string"
+          }
+        },
+        "required": []
       },
       "profiles": [
         "admin"

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import super_memory.mcp_server as mcp_server
 
-EXPECTED_ADMIN_COUNT = 237
+EXPECTED_ADMIN_COUNT = 239
 EXPECTED_USER_COUNT = 62
 EXPECTED_READONLY_COUNT = 62
 EXPECTED_P0_P5 = {

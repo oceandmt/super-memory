@@ -355,6 +355,41 @@ def benchmark_cross_agent_cmd(config: Optional[str] = None, limit: int = 5, json
     console.print(f"avg_latency_ms={result['avg_latency_ms']} cross_layer={result['cross_layer_verdict']}")
 
 
+
+@app.command("layer-parity-audit")
+def layer_parity_audit_cmd(
+    limit: int = 100,
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    """Audit bounded canonical→derived layer row parity."""
+    from .layer_parity import audit_layer_parity
+    result = audit_layer_parity(config_path=config, limit=limit)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    table = Table(title="Layer parity audit")
+    table.add_column("Layer")
+    table.add_column("Missing")
+    for layer, count in result.get("counts", {}).items():
+        table.add_row(layer, str(count))
+    console.print(table)
+
+@app.command("layer-parity-repair")
+def layer_parity_repair_cmd(
+    limit: int = 100,
+    dry_run: bool = True,
+    config: Optional[str] = None,
+    json_out: bool = False,
+):
+    """Backfill bounded missing derived layer rows from canonical rows."""
+    from .layer_parity import repair_layer_parity
+    result = repair_layer_parity(config_path=config, limit=limit, dry_run=dry_run)
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    console.print(f"ok={result.get('ok')} dry_run={result.get('dry_run')} changed={result.get('changed')}")
+
 @app.command("doctor")
 def doctor_cmd(config: Optional[str] = None, no_benchmark: bool = False, json_out: bool = False):
     """Run full health/contract/cross-agent diagnostics."""

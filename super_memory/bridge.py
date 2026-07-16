@@ -2377,6 +2377,14 @@ def projection_manifest_repair(config_path: str | None = None, dry_run: bool = T
     from .projections.manifest import repair_projection_drift
     return repair_projection_drift(config_path=config_path, dry_run=dry_run)
 
+def layer_parity_audit(config_path: str | None = None, limit: int = 100) -> dict[str, Any]:
+    from .layer_parity import audit_layer_parity
+    return audit_layer_parity(config_path=config_path, limit=limit)
+
+def layer_parity_repair(config_path: str | None = None, limit: int = 100, dry_run: bool = True) -> dict[str, Any]:
+    from .layer_parity import repair_layer_parity
+    return repair_layer_parity(config_path=config_path, limit=limit, dry_run=dry_run)
+
 def projection_manifest_backfill(config_path: str | None = None, limit: int = 500) -> dict[str, Any]:
     from .projections.manifest import backfill_projection_manifest
     return backfill_projection_manifest(config_path=config_path, limit=limit)

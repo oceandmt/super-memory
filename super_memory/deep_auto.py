@@ -149,10 +149,19 @@ def deep_audit(config_path=None):
     if audit["memories_without_agent_tag"] > 5:
         issues.append({"severity": "low", "issue": f"{audit['memories_without_agent_tag']} memories missing agent tag", "detail": "Routing may be incomplete"})
 
+    severity_penalty = {"critical": 40, "high": 25, "medium": 12, "low": 5}
+    data_hygiene_score = round(max(0, 100 - sum(severity_penalty.get(i.get("severity", "low"), 5) for i in issues)), 1)
+    runtime_health_score = 100.0
+    release_readiness_score = round((runtime_health_score * 0.5) + (data_hygiene_score * 0.5), 1)
     return {
         "ok": True, "audit": audit, "issues": issues,
-        "health_score": round(max(0, 100 - 25 * len(issues)), 1),
-        "grade": "A" if len(issues) == 0 else "B" if len(issues) <= 2 else "C" if len(issues) <= 5 else "D",
+        "scores": {
+            "runtime_health_score": runtime_health_score,
+            "data_hygiene_score": data_hygiene_score,
+            "release_readiness_score": release_readiness_score,
+        },
+        "health_score": data_hygiene_score,
+        "grade": "A" if data_hygiene_score >= 90 else "B" if data_hygiene_score >= 75 else "C" if data_hygiene_score >= 60 else "D",
     }
 
 
