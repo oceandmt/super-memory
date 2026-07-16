@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.1] - 2026-07-17
+
+### Fixed - Recall, Runtime, and Release Hardening
+
+- Hardened caller-context visibility for API/MCP/plugin recall paths so project, session, and agent-local memory remain fail-closed unless matching context is supplied.
+- Made cognitive spreading activation compatible with both legacy `relation` and current `synapse_type` schema columns.
+- Corrected canonical fallback token search to preserve visibility predicates while supporting expanded-query recall.
+- Restored Markdown-failure recovery behavior for pending canonical sync rows in direct service maintenance paths.
+- Fixed pruning/firewall classification for empty OpenClaw turn events.
+- Preserved durable-pack citation `source` during recall arbitration fallback.
+- Closed SQLite handles from short-lived deriver/background threads deterministically to remove file-descriptor pressure after long runs/reloads.
+
+### Changed
+
+- OpenClaw plugin metadata bumped to v1.7.1.
+- Documentation refreshed for current local validation status: `856 passed, 22 skipped, 1 warning`.
+- Release/reload notes now document guarded deploy gates and live health verification.
+
+### Verification
+
+```text
+pytest -q
+856 passed, 22 skipped, 1 warning
+```
+
+
 ## [2.4.0] - 2026-07-15
 
 ### Added - Execution Patterns Module 🎯
@@ -188,4 +214,4 @@ Super-Memory follows semantic versioning (MAJOR.MINOR.PATCH):
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes, no API changes
 
-Current: **v2.4.0** (minor version bump for execution patterns feature)
+Current: **v2.4.1** (patch release for recall/runtime/release hardening)

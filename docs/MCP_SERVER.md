@@ -1,4 +1,4 @@
-# Super Memory MCP Server (v2.3.6)
+# Super Memory MCP Server (v2.4.1)
 
 Super Memory includes a local stdio MCP server so MCP-compatible agents can use it directly. **254 tools** across all categories — the largest MCP tool set in the neural-memory ecosystem.
 
@@ -60,16 +60,16 @@ Profiles:
 
 - `normal` default: remember, remember-batch, show, context, todo, auto, stats, health, normalize-memory, recall, prefetch, sync-turn, memory-search, memory-get, status — daily-safe tools
 - `admin`: normal tools plus promotion, cross-agent, cross-session, cognitive (hypothesis/evidence/predict/verify), lifecycle (tier/compression/review/leitner), quality (envelope/ingest/adapter), and consolidation tools
-- `all`: every implemented tool — **254 tools** including P0+P2 modules (MemoryEnvelope, SourceAdapter, Closets, Recall Arbitration v3, Feedback, Drift Repair, Watcher, Line Citations, Dialectic, Curriculum)
+- `all`: every implemented tool — **254 tools** including P0+P2 modules (MemoryEnvelope, SourceAdapter, Closets, Recall Arbitration v4/v3, Feedback, Drift Repair, Watcher, Line Citations, Dialectic, Curriculum)
 
-### P0+P2 Module Tools (v2.2.0, hardened v2.3.6)
+### P0+P2 Module Tools (v2.2.0, hardened v2.4.1)
 
 | Module | Tools | Profile |
 |--------|-------|---------|
 | **MemoryEnvelope** | `build_envelope`, `remember_through_envelope`, `list_source_adapters` | all |
 | **SourceAdapter** | `ingest_through_adapter`, `ingest_and_remember` | all |
 | **Semantic Closets** | `build_closets`, `build_closets_for_memory`, `rebuild_all_closets`, `search_closets` | admin |
-| **Recall Arbitration v3** | `recall_arbitrate_v3`, `recall_quick`, `hybrid_fuse`, `diversify_results` | all |
+| **Recall Arbitration v4/v3** | `recall_arbitrate_v3`, `recall_quick`, `hybrid_fuse`, `diversify_results` | all |
 | **Recall Feedback** | `capture_failed_recall`, `recall_record_correction`, `recall_feedback_stats`, `analyze_recall_failures` | admin |
 | **Drift Repair** | `audit_drift`, `full_drift_repair`, `repair_orphans`, `normalize_memory` | admin |
 | **Watcher Adapter** | `watch_directory`, `watcher_status`, `watcher_list` | admin |

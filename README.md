@@ -7,11 +7,23 @@
 
 **Local multi-layer memory system for OpenClaw multi-agents.**
 
-> **v2.4.0** — Grade A (92/100) • Production-Ready • Execution Patterns • 254 MCP tools • 480 tests passing • CI/CD green
+> **v2.4.1** — Production-ready canonical-first memory • Recall/security hardening • OpenClaw plugin v1.7.1 • 856 tests passing
 
 Super Memory is a Hermes-style layered agent memory system with Workspace Markdown as canonical truth, plus 3 derived layers (MemPalace, Honcho, Neural Memory) for structured, conversational, and associative recall. It ships as a Python package with CLI, FastAPI server, and MCP server — usable as an OpenClaw plugin or standalone memory service.
 
-**NEW in v2.4.0**: Execution Patterns module prevents memory loss and improves task completion rates (90% reduction in context loss incidents, 95% reduction in "continue" prompts).
+**NEW in v2.4.1**: Release/recall lifecycle hardening for the local OpenClaw runtime: schema-compatible spreading activation, fail-closed caller-context recall, safer fallback search, deterministic SQLite connection cleanup for background deriver workers, and guarded local reload scripts. v2.4.0 introduced the Execution Patterns module.
+
+
+---
+
+## Release v2.4.1 Highlights
+
+- **Recall/security hardening**: caller-context forwarding is enforced for project/session/agent-local memory; private rows stay fail-closed unless the API/MCP/plugin passes the matching context.
+- **Schema compatibility**: spreading activation now supports both historical `relation` and current `synapse_type` cognitive synapse schemas.
+- **Canonical fallback recovery**: direct-service fallback recall can see pending `super-memory` recovery rows without opening arbitrary private memory.
+- **SQLite lifecycle stability**: short-lived deriver/background threads close thread-local SQLite handles deterministically, eliminating file-descriptor pressure after reloads.
+- **Guarded deployment**: local reload scripts perform compile, migration dry-run, recall evidence gate, verified backup, restart, readiness, smoke, and rollback-manifest checks.
+- **Validation**: full local suite passed: `856 passed, 22 skipped, 1 warning`.
 
 ---
 
@@ -54,7 +66,7 @@ super-memory-api
 | **Consolidation** | `consolidate`, `dedup`, `dream_full_cycle`, `flush_session_memories` | Dedup, compress, mature, enrich, prune, insight generation (token-frequency noise filtered, injection-echo guarded) |
 | **Citations** | `enrich_recall_with_citations`, `dialectic_answer` | Line-level source citations, deterministic/LLM synthesis |
 
-### Explainable Recall (Recall Arbitration v3)
+### Explainable Recall (Recall Arbitration v4, v3 compatible)
 
 Every recall result includes `why_selected` breakdown:
 
@@ -297,10 +309,10 @@ super-memory doctor --no-benchmark --json-out
 
 ## CI/CD Status
 
-- **CI**: 480/480 tests passing (Python 3.11 + 3.12)
+- **Tests**: 856/856 passing locally, 22 skipped (Python 3.14 local validation; CI remains multi-version)
 - **Auto Deep**: Grade A (90/100)
 - **Canonical Compliance**: 99.9%
-- **MCP Tools**: 254 (122 categories)
+- **MCP Tools**: 254+ across normal/admin/all profiles
 - **Autocomplete Prefixes**: 17,090
 - **Deployment**: ✅ release environment
 
@@ -314,13 +326,13 @@ super-memory/
 │   ├── core/envelope.py       # MemoryEnvelope v1
 │   ├── ingest/                # SourceAdapter manifest
 │   ├── projections/           # Closets, Drift Repair
-│   ├── recall/                # Recall v3, Feedback, Citations, Dialectic
+│   ├── recall/                # Recall v4/v3, Feedback, Citations, Dialectic
 │   ├── evals/                 # Curriculum, benchmarks
 │   ├── safety/                # Firewall, freshness, encryption
 │   ├── dedup/                 # 3-tier dedup pipeline
 │   └── ...                    # 60+ modules
 ├── SKILLS/                    # OpenClaw agent skills (8 proposals)
-├── tests/                     # 480 tests (80 files)
+├── tests/                     # 856 passing tests plus recall/security fixtures
 ├── docs/                      # Full documentation
 ├── scripts/                   # Plugin install, workspace templates
 ├── openclaw-plugin/           # Native OpenClaw plugin

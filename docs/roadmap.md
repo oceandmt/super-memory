@@ -1,7 +1,7 @@
 # Super Memory: Development Roadmap
 
-> **Current release**: v2.3.6 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
-> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-07-13
+> **Current release**: v2.4.1 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
+> **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-07-17
 
 ---
 
@@ -64,7 +64,7 @@
 - [x] **MemoryEnvelope v1** (`core/envelope.py`): quality/trust/provenance/lifecycle contract
 - [x] **SourceAdapter Manifest** (`ingest/__init__.py`): ChatTurnAdapter, FileAdapter, URLAdapter
 - [x] **Semantic Closets/Drawers** (`projections/closet.py`): verbatim-preserving pointer layer
-- [x] **Recall Arbitration v3** (`recall/__init__.py`): unified scoring with `why_selected`, `layer_votes`
+- [x] **Recall Arbitration v4/v3** (`recall/__init__.py`): unified scoring with `why_selected`, `layer_votes`
 - [x] **Recall Feedback Loop** (`recall/feedback.py`): correction → training case pipeline
 
 ### P2 — Drift Repair + Watcher + Citations + Dialectic + Curriculum
@@ -82,13 +82,13 @@
 
 ### CI/CD
 
-- [x] CI matrix: Python 3.11 + 3.12, 480/480 tests
+- [x] CI matrix: Python 3.11 + 3.12, 856/856 local tests
 - [x] Hard deps: numpy, cryptography
 - [x] Grade A (90/100) qualify, 99.9% canonical compliance
 - [x] 254 MCP tools, 17,090 autocomplete prefixes
 - [x] Deployment to `release` environment: success
 
-## ✅ Phase 3 — Trust, Dream Quality, Write-Contract Hardening (v2.3.6)
+## ✅ Phase 3 — Trust, Dream Quality, Write-Contract Hardening (v2.4.1)
 
 ### Recall Quality
 

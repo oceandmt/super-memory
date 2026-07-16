@@ -1,7 +1,7 @@
 {
   "id": "super-memory",
   "name": "Super Memory",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Local multi-layer memory for OpenClaw; can run as additive tools/corpus or exclusive memory-slot provider.",
   "main": "index.js",
   "configSchema": {
