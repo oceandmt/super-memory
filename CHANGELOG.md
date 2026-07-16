@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.2] - 2026-07-17
+
+### Added
+
+- Added bounded layer parity diagnostics for canonical `workspace_markdown` rows against `mempalace`, `honcho`, and `neural_memory` derived rows.
+- Added non-destructive layer parity repair with dry-run default; repair backfills missing derived rows through the normal `SQLiteLayerBackend.save()` projection path.
+- Exposed layer parity audit/repair through bridge APIs, CLI commands, and MCP tools.
+- Added regression coverage for audit, dry-run repair, and applied repair.
+
+### Changed
+
+- Deep audit now reports separate runtime, data hygiene, and release-readiness scores.
+- MCP tool catalog refreshed to 239 admin tools.
+- OpenClaw plugin metadata bumped to v1.7.2.
+- Documentation refreshed for latest local validation: `859 passed, 22 skipped, 1 warning`.
+
+### Verification
+
+```text
+pytest -q
+859 passed, 22 skipped, 1 warning
+```
+
+Live runtime after reload: `ok=true`, `ready=true`, `degraded=false`, `warnings=[]`.
+
+
 ## [2.4.1] - 2026-07-17
 
 ### Fixed - Recall, Runtime, and Release Hardening
@@ -214,4 +240,4 @@ Super-Memory follows semantic versioning (MAJOR.MINOR.PATCH):
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes, no API changes
 
-Current: **v2.4.1** (patch release for recall/runtime/release hardening)
+Current: **v2.4.2** (patch release for layer parity diagnostics and deep-audit scoring)

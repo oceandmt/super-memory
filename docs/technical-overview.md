@@ -1,7 +1,7 @@
 # Technical Overview: Super Memory Architecture
 
-> **Version**: 2.4.1  
-> **Release**: [v2.4.1 — Trust/Dream/Write-Contract hardening](https://github.com/oceandmt/super-memory/releases/tag/v2.4.1)  
+> **Version**: 2.4.2  
+> **Release**: [v2.4.2 — Trust/Dream/Write-Contract hardening](https://github.com/oceandmt/super-memory/releases/tag/v2.4.2)  
 > **License**: MIT
 
 ---
@@ -413,14 +413,14 @@ Super Memory synchronizes conversation turns to Honcho via the `honcho-auto-capt
 
 | Metric | Value |
 |--------|-------|
-| Version | **v2.4.1** |
+| Version | **v2.4.2** |
 | Total memories | 697 |
 | Auto Deep Grade | **A (90/100)** |
 | Canonical Compliance | **99.9%** |
 | MCP Tools | **254** |
 | Autocomplete Prefixes | **17,090** |
 | Tests Passing | **480/480** (Python 3.11 + 3.12) |
-| CI/CD | ✅ Green — master + v2.4.1 tag |
+| CI/CD | ✅ Green — master + v2.4.2 tag |
 | Deployment | ✅ release environment (6f72e14) |
 | Deep Debug Problems | **0** |
 

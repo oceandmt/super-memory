@@ -7,12 +7,22 @@
 
 **Local multi-layer memory system for OpenClaw multi-agents.**
 
-> **v2.4.1** — Production-ready canonical-first memory • Recall/security hardening • OpenClaw plugin v1.7.1 • 856 tests passing
+> **v2.4.2** — Production-ready canonical-first memory • Layer parity diagnostics/repair • OpenClaw plugin v1.7.2 • 859 tests passing
 
 Super Memory is a Hermes-style layered agent memory system with Workspace Markdown as canonical truth, plus 3 derived layers (MemPalace, Honcho, Neural Memory) for structured, conversational, and associative recall. It ships as a Python package with CLI, FastAPI server, and MCP server — usable as an OpenClaw plugin or standalone memory service.
 
-**NEW in v2.4.1**: Release/recall lifecycle hardening for the local OpenClaw runtime: schema-compatible spreading activation, fail-closed caller-context recall, safer fallback search, deterministic SQLite connection cleanup for background deriver workers, and guarded local reload scripts. v2.4.0 introduced the Execution Patterns module.
+**NEW in v2.4.2**: First-class layer parity diagnostics/repair for canonical→derived projections, refined deep-audit runtime/data/release scoring, expanded MCP catalog (239 admin tools), and live runtime validation with clean readiness. v2.4.1 added release/recall lifecycle hardening; v2.4.0 introduced Execution Patterns.
 
+
+
+---
+
+## Release v2.4.2 Highlights
+
+- **Layer parity diagnostics/repair**: new `layer_parity_audit` / `layer_parity_repair` bridge APIs, CLI commands, and MCP tools detect exact missing canonical→derived projection rows and can safely backfill them with dry-run default.
+- **Deep audit scoring clarity**: audit output now separates `runtime_health_score`, `data_hygiene_score`, and `release_readiness_score` so low-severity data hygiene does not mask healthy runtime readiness.
+- **MCP catalog refreshed**: admin catalog now exposes 239 tools including `super_memory_layer_parity_audit` and `super_memory_layer_parity_repair`.
+- **Validation**: full local suite passed: `859 passed, 22 skipped, 1 warning`; live runtime verified `ok=true`, `ready=true`, `degraded=false`, `warnings=[]`.
 
 ---
 
@@ -23,7 +33,7 @@ Super Memory is a Hermes-style layered agent memory system with Workspace Markdo
 - **Canonical fallback recovery**: direct-service fallback recall can see pending `super-memory` recovery rows without opening arbitrary private memory.
 - **SQLite lifecycle stability**: short-lived deriver/background threads close thread-local SQLite handles deterministically, eliminating file-descriptor pressure after reloads.
 - **Guarded deployment**: local reload scripts perform compile, migration dry-run, recall evidence gate, verified backup, restart, readiness, smoke, and rollback-manifest checks.
-- **Validation**: full local suite passed: `856 passed, 22 skipped, 1 warning`.
+- **Validation**: full local suite passed: `859 passed, 22 skipped, 1 warning`.
 
 ---
 
@@ -309,7 +319,7 @@ super-memory doctor --no-benchmark --json-out
 
 ## CI/CD Status
 
-- **Tests**: 856/856 passing locally, 22 skipped (Python 3.14 local validation; CI remains multi-version)
+- **Tests**: 859/859 passing locally, 22 skipped (Python 3.14 local validation; CI remains multi-version)
 - **Auto Deep**: Grade A (90/100)
 - **Canonical Compliance**: 99.9%
 - **MCP Tools**: 254+ across normal/admin/all profiles
@@ -332,7 +342,7 @@ super-memory/
 │   ├── dedup/                 # 3-tier dedup pipeline
 │   └── ...                    # 60+ modules
 ├── SKILLS/                    # OpenClaw agent skills (8 proposals)
-├── tests/                     # 856 passing tests plus recall/security fixtures
+├── tests/                     # 859 passing tests plus recall/security/parity fixtures
 ├── docs/                      # Full documentation
 ├── scripts/                   # Plugin install, workspace templates
 ├── openclaw-plugin/           # Native OpenClaw plugin

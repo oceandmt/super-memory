@@ -1,6 +1,6 @@
 # Super Memory: Development Roadmap
 
-> **Current release**: v2.4.1 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
+> **Current release**: v2.4.2 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
 > **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-07-17
 
 ---
@@ -82,13 +82,13 @@
 
 ### CI/CD
 
-- [x] CI matrix: Python 3.11 + 3.12, 856/856 local tests
+- [x] CI matrix: Python 3.11 + 3.12, 859/859 local tests
 - [x] Hard deps: numpy, cryptography
 - [x] Grade A (90/100) qualify, 99.9% canonical compliance
 - [x] 254 MCP tools, 17,090 autocomplete prefixes
 - [x] Deployment to `release` environment: success
 
-## ✅ Phase 3 — Trust, Dream Quality, Write-Contract Hardening (v2.4.1)
+## ✅ Phase 3 — Trust, Dream Quality, Write-Contract Hardening (v2.4.2)
 
 ### Recall Quality
 
