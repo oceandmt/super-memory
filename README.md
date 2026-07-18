@@ -7,13 +7,22 @@
 
 **Local multi-layer memory system for OpenClaw multi-agents.**
 
-> **v2.4.2** — Production-ready canonical-first memory • Layer parity diagnostics/repair • OpenClaw plugin v1.7.2 • 859 tests passing
+> **v2.4.3** — Production-ready canonical-first memory • Live runtime ops docs • OpenClaw plugin v1.7.3 • 859 tests passing
 
 Super Memory is a Hermes-style layered agent memory system with Workspace Markdown as canonical truth, plus 3 derived layers (MemPalace, Honcho, Neural Memory) for structured, conversational, and associative recall. It ships as a Python package with CLI, FastAPI server, and MCP server — usable as an OpenClaw plugin or standalone memory service.
 
-**NEW in v2.4.2**: First-class layer parity diagnostics/repair for canonical→derived projections, refined deep-audit runtime/data/release scoring, expanded MCP catalog (239 admin tools), and live runtime validation with clean readiness. v2.4.1 added release/recall lifecycle hardening; v2.4.0 introduced Execution Patterns.
+**NEW in v2.4.3**: Live runtime operations documentation, deep-operations skill guidance, exported cron hygiene templates, and debug-hygiene cleanup on top of v2.4.2 layer parity diagnostics/repair. v2.4.1 added release/recall lifecycle hardening; v2.4.0 introduced Execution Patterns.
 
 
+
+---
+
+## Release v2.4.3 Highlights
+
+- **Live runtime operations pack**: added `docs/live-runtime-operations-2026-07-17.md`, `SKILLS/super-memory-deep-operations.md`, and `ops/cron/super-memory-live-runtime-cron-jobs.json` so production operators can repeat the same health, audit, hygiene, and release checks used locally.
+- **Deep debug hygiene cleanup**: debug artifacts are classified separately so release readiness reflects runtime health while still surfacing data hygiene findings.
+- **Plugin metadata refreshed**: OpenClaw plugin wrapper bumped to v1.7.3 and docs updated to match the current local Super Memory state.
+- **Verification**: compile and plugin syntax checks pass locally; v2.4.2 full suite baseline remains `859 passed, 22 skipped, 1 warning`.
 
 ---
 

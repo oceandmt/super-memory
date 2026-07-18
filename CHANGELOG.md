@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.4.3] - 2026-07-18
+
+### Added
+
+- Added live runtime operations documentation covering MCP/plugin health, deep-operation skills, and recommended cron hygiene jobs.
+- Added `SKILLS/super-memory-deep-operations.md` for repeatable deep audit, hygiene, and release verification workflows.
+- Added exported live-runtime cron job templates under `ops/cron/`.
+
+### Changed
+
+- Cleaned deep debug data hygiene scoring so diagnostic artifacts no longer depress runtime readiness.
+- Refreshed README/docs/plugin metadata for the latest local Super Memory and OpenClaw plugin state.
+- OpenClaw plugin metadata bumped to v1.7.3.
+
+### Verification
+
+```text
+python3 -m compileall super_memory
+node --check openclaw-plugin/super-memory/index.js
+node --check openclaw-plugin/super-memory/mcp-client.js
+```
+
 ## [2.4.2] - 2026-07-17
 
 ### Added
@@ -240,4 +262,4 @@ Super-Memory follows semantic versioning (MAJOR.MINOR.PATCH):
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes, no API changes
 
-Current: **v2.4.2** (patch release for layer parity diagnostics and deep-audit scoring)
+Current: **v2.4.3** (patch release for live runtime operations docs, cron templates, and debug hygiene cleanup)

@@ -1,0 +1,298 @@
+{
+  "deep_audit": {
+    "ok": true,
+    "audit": {
+      "total_memories": 14263,
+      "active_memories": 2939,
+      "soft_deleted": 2523,
+      "canonical_markdown_count": 2939,
+      "canonical_compliance_pct": 100.0,
+      "layers": {
+        "workspace_markdown": 3569,
+        "mempalace": 3567,
+        "honcho": 3564,
+        "neural_memory": 3563
+      },
+      "types": {
+        "decision": 625,
+        "fact": 2108,
+        "context": 3521,
+        "event": 2221,
+        "workflow": 1740,
+        "preference": 460,
+        "doctrine": 8,
+        "blocker": 1900,
+        "todo": 1680
+      },
+      "scopes": {
+        "project": 13987,
+        "shared": 244,
+        "agent-local": 16,
+        "session": 16
+      },
+      "agents": {
+        "lucas": 13982,
+        "alex": 5,
+        "agentB": 1,
+        "consolidation": 220,
+        "test": 3,
+        "coder": 4,
+        "researcher": 8,
+        "9router/gpt-5.4": 4,
+        "9router/gpt-5.5": 24,
+        "deploy-agent": 8,
+        "audit-agent": 4
+      },
+      "projects": {
+        "(none)": 12125,
+        "super-memory": 1958,
+        "stock-management": 36,
+        "openclaw-super-memory": 36,
+        "stock portfolio": 28,
+        "openclaw": 24,
+        "vn-stock-portfolio": 20,
+        "xauusd-xagusd": 8,
+        "chatgpt2api": 8,
+        "super-memory-github": 8,
+        "super-memory-phase8": 4,
+        "openclaw-workspace": 4,
+        "gold-report-cron": 4
+      },
+      "avg_content_length": 963.7,
+      "max_content_length": 8020,
+      "long_memories_over_2k": 78,
+      "mitigated_long_memories_over_2k": 107,
+      "duplicate_clusters": 1,
+      "duplicates": [
+        {
+          "ids": [
+            "82ad8377-4ff6-4946-a417-b99ec65246fe",
+            "42c3eeef-4fb6-4e9c-b2b6-de87f38d47e3"
+          ],
+          "count": 2
+        }
+      ],
+      "memories_without_agent_tag": 0
+    },
+    "issues": [
+      {
+        "severity": "low",
+        "issue": "78 memories over 2000 chars",
+        "detail": "Consider compression"
+      }
+    ],
+    "health_score": 75,
+    "grade": "B"
+  },
+  "deep_qualify": {
+    "ok": true,
+    "grade": "A",
+    "score": 90.0,
+    "reasons": [
+      "good durable type ratio (39%)",
+      "context ratio controlled (26%)",
+      "trust score usage (100%)",
+      "low too-short ratio (0%)",
+      "healthy avg length (1000 chars)"
+    ],
+    "type_diversity": 9,
+    "durable_ratio": 0.3927,
+    "context_ratio": 0.2647,
+    "project_coverage": 0.1684,
+    "trust_coverage": 1.0,
+    "too_short_ratio": 0.0037,
+    "avg_length": 999.9,
+    "agent_counts": {
+      "lucas": 2876,
+      "consolidation": 55,
+      "alex": 2,
+      "9router/gpt-5.5": 2,
+      "deploy-agent": 2,
+      "agentB": 1,
+      "audit-agent": 1
+    },
+    "type_counts": {
+      "context": 778,
+      "fact": 479,
+      "event": 442,
+      "workflow": 411,
+      "blocker": 358,
+      "todo": 207,
+      "decision": 157,
+      "preference": 105,
+      "doctrine": 2
+    }
+  },
+  "deep_debug": {
+    "ok": true,
+    "problems": [],
+    "warnings": [
+      "Tables not yet created (normal for fresh DB): 2",
+      "2523 soft-deleted records (normal)"
+    ],
+    "problem_count": 0,
+    "warning_count": 2,
+    "fix_suggestions": []
+  },
+  "auto_deep_pipeline": {
+    "ok": true,
+    "pipeline": "auto_deep",
+    "dry_run": true,
+    "audit": {
+      "ok": true,
+      "audit": {
+        "total_memories": 14263,
+        "active_memories": 2939,
+        "soft_deleted": 2523,
+        "canonical_markdown_count": 2939,
+        "canonical_compliance_pct": 100.0,
+        "layers": {
+          "workspace_markdown": 3569,
+          "mempalace": 3567,
+          "honcho": 3564,
+          "neural_memory": 3563
+        },
+        "types": {
+          "decision": 625,
+          "fact": 2108,
+          "context": 3521,
+          "event": 2221,
+          "workflow": 1740,
+          "preference": 460,
+          "doctrine": 8,
+          "blocker": 1900,
+          "todo": 1680
+        },
+        "scopes": {
+          "project": 13987,
+          "shared": 244,
+          "agent-local": 16,
+          "session": 16
+        },
+        "agents": {
+          "lucas": 13982,
+          "alex": 5,
+          "agentB": 1,
+          "consolidation": 220,
+          "test": 3,
+          "coder": 4,
+          "researcher": 8,
+          "9router/gpt-5.4": 4,
+          "9router/gpt-5.5": 24,
+          "deploy-agent": 8,
+          "audit-agent": 4
+        },
+        "projects": {
+          "(none)": 12125,
+          "super-memory": 1958,
+          "stock-management": 36,
+          "openclaw-super-memory": 36,
+          "stock portfolio": 28,
+          "openclaw": 24,
+          "vn-stock-portfolio": 20,
+          "xauusd-xagusd": 8,
+          "chatgpt2api": 8,
+          "super-memory-github": 8,
+          "super-memory-phase8": 4,
+          "openclaw-workspace": 4,
+          "gold-report-cron": 4
+        },
+        "avg_content_length": 963.7,
+        "max_content_length": 8020,
+        "long_memories_over_2k": 78,
+        "mitigated_long_memories_over_2k": 107,
+        "duplicate_clusters": 1,
+        "duplicates": [
+          {
+            "ids": [
+              "82ad8377-4ff6-4946-a417-b99ec65246fe",
+              "42c3eeef-4fb6-4e9c-b2b6-de87f38d47e3"
+            ],
+            "count": 2
+          }
+        ],
+        "memories_without_agent_tag": 0
+      },
+      "issues": [
+        {
+          "severity": "low",
+          "issue": "78 memories over 2000 chars",
+          "detail": "Consider compression"
+        }
+      ],
+      "health_score": 75,
+      "grade": "B"
+    },
+    "qualify": {
+      "ok": true,
+      "grade": "A",
+      "score": 90.0,
+      "reasons": [
+        "good durable type ratio (39%)",
+        "context ratio controlled (26%)",
+        "trust score usage (100%)",
+        "low too-short ratio (0%)",
+        "healthy avg length (1000 chars)"
+      ],
+      "type_diversity": 9,
+      "durable_ratio": 0.3927,
+      "context_ratio": 0.2647,
+      "project_coverage": 0.1684,
+      "trust_coverage": 1.0,
+      "too_short_ratio": 0.0037,
+      "avg_length": 999.9,
+      "agent_counts": {
+        "lucas": 2876,
+        "consolidation": 55,
+        "alex": 2,
+        "9router/gpt-5.5": 2,
+        "deploy-agent": 2,
+        "agentB": 1,
+        "audit-agent": 1
+      },
+      "type_counts": {
+        "context": 778,
+        "fact": 479,
+        "event": 442,
+        "workflow": 411,
+        "blocker": 358,
+        "todo": 207,
+        "decision": 157,
+        "preference": 105,
+        "doctrine": 2
+      }
+    },
+    "debug": {
+      "ok": true,
+      "problems": [],
+      "warnings": [
+        "Tables not yet created (normal for fresh DB): 2",
+        "2523 soft-deleted records (normal)"
+      ],
+      "problem_count": 0,
+      "warning_count": 2,
+      "fix_suggestions": []
+    },
+    "improve": {
+      "ok": true,
+      "dry_run": true,
+      "audit_grade": "B",
+      "qualify_score": 90.0,
+      "qualify_grade": "A",
+      "problems_found": 0,
+      "improvement_proposals": [
+        {
+          "action": "dedup_consolidation",
+          "target": "1 clusters",
+          "proposal": "Merge duplicate memories via consolidation",
+          "priority": "medium"
+        }
+      ],
+      "applied": [],
+      "summary": "Audit grade B, Qualify score 90, 1 improvements proposed (dry run)"
+    },
+    "overall_grade": "B",
+    "overall_score": 82.5,
+    "pipeline_summary": "Audit: B (75/100), Qualify: A (90/100), Debug: 0 problems, Improve: 1 proposals (dry run)"
+  }
+}

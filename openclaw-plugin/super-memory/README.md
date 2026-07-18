@@ -1,6 +1,6 @@
 # Super Memory OpenClaw Native Plugin
 
-> **Plugin v1.7.2 / Super Memory v2.4.2**: current wrapper supports safe/admin/exclusive modes, caller-context forwarding, auto turn sync, optional context injection, and health-checked API integration. The matching Python package passed `859 passed, 22 skipped` before this release.
+> **Plugin v1.7.3 / Super Memory v2.4.3**: current wrapper supports safe/admin/exclusive modes, caller-context forwarding, auto turn sync, optional context injection, and health-checked API integration. The matching Python package passed `859 passed, 22 skipped` before this release.
 
 
 This directory is the native OpenClaw plugin wrapper for Super Memory. Super Memory is intended to be able to run as OpenClaw's memory slot, but the wrapper is intentionally safe by default: it runs as an additive tools/corpus plugin unless you explicitly opt into `exclusive` memory-slot mode.

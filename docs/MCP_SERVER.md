@@ -1,4 +1,4 @@
-# Super Memory MCP Server (v2.4.2)
+# Super Memory MCP Server (v2.4.3)
 
 Super Memory includes a local stdio MCP server so MCP-compatible agents can use it directly. **254 tools** across all categories — the largest MCP tool set in the neural-memory ecosystem.
 

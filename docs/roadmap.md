@@ -1,6 +1,6 @@
 # Super Memory: Development Roadmap
 
-> **Current release**: v2.4.2 (P0+P2 + SKILLS + Trust/Dream/Write-Contract hardening)  
+> **Current release**: v2.4.3 (live runtime operations + cron hygiene + layer parity hardening)  
 > **Status**: [GitHub](https://github.com/oceandmt/super-memory) • **Last updated**: 2026-07-17
 
 ---
@@ -108,6 +108,16 @@
 - [x] **Dead embed-job cleanup**: cancelled 274 jobs targeting soft-deleted/orphaned memories (reversible status flip); live embed backlog confirmed at 0.
 - [x] **Cron hygiene**: `super-memory-daily-hygiene` extended with dead-embed-job auto-cancel + layer-drift check.
 - [x] Regression suite `tests/test_injection_and_hydration_regression.py` (16 tests) locking in all of the above.
+
+---
+
+## ✅ Phase 3.1 — Live Runtime Operations Pack (v2.4.3)
+
+- [x] Live operations runbook: MCP/plugin health, readiness checks, and deep-audit workflow.
+- [x] Deep-operations skill: repeatable procedures for audit, hygiene, layer parity repair, and release verification.
+- [x] Cron templates: exported daily hygiene/live runtime jobs under `ops/cron/`.
+- [x] Deep debug hygiene cleanup: diagnostic artifacts separated from runtime readiness scoring.
+- [x] Plugin metadata refreshed to v1.7.3.
 
 ---
 
