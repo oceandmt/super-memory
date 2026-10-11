@@ -1,7 +1,7 @@
 {
   "version": "0.1.1",
   "generated_at": "2026-06-15T11:00:00Z",
-  "total_tools": 239,
+  "total_tools": 240,
   "tools": [
     {
       "name": "super_memory_remember",
@@ -5029,6 +5029,19 @@
             "type": "string"
           }
         },
+        "required": []
+      },
+      "profiles": [
+        "admin"
+      ]
+    },
+    {
+      "name": "super_memory_enhancement_plan",
+      "category": "other",
+      "description": "Show prioritized P0-P3 enhancement plan, suggested tests, operational commands/tools, and final recommendation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
         "required": []
       },
       "profiles": [

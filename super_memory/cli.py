@@ -260,6 +260,27 @@ def recommendations_cmd(limit: int = 10, config: Optional[str] = None, json_out:
     for rec in result.get("recommendations", []):
         console.print(f"[{rec.get('priority')}] {rec.get('action')} — {rec.get('reason')}")
 
+@app.command("enhancement-plan")
+def enhancement_plan_cmd(json_out: bool = False):
+    """Show prioritized P0-P3 enhancement plan and operator runbook."""
+    from . import bridge as _bridge
+
+    result = _bridge.enhancement_plan()
+    if json_out:
+        console.print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    for item in result.get("plan", []):
+        console.print(f"[bold]{item.get('priority')}[/bold] {item.get('title')}: {item.get('objective')}")
+        console.print("  Suggested tests:")
+        for test in item.get("suggested_tests", []):
+            console.print(f"  - {test}")
+        console.print("  Operational commands/tools:")
+        for command in item.get("operational_commands", []):
+            console.print(f"  - {command}")
+        for tool in item.get("operational_tools", []):
+            console.print(f"  - tool:{tool}")
+    console.print(f"[green]Final recommendation:[/green] {result.get('final_recommendation')}")
+
 @app.command("promote")
 def promote(
     memory_id: str = typer.Argument(..., help="Memory ID to promote"),

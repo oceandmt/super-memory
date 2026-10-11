@@ -245,6 +245,7 @@ ADVANCED_TOOLS = {
     "super_memory_autocomplete_rebuild",
     "super_memory_autocomplete_status",
     "super_memory_recommendations",
+    "super_memory_enhancement_plan",
     # Auto Deep pipeline
     "super_memory_deep_audit",
     "super_memory_deep_qualify",
@@ -326,6 +327,7 @@ CURATED_TOOLS = {
     "super_memory_health",
     "super_memory_situation",
     "super_memory_recommendations",
+    "super_memory_enhancement_plan",
     "super_memory_memory_pollution_report",
     # search / compatibility
     "super_memory_memory_search",
@@ -931,6 +933,7 @@ for _name, _desc, _props, _required in [
     ("super_memory_autocomplete_rebuild", "Rebuild full autocomplete prefix index.", {"config_path": {"type": "string"}}, []),
     ("super_memory_autocomplete_status", "Show autocomplete prefix index status.", {"config_path": {"type": "string"}}, []),
     ("super_memory_recommendations", "Recommend ranked next actions for Super Memory maintenance and UX.", {"limit": {"type": "integer", "default": 10}, "config_path": {"type": "string"}}, []),
+    ("super_memory_enhancement_plan", "Show prioritized P0-P3 enhancement plan, suggested tests, operational commands/tools, and final recommendation.", {}, []),
     ("super_memory_deep_audit", "Comprehensive memory health audit.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_qualify", "Score memory quality and recall pipeline.", {"config_path": {"type": "string"}}, []),
     ("super_memory_deep_debug", "Find operational issues and misconfigurations.", {"config_path": {"type": "string"}}, []),
@@ -1494,6 +1497,8 @@ def _call_tool(name: str, args: JSON) -> Any:
         return bridge.autocomplete_status(config_path=args.get("config_path"))
     if name == "super_memory_recommendations":
         return bridge.recommendations(limit=args.get("limit", 10), config_path=args.get("config_path"))
+    if name == "super_memory_enhancement_plan":
+        return bridge.enhancement_plan()
     # ── Auto Deep Pipeline ───────────────────────────────────
     if name == "super_memory_deep_audit":
         return bridge.deep_audit(config_path=args.get("config_path"))
@@ -1708,9 +1713,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--stdio", action="store_true", help="Run stdio MCP server (default)")
     parser.add_argument(
         "--profile",
-        choices=["normal", "admin", "all"],
+        choices=["normal", "curated", "admin", "all"],
         default=os.environ.get("SUPER_MEMORY_MCP_PROFILE", "normal"),
-        help="Tool exposure profile. normal is safe default; admin exposes promotion; all exposes every tool.",
+        help=("Tool exposure profile. normal is safe default; curated is a context-saving "
+              "day-to-day subset; admin exposes promotion; all exposes every tool."),
     )
     args = parser.parse_args(argv)
     MCP_PROFILE = args.profile

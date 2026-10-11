@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import urllib.request
 from pathlib import Path
@@ -183,6 +184,15 @@ def semantic_index(
         f"SELECT COUNT(*) FROM {_VECTOR_METADATA_TABLE} WHERE status='active'"
     ).fetchone()[0]
     conn.close()
+    # SLO freshness marker: a successful index pass with no failures means the
+    # vector store reflects current canonical state. Bump the file mtime so the
+    # operational SLO `vector_index_age_seconds` (mtime-based) reports fresh even
+    # when there were no pending items to (re)write — prevents idle-time flapping.
+    if len(failed) == 0:
+        try:
+            os.utime(vec_path, None)
+        except OSError:
+            pass
     return {
         "ok": len(failed) == 0,
         "source_rows": len(rows),

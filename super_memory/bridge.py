@@ -1509,6 +1509,10 @@ def recommendations(limit: int = 10, config_path: str | None = None) -> dict[str
     from . import recommendation
     return recommendation.recommendations(limit=limit, config_path=config_path)
 
+def enhancement_plan() -> dict[str, Any]:
+    from .enhancement_plan import prioritized_enhancement_plan
+    return prioritized_enhancement_plan()
+
 
 # ── Auto Deep Pipeline ───────────────────────────────────────────────────────
 

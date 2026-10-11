@@ -34,8 +34,10 @@ backups/
 backups_fixes/
 *.bak
 *.bak2
+*.bak-*
 
 # Temp / logs
 test_results*.txt
 *.log
+logs/
 reports/

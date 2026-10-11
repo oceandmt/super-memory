@@ -10,6 +10,7 @@ Matches OpenClaw memory-core provider-adapters pattern:
 from __future__ import annotations
 
 import abc
+import json
 import logging
 import os
 from typing import Any
@@ -32,6 +33,7 @@ PROVIDER_PRIORITY: dict[str, int] = {
     "google": 9,                # API key required
     "huggingface": 10,          # API key optional
     "bedrock": 11,              # AWS creds required
+    "ollama": 12,               # Local, no external deps (native API on :11434)
 }
 
 
@@ -308,6 +310,85 @@ class BedrockAdapter(EmbeddingAdapter):
         return [self.embed(t, dimensions=dimensions) for t in texts]
 
 
+class OllamaAdapter(EmbeddingAdapter):
+    """Ollama local embeddings (native /api/embed).
+
+    Wired to the live runtime's embedding authority: same endpoint/model as
+    ``super_memory.vector.embed_text`` (``http://127.0.0.1:11434`` /
+    ``nomic-embed-text``, 768-dim). Uses stdlib urllib so it needs no extra
+    dependency and mirrors the model identity used by the canonical vector
+    store.
+    """
+
+    name = "ollama"
+
+    def __init__(self) -> None:
+        self.base_url = (
+            os.environ.get("SUPER_MEMORY_OLLAMA_URL")
+            or os.environ.get("OLLAMA_HOST")
+            or "http://127.0.0.1:11434"
+        ).rstrip("/")
+        if not self.base_url.startswith("http"):
+            self.base_url = "http://" + self.base_url
+        self.model = os.environ.get("SUPER_MEMORY_EMBEDDING_MODEL", "nomic-embed-text")
+
+    def is_available(self) -> bool:
+        import urllib.request
+
+        try:
+            req = urllib.request.Request(self.base_url + "/api/tags")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                payload = json.loads(resp.read())
+            names = {(m.get("name") or "") for m in payload.get("models", [])}
+            if not names:
+                return False
+            # Match exact tag or any ':tag' variant of the configured model.
+            return any(n == self.model or n.split(":", 1)[0] == self.model for n in names)
+        except Exception:
+            return False
+
+    def _embed_one(self, text: str) -> list[float]:
+        import urllib.request
+
+        payload = json.dumps({"model": self.model, "input": [text]}).encode("utf-8")
+        req = urllib.request.Request(
+            self.base_url + "/api/embed",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read())
+        embeddings = data.get("embeddings") or []
+        if not embeddings:
+            raise RuntimeError("ollama returned no embeddings")
+        return list(embeddings[0])
+
+    def embed(self, text: str, *, dimensions: int | None = None) -> list[float]:
+        vec = self._embed_one(text)
+        return vec[:dimensions] if dimensions else vec
+
+    def embed_batch(self, texts: list[str], *, dimensions: int | None = None) -> list[list[float]]:
+        texts = list(texts)
+        if not texts:
+            return []
+        if len(texts) == 1:
+            return [self.embed(texts[0], dimensions=dimensions)]
+        import urllib.request
+
+        payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
+        req = urllib.request.Request(
+            self.base_url + "/api/embed",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            data = json.loads(resp.read())
+        embs = data.get("embeddings") or []
+        if len(embs) != len(texts):
+            raise RuntimeError(f"ollama batch size mismatch: got {len(embs)} for {len(texts)}")
+        return [list(e)[:dimensions] if dimensions else list(e) for e in embs]
+
+
 class LMStudioAdapter(EmbeddingAdapter):
     """LM Studio local embeddings (OpenAI-compatible API)."""
 
@@ -489,6 +570,7 @@ BUILTIN_ADAPTERS: list[EmbeddingAdapter] = [
     GoogleAdapter(),
     HuggingFaceAdapter(),
     BedrockAdapter(),
+    OllamaAdapter(),
 ]
 
 

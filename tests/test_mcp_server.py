@@ -30,6 +30,77 @@ def test_mcp_admin_profile_exposes_promote():
         mcp_server.MCP_PROFILE = old
 
 
+def test_mcp_curated_profile_is_accepted_by_cli():
+    """Regression: `--profile curated` must be a valid argparse choice.
+
+    CURATED_TOOLS and the `_allowed_tools` branch shipped before `curated` was
+    added to the argparse `choices` list, so the stdio server crashed at
+    startup with "invalid choice: 'curated'" whenever a client configured that
+    profile. OpenClaw was configured with `--profile curated` and failed with
+    "Connection closed".
+    """
+    import subprocess
+    import sys
+
+    # Assert on the usage line (the argparse choice list), not just any mention
+    # of the word "curated" — the help text mentions it too, which would let a
+    # broken choices list slip through.
+    proc = subprocess.run(
+        [sys.executable, "-m", "super_memory.mcp_server", "--help"],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    usage_line = next(
+        (line for line in proc.stdout.splitlines() if "--profile" in line),
+        "",
+    )
+    assert "curated" in usage_line, proc.stdout
+
+    # And prove the server actually starts under the curated profile.
+    init = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {}},
+        }
+    )
+    started = subprocess.run(
+        [sys.executable, "-m", "super_memory.mcp_server", "--stdio", "--profile", "curated"],
+        input=init + "\n",
+        text=True,
+        capture_output=True,
+        timeout=60,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    assert started.returncode == 0, started.stdout + started.stderr
+    assert "invalid choice" not in (started.stdout + started.stderr)
+
+
+def test_mcp_curated_profile_exposes_capture_and_core_tools():
+    old = mcp_server.MCP_PROFILE
+    try:
+        mcp_server.MCP_PROFILE = "curated"
+        names = {t["name"] for t in mcp_server._tool_descriptors()}
+    finally:
+        mcp_server.MCP_PROFILE = old
+    # Auto-capture tools must be present or memory capture silently breaks.
+    for required in (
+        "super_memory_remember",
+        "super_memory_recall",
+        "super_memory_capture_event",
+        "super_memory_capture_turn",
+        "super_memory_sync_turn",
+    ):
+        assert required in names, required
+    # Promotion is intentionally included in the curated set.
+    assert "super_memory_promote" in names
+    assert names <= {t["name"] for t in mcp_server._tool_descriptors("admin")}
+
+
 def test_mcp_normal_profile_blocks_admin_tool_call():
     old = mcp_server.MCP_PROFILE
     try:
